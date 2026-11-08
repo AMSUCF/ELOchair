@@ -8,4 +8,4 @@ A submission and peer-review system, in the spirit of EasyChair, built around ho
 - multilingual calls
 - open-access archiving after the conference
 
-**Status:** discovery. Read the [discovery notes and draft plan](docs/discovery/2026-11-08-discovery-and-draft-plan.md). Open questions are listed in section 8.
+**Status:** planning. Read the [discovery notes and draft plan](docs/discovery/2026-11-08-discovery-and-draft-plan.md), which covers the decisions so far, the architecture, the ELO 2027 delivery plan, and open questions.

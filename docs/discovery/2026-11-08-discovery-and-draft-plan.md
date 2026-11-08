@@ -1,9 +1,22 @@
 # ELOchair: discovery notes and draft plan
 
 **Date:** 2026-11-08
-**Status:** Draft for discussion. Nothing here has been decided yet.
+**Status:** Draft plan. Section 0 lists the decisions made so far.
 
 ELOchair is meant to be a submission and peer-review system, in the spirit of EasyChair, built around how the Electronic Literature Organization actually runs its annual conference and media arts festival.
+
+## 0. Decisions so far (2026-11-08)
+
+| Topic | Decision |
+|---|---|
+| First real use | **ELO 2027, Universidad del Norte, Barranquilla.** The 2027 team has agreed, and the portal opens around December 2026 to January 2027. |
+| Build vs. adapt | **Custom build**, mobile-first and well designed for agentic tools |
+| Scope | **Conference program** (talks, panels, workshops, experimental) **and exhibition and performances.** ELC volumes and prizes are out of scope for now; the data model should not rule them out later. |
+| Computational assistance | **Chairs only, local models.** It never writes reviews or makes decisions, and is disclosed publicly. |
+| "Agentic" means | **Chairs run the conference through agents** (role-scoped API plus MCP, approval steps, audit log), and the **codebase is built to be maintained with coding agents** |
+| Data rule | **Content stays local.** Cloud agents see metadata and aggregates only; anything that touches abstracts, bios, names or reviews runs on local models. See section 6.2. |
+| Hosting | **ELO's own servers** (the infrastructure WSU Vancouver's Electronic Literature Lab runs for ELO), deployed with Docker |
+| Not chosen (for now) | Conference configuration as versioned files in git: configuration lives in the app and is editable through the UI and the chair API. Agent use by submitters and reviewers. |
 
 ---
 
@@ -108,7 +121,8 @@ In 2026 this required scraping, because bepress sends no CORS headers. It also r
 4. **Multilingual first.** The interface ships in English, Spanish and Portuguese at minimum. Submissions carry a language field. Reviewers declare languages, and assignment respects them.
 5. **Archive-out.** Every accepted record exports to `events.json` (the format the ELO2026 schedule tool already reads), ELMS `works.json`, the bepress batch-upload spreadsheet, a proceedings source (Markdown/Pandoc), and an archive bundle for `eliterature/archives`.
 6. **ELO-owned, cheap, low-ops, accessible.** WCAG 2.1 AA, a privacy posture that works under GDPR and Colombia's Ley 1581, and data export at any time.
-7. **Human judgment at the centre.** Any computational assistance (reviewer matching, session clustering, translation help) is opt-in, visible to everyone affected, and never writes reviews or makes decisions. Given ELO's 2026 theme, the conference's own choices here will be read closely.
+7. **Human judgment at the centre.** Computational assistance is for chairs only, runs on local models, and makes suggestions only (reviewer matching, session clustering). It never writes reviews or makes decisions, and it is disclosed in the CFP and privacy notice.
+8. **Mobile-first and agent-operable.** Every flow works one-handed on a phone. Every chair operation is also an API and MCP call with a preview step, and irreversible ones need a human to approve them in the UI.
 
 ## 5. Draft lifecycle and feature map
 
@@ -127,21 +141,58 @@ In 2026 this required scraping, because bepress sends no CORS headers. It also r
 | 10. Schedule | chairs | Group talks into sessions (with optional similarity suggestions); rooms or tracks; moderators; time-zone-aware preview; conflict checks (presenter double-booked, availability) |
 | 11. Publish and archive | proceedings and web chairs | Exports to the schedule site, proceedings, ELMS exhibition, bepress or another repository, `eliterature/archives` |
 
-## 6. Architecture options (my current lean is in bold)
+## 6. Architecture (custom build — decided)
 
-**A. Custom web application** (for example Django or Rails with Postgres; magic-link and ORCID login).
-Fits every ELO particular and could become a scholarly or critical-making artifact in its own right. Costs: ongoing maintenance, security responsibility for personal data and confidential reviews, and a successor developer every few years.
+### 6.1 Shape
 
-**B. Adapt an open-source conference system, most plausibly pretalx** (Django; CfP with submission types and tracks; custom questions; speaker profiles kept separate from proposals; review phases and score categories; anonymized review; schedule editor; built-in interface translations; plugin API). ELO-specific parts would be written as plugins and exporters: presenter cap, membership, alternate-format decisions, ELMS, bepress, proceedings. HotCRP is stronger on blind review and conflicts of interest but is built around papers.
-*These feature claims are from memory and need a hands-on spike before we commit.*
+A TypeScript monorepo with **one shared schema layer**. That layer drives the database, the API, the MCP tools, form validation and the exporters, so an agent, or the next maintainer, changes a field in exactly one place.
 
-**C. Static front end plus a hosted backend** (for example GitHub Pages plus Supabase or Firebase).
-Cheapest to run and closest to how ELO's current sites are built. Blind review then depends on row-level security being exactly right, and it creates a vendor dependency.
+```
+packages/schema     Zod schemas = single source of truth (DB types, OpenAPI, MCP tool schemas, form rules, exports)
+packages/policy     authorization + "projections": the ONLY code that turns a record into what a given role may see
+apps/server         Node (Hono) API · Postgres (Drizzle) · magic-link auth · outbox email · audit log · MCP endpoint
+apps/web            mobile-first PWA (React + Vite, matching the ELO exhibition app's stack) · i18n es/en/pt
+apps/local-ai       CPU-only multilingual embedding worker (transformers.js/ONNX) on ELO's server — no third-party AI calls
+packages/exports    events.json · ELMS works.json · proceedings source · bepress batch sheet · archive bundle · EasyChair/STARS importers
+deploy/             Docker Compose (server, web, postgres, worker, Caddy TLS) for ELO's servers; backups; staging + prod
+```
 
-**Lean:** do a one- to two-week spike that tests **B** against the requirements in sections 2–5, using the ELO 2026 types and a synthetic set of 150 submissions.
-- If it covers about 80%, build the ELO layer as plugins plus a standalone export toolkit. The archive-out pipeline is the uniquely ELO part and is worth owning either way.
-- If it doesn't, build **A** on deliberately boring technology.
-- Make the export toolkit platform-independent in both cases, so it can also ingest EasyChair or STARS exports from past years.
+**Why this shape:**
+- **Mobile-first.** Reviewers score on phones and submitters apply on phones, which matters for an event hosted in Colombia. The PWA autosaves review drafts on flaky connections.
+- **Agent-maintainable.** The schema is typed end to end, and an `AGENTS.md`/`CLAUDE.md` sets the conventions.
+  - A blindness test suite asserts that no identity field can leak through any reviewer-scoped API or MCP response.
+  - Fixtures are modelled on ELO 2026's 108 events and types.
+  - Playwright runs at phone widths.
+- **Shared stack.** React/TypeScript matches what Dan Cox and John Murray already use for the exhibition app.
+- **Matches the hosting decision.** Docker on ELO's servers.
+
+### 6.2 Agent interface for chairs, with data tiers ("content stays local")
+
+The MCP server and API expose **tiers**, and every agent action lands in an append-only audit log.
+
+| Tier | What it contains | Who / what may access |
+|---|---|---|
+| **M: metadata** (cloud-safe) | opaque IDs, type, track, language, status, word counts, dates, reviewer load, score aggregates, conflict and cap flags, session slots | Chairs' agents, including cloud agents such as Claude, through the remote MCP endpoint |
+| **C: content** (local-only) | names, emails, affiliations, titles*, abstracts, bios, review text, confidential comments | The web UI for humans; the on-server `local-ai` worker; tokens explicitly issued for a locally run model. **Never** the remote MCP endpoint. |
+| **P: published** | Accepted items whose authors have confirmed and that are released to the public program | Everyone, including cloud agents. Items move C → P only when they are published. |
+
+\*Draft default: titles count as content until publication. Open question 8.2 asks whether you want this.
+
+**How content-heavy tasks work without leaving the server:**
+- *Reviewer matching and session clustering:* the cloud agent calls `suggest_assignments` or `suggest_sessions`. The on-server embedding model reads the content and returns **IDs and scores only**. The chair checks the names and titles in the UI.
+- *Emails:* the agent picks a template and a recipient set by ID. The server merges in personal fields at send time. The chair previews and approves the send in the UI.
+
+**Rules for irreversible actions:** sending mail, recording decisions and publishing are two-step (*plan → human approve*). They are idempotent, and they cannot be approved from an agent token.
+
+**Honest limit:** the server cannot verify that a "local model" token is really used by a local model. That part of the rule is a policy plus a per-token audit trail. What *is* enforced technically is that the remote, cloud-reachable endpoint never serves tier C.
+
+### 6.3 Infrastructure facts needed from ELO's server
+
+- OS, Docker availability, CPU and RAM. The embedding worker needs roughly 2 GB RAM.
+- Backups.
+- A subdomain, for example `chair.eliterature.org`.
+- An SMTP relay or transactional mail service with DKIM on `eliterature.org`.
+- Who to contact for all of the above.
 
 ## 7. Draft data model (core)
 
@@ -160,49 +211,55 @@ FinalMaterials(submission, final_abstract, licence, recording_consent, proceedin
 Session(conference, track/room, start, end, kind, items[], moderator) · Exports(kind, generated_at, artifact)
 ```
 
-## 8. Open questions
+## 8. Open questions (round 3)
 
-These are in priority order. Answers will reshape the plan.
+Each item carries a **proposed default**. Only items you disagree with need an answer, except 8.1, which only you can answer.
 
-**Scope and timing**
-1. Which conference is the first real use: ELO 2027 in Barranquilla, or a pilot first? Has the 2027 team picked a platform? If ELO 2027 is the target, the portal would need to open around December 2026 to January 2027.
-2. Conference only, or also the exhibition and performance juries, ELC volumes, and ELO prizes (Coover, Hayles, and others)? ELC5's Round 0 and Round 1 look like the same problem.
-3. Is this an ELO organizational tool (owned and hosted by ELO, handed host to host), a UCF tool, or a research and critical-making project of your own that ELO may adopt?
+**8.1 Pain points (no default possible).** What actually went wrong or felt heavy with STARS in 2024 and 2026 and with EasyChair in 2025? For example: assignment, anonymization slips, emails, presenter cap, membership chasing, final materials, scheduling, proceedings. These set the priority order after the MVP.
 
-**Pain points**
-4. What specifically went wrong or felt heavy with STARS in 2024 and 2026, and with EasyChair in 2021, 2022 and 2025? For example: reviewer assignment, anonymization slips, presenter cap, scheduling, emails, membership chasing, final-materials collection, proceedings assembly.
-5. Roughly how many submissions and reviewers did 2024 and 2026 have, and how many reviews per submission? (2026 scheduled 108 events and credited 41 reviewers.)
+**8.2 Where the data tiers draw the line.** Default: names and titles count as content (local-only) until publication. Cloud agents work with IDs only.
 
-**Review policy**
-6. Should exhibition and performance be double-blind, single-blind, or juried/curated?
-7. What review form do you want per pool: scores (which criteria, which scale), comments to authors, confidential comments, recommended format?
-8. Should reviewers see other reviews after submitting their own? Is there a discussion phase, or meta-review by track chairs?
-9. Should "accept in an alternate format" be a first-class decision?
-10. Exact presenter-cap rule: what counts (lead, presenter, first author), do panels count, and should it warn at submission or block at decision time?
+**8.3 ELO 2027 specifics.** I need these from the Barranquilla team:
+- the CFP draft, submission types and limits, and topics
+- the portal open date and deadline
+- conference dates and modality (in person, hybrid or online)
+- interface and submission languages (default: es + en, with pt next)
+- who the chairs, track chairs and exhibition chairs are
 
-**People and integration**
-11. What does ELO membership run on (the platform behind eliterature.org/membership)? Can we read status via an API or a periodic CSV, or is it confirmed manually?
-12. Should one reviewer pool persist across years (with consent), or should each conference start fresh?
-13. Which roles need admin access: ELO coordinator, co-chairs, track chairs, exhibition chairs, proceedings chair, web chair?
+**8.4 Review policy defaults**
+- 3 reviews per proposal, 2 per exhibition work and performance, plus the track chair.
+- Scholarship is double-blind.
+- Exhibition and performance are **single-blind**, because a work's URL reveals its maker. Reviewers still don't see bios.
+- Scores on a 1–5 scale for fit to theme, contribution, clarity and feasibility (scholarship), and artistic merit, fit, and feasibility in the conference's modality (art), plus an overall recommendation.
+- Reviewers see the other reviews only after submitting their own.
+- Track chairs write a short meta-review.
+- "Accept in alternate format" is a first-class decision.
 
-**Language, modality, logistics**
-14. Languages for ELO 2027: interface and submissions in English and Spanish (plus Portuguese)? Should reviewers be matched by language?
-15. Modality: in person, hybrid, or online? Collect presenter availability and time-zone windows? Generate visa and institutional letters?
+**8.5 Presenter cap.** Default: at most 2 lead or presenting roles across talks, workshops, performances and exhibition works. Panel participation does not count. Submitters are warned when they submit, and chairs are blocked from finalizing over-cap decisions without an override note.
 
-**AI and computation**
-16. What is your stance on computational assistance: none; chairs-only suggestions (reviewer matching, session clustering) using local or small models; or more (translation, summaries)? Should ELOchair publish its own AI-use statement?
+**8.6 Membership.** What runs eliterature.org/membership, and can we read status from it? Default: chairs import a periodic CSV, and accepted presenters self-attest with a link to join.
 
-**Outputs**
-17. After 2026, where does the open-access record live: STARS (if UCF keeps hosting ELO's archive), an ELO-run repository, Zenodo, or `eliterature/archives`? Should ELOchair generate the public program and proceedings itself, or only export?
+**8.7 Accounts.** Default: magic-link email login, with ORCID as an optional link. No passwords.
 
-**Operations**
-18. Hosting: ELO's servers (WSU Vancouver's Electronic Literature Lab manages ELO servers), UCF, or a managed cloud? What budget, if any?
-19. Who maintains it after the first year, and what is their stack comfort (Python, JavaScript, PHP)?
-20. Email: send from an `eliterature.org` address? Is there an existing transactional mail service?
+**8.8 Reviewer pool across years.** Default: reviewer profiles (expertise, languages) persist across conferences only with each reviewer's opt-in. Submissions and reviews stay scoped to their conference, with retention set by the host.
 
-## 9. Proposed next steps (after answers)
+**8.9 Maintainers.** Who else will touch the code after launch (Dan Cox, John Murray, UCF or Uninorte students)? Is TypeScript/React acceptable to them?
 
-1. Lock scope and the first target conference. Write a one-page requirements spec with acceptance criteria per phase.
-2. Run the spike (section 6). Score the candidates against the requirements using synthetic ELO 2026-shaped data.
-3. Build the export toolkit first (`events.json`, ELMS, bepress batch, proceedings). It pays off whatever platform is chosen, and it can be tested against the 2026 data already in `AMSUCF/ELO2026`.
-4. Build the submission and review flow, then pilot it with a dry-run CFP among committee volunteers before any public launch.
+**8.10 Server and email contacts.** Who administers ELO's servers, and who controls DNS for eliterature.org? Both are needed in the first two weeks.
+
+## 9. Delivery plan for ELO 2027 (draft; dates depend on 8.3)
+
+The rule is **ship by phase, just ahead of when each phase is needed.** Only the submission flow has to be ready before the portal opens.
+
+| When | Phase | Done means |
+|---|---|---|
+| Nov 9 – Nov 22 | Foundations | Repo scaffold, shared schema, policy/projection layer and blindness tests, magic-link auth, conference and type configuration, Docker deploy to ELO staging, ELO 2026-shaped fixtures |
+| Nov 23 – Dec 20 | **Submission MVP** | Bilingual CFP page and per-type forms (word counts, co-author invites, self-ID warnings, cap warning), submitter dashboard, chair list/filter/CSV, confirmation emails, tier-M MCP (read-only), WCAG 2.1 AA pass, **dry-run CFP with committee volunteers** |
+| Early – mid Jan 2027 | **Portal opens** | Production launch. **Fallback:** if the MVP is not ready by the agreed date, open on EasyChair and import submissions into ELOchair for review onward. |
+| Jan – deadline | Review setup | Reviewer invites and profiles (expertise, languages), conflicts of interest, on-server embedding suggestions, assignment preview and approve, mobile review forms per pool |
+| Deadline + ~6 weeks | Review and discussion | Reminders, disagreement flags, discussion threads, meta-reviews, chair MCP tools for load and coverage |
+| Then | Decisions and notification | Decisions including alternate formats; cap, balance and language dashboards; templated notifications with UI approval; visa and institutional letters |
+| Then | Confirmation | Accept or decline, membership, final abstract and bio, licence, recording consent, accessibility, AI disclosure, tech needs, availability; **ELMS fields for exhibition works** |
+| Before the conference | Scheduling and exports | Session builder (clustering suggestions), rooms and tracks, conflict checks, time-zone preview; exports to `events.json`, ELMS `works.json`, proceedings, archive bundle |
+
+**Immediate next step once 8.1–8.3 are answered:** turn sections 0–7 and 9 into a requirements spec with acceptance criteria per phase, and start Foundations.
