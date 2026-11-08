@@ -15,6 +15,8 @@ export type Deps = {
     linkPerEmail: RateLimiter;
     linkPerIp: RateLimiter;
     codePerIp: RateLimiter;
+    writesPerPerson: RateLimiter;
+    invitationLinksPerIp: RateLimiter;
   };
 };
 

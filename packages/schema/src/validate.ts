@@ -22,6 +22,13 @@ export type SubmissionIssue = {
     | "contributor_name_missing"
     | "unknown_language"
     | "too_long"
+    /** The format can change only while a draft. */
+    | "locked"
+    /** The conference's agreements must be acknowledged (current versions). */
+    | "agreements_required"
+    | "already_contributor"
+    | "declined_cannot_reinvite"
+    | "owner_cannot_be_removed"
     | "empty_title";
   params?: Record<string, string | number>;
 };

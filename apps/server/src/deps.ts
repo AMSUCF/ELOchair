@@ -21,6 +21,8 @@ export function makeDeps(db: Db, env: Env, overrides: Partial<Deps> = {}): Deps 
       linkPerEmail: new RateLimiter(5, 15 * 60 * 1000),
       linkPerIp: new RateLimiter(30, 15 * 60 * 1000),
       codePerIp: new RateLimiter(30, 15 * 60 * 1000),
+      writesPerPerson: new RateLimiter(60, 60 * 1000),
+      invitationLinksPerIp: new RateLimiter(60, 15 * 60 * 1000),
     },
     ...overrides,
   };

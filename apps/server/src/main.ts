@@ -4,7 +4,7 @@ import { createApp } from "./app";
 import { openDatabase } from "./db/client";
 import { makeDeps } from "./deps";
 import { loadEnv } from "./env";
-import { seedSandbox } from "./fixtures";
+import { seedOpenCall, seedSandbox } from "./fixtures";
 import { deliverPending } from "./mail";
 import { createConferenceIfMissing, getConference } from "./repo";
 
@@ -21,7 +21,13 @@ if (env.SEED_ON_START) {
   await createConferenceIfMissing(database.db, conferences.elo2026, "archived");
   await createConferenceIfMissing(database.db, conferences.elo2027, "draft");
   if (!(await getConference(database.db, "sandbox"))) await seedSandbox(database.db);
-  console.log("seeded elo2026, elo2027 and the synthetic sandbox (sign in as chair@example.org)");
+  await seedOpenCall(database.db, {
+    now: new Date(),
+    chairEmails: ["chair@example.org", "admin@example.org"],
+  });
+  console.log(
+    "seeded elo2026, elo2027, the synthetic sandbox, and an open test call (elo2027-open); sign in as chair@example.org",
+  );
 }
 
 const deps = makeDeps(database.db, env);

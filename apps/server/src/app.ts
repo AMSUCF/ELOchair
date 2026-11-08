@@ -4,6 +4,7 @@ import { PUBLIC, type Viewer } from "@elochair/policy";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono, type MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
@@ -12,8 +13,11 @@ import { audit } from "./audit";
 import { SESSION_COOKIE, sessionViewer, tokenViewer } from "./auth";
 import type { AppEnv, Deps, Exposure } from "./context";
 import { authRoutes } from "./routes/auth";
+import { Refusal } from "./routes/common";
 import { conferenceRoutes } from "./routes/conferences";
+import { invitationRoutes } from "./routes/invitations";
 import { meRoutes } from "./routes/me";
+import { submissionRoutes } from "./routes/submissions";
 import { testRoutes } from "./routes/testing";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -110,6 +114,7 @@ export function createApp(deps: Deps, exposure: Exposure) {
   const app = new Hono<AppEnv>();
 
   app.onError((err, c) => {
+    if (err instanceof Refusal) return c.json({ error: err.code, ...err.extra }, err.status);
     if (err instanceof ZodError) {
       return c.json(
         {
@@ -143,10 +148,25 @@ export function createApp(deps: Deps, exposure: Exposure) {
 
   app.get("/healthz", (c) => c.json({ ok: true, exposure }));
 
+  // Request bodies: 64 KB, except whole conference configurations (256 KB).
+  const small = bodyLimit({
+    maxSize: 64 * 1024,
+    onError: (c) => c.json({ error: "too_large" }, 413),
+  });
+  const large = bodyLimit({
+    maxSize: 256 * 1024,
+    onError: (c) => c.json({ error: "too_large" }, 413),
+  });
+  app.use("/api/*", (c, next) =>
+    /^\/api\/conferences\/[^/]+\/config$/.test(c.req.path) ? large(c, next) : small(c, next),
+  );
+
   app.use("/api/*", resolveViewer(deps, exposure), csrf(deps), auditAgents());
   app.route("/api/auth", authRoutes);
   app.route("/api/me", meRoutes);
   app.route("/api/conferences", conferenceRoutes);
+  app.route("/api/submissions", submissionRoutes);
+  app.route("/api/invitations", invitationRoutes);
   if (deps.env.ENABLE_TEST_ENDPOINTS) app.route("/api/_test", testRoutes);
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
 

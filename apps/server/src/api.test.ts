@@ -51,13 +51,13 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(() => t.close());
 
-const subsPath = () => `/api/conferences/${s.slug}/submissions`;
+const subsPath = () => `/api/conferences/${s.slug}/submissions?limit=500`;
 
 describe("submission visibility over HTTP", () => {
   it("chairs see every submission in full", async () => {
     const res = await call(t.public, "GET", subsPath(), { cookie: chairCookie });
-    expect(res.json.submissions).toHaveLength(s.submissionCount);
-    expect(new Set(res.json.submissions.map((x: { view: string }) => x.view))).toEqual(
+    expect(res.json.items).toHaveLength(s.submissionCount);
+    expect(new Set(res.json.items.map((x: { view: string }) => x.view))).toEqual(
       new Set(["chair"]),
     );
   });
@@ -65,7 +65,7 @@ describe("submission visibility over HTTP", () => {
   it("the public sees nothing before publication", async () => {
     const res = await call(t.public, "GET", subsPath());
     expect(res.status).toBe(200);
-    expect(res.json.submissions).toEqual([]);
+    expect(res.json.items).toEqual([]);
   });
 
   it("a reviewer sees exactly their assignments, blinded per type", async () => {
@@ -74,12 +74,12 @@ describe("submission visibility over HTTP", () => {
     const assigned = await t.db.select().from(assignments).where(eq(assignments.reviewerId, id));
     const cookie = await signIn(t, email);
     const res = await call(t.public, "GET", subsPath(), { cookie });
-    const asReviewer = res.json.submissions.filter((x: { view: string }) => x.view === "reviewer");
+    const asReviewer = res.json.items.filter((x: { view: string }) => x.view === "reviewer");
     const ids = asReviewer.map((x: { id: string }) => x.id).sort();
     expect(ids).toEqual(assigned.map((a) => a.submissionId).sort());
     // This reviewer also submitted work: they see their own as a submitter, nothing else.
     const own = await t.db.select().from(contributions).where(eq(contributions.personId, id));
-    const others = res.json.submissions.filter((x: { view: string }) => x.view !== "reviewer");
+    const others = res.json.items.filter((x: { view: string }) => x.view !== "reviewer");
     expect(others.map((x: { view: string }) => x.view)).toEqual(own.map(() => "submitter"));
     for (const sub of asReviewer) {
       const forbidden =
@@ -95,8 +95,8 @@ describe("agent tiers", () => {
   it("tier M works on the public listener and returns no names, contact details or text", async () => {
     const res = await call(t.public, "GET", subsPath(), { token: tokenM });
     expect(res.status).toBe(200);
-    expect(res.json.submissions).toHaveLength(s.submissionCount);
-    expect(res.json.submissions[0].view).toBe("metadata");
+    expect(res.json.items).toHaveLength(s.submissionCount);
+    expect(res.json.items[0].view).toBe("metadata");
     expect(
       findLeaks(res.json, [
         ...everything.names,
@@ -121,7 +121,7 @@ describe("agent tiers", () => {
   it("tier C works on the internal listener with the chair's full view", async () => {
     const res = await call(t.internal, "GET", subsPath(), { token: tokenC });
     expect(res.status).toBe(200);
-    expect(res.json.submissions[0].view).toBe("chair");
+    expect(res.json.items[0].view).toBe("chair");
   });
 
   it("the internal listener serves only agents", async () => {

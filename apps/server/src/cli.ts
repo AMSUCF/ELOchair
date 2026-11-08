@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import type { Tier } from "@elochair/policy";
-import { ConferenceRole, conferences } from "@elochair/schema";
+import { ConferencePhase, ConferenceRole, conferences, isForwardPhaseMove } from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import { audit } from "./audit";
 import { openDatabase } from "./db/client";
-import { apiTokens, people } from "./db/schema";
+import { apiTokens, conferences as conferencesTable, people } from "./db/schema";
 import { loadEnv } from "./env";
 import { seedSandbox } from "./fixtures";
 import {
@@ -24,7 +24,12 @@ const HELP = `ELOchair command line. Usage: npm run cli -- <command> [options]
   seed [--sandbox] [--force]                add the ELO 2026 and ELO 2027 configurations if
                                             missing (--force replaces them); --sandbox also
                                             loads synthetic test data
-  import-config <file.json> [--phase P]     create or replace a conference from a JSON config
+  import-config <file.json> [--phase P] [--slug S] [--window OPEN/CLOSE]
+                                            create or replace a conference from a JSON config;
+                                            --slug and --window (ISO times) make a dry-run copy
+  set-phase <slug> <phase> [--force --reason TEXT]
+                                            move a conference to a phase (forward only unless
+                                            forced with a reason)
   export-config <slug>                      print a conference's configuration as JSON
   site-admin <email>                        make someone a site administrator
   grant <email> <slug> <role> [--scope a,b] roles: ${ConferenceRole.options.join(", ")}
@@ -41,6 +46,9 @@ const { positionals, values } = parseArgs({
     sandbox: { type: "boolean" },
     force: { type: "boolean" },
     phase: { type: "string" },
+    slug: { type: "string" },
+    window: { type: "string" },
+    reason: { type: "string" },
     scope: { type: "string" },
     tier: { type: "string" },
     name: { type: "string" },
@@ -116,9 +124,52 @@ try {
     }
     case "import-config": {
       const json = JSON.parse(await readFile(arg(0, "file.json"), "utf8"));
+      if (values.slug) json.slug = values.slug;
+      if (values.window) {
+        const [open, close] = values.window.split("/");
+        if (!open || !close || Number.isNaN(Date.parse(open)) || Number.isNaN(Date.parse(close))) {
+          fail(
+            "--window must be OPEN/CLOSE as ISO times, e.g. 2026-12-01T00:00:00-05:00/2026-12-15T23:59:00-05:00",
+          );
+        }
+        json.deadlines = { ...json.deadlines, submissionsOpen: open, submissionsClose: close };
+      }
       const saved = await saveConference(db, json, values.phase);
-      await audit(db, "system", { action: "conference.config_imported", conferenceId: saved.id });
+      await audit(db, "system", {
+        action: "conference.config_imported",
+        conferenceId: saved.id,
+        targetType: "conference",
+        targetId: saved.id,
+        details: { slug: saved.slug, phase: saved.phase, by: process.env.USER ?? "unknown" },
+      });
       console.log(`saved ${saved.slug} (phase ${saved.phase})`);
+      break;
+    }
+    case "set-phase": {
+      const k = await conferenceOrFail(arg(0, "slug"));
+      const phase = ConferencePhase.parse(arg(1, "phase"));
+      const forced = Boolean(values.force);
+      if (!isForwardPhaseMove(k.phase, phase) && !(forced && values.reason)) {
+        fail(`moving ${k.slug} from ${k.phase} back to ${phase} needs --force and --reason`);
+      }
+      await db
+        .update(conferencesTable)
+        .set({ phase, updatedAt: new Date() })
+        .where(eq(conferencesTable.id, k.id));
+      await audit(db, "system", {
+        action: "conference.phase_changed",
+        conferenceId: k.id,
+        targetType: "conference",
+        targetId: k.id,
+        details: {
+          from: k.phase,
+          to: phase,
+          forced,
+          by: process.env.USER ?? "unknown",
+          ...(values.reason ? { reason: values.reason } : {}),
+        },
+      });
+      console.log(`${k.slug}: ${k.phase} → ${phase}`);
       break;
     }
     case "export-config": {

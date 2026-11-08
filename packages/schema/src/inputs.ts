@@ -102,8 +102,14 @@ export const AnswerInvitationInput = z
   .object({
     answer: z.enum(["confirm", "decline"]),
     acceptedAgreements: AcceptedAgreements.default([]),
+    /** The invitee's own name for their profile, if they have none yet (their own words). */
+    displayName: OneLine(LIMITS.name).optional(),
   })
   .strict();
+
+export const AnswerByTokenInput = AnswerInvitationInput.extend({
+  token: z.string().min(20).max(200),
+}).strict();
 
 export const InvitationTokenInput = z.object({ token: z.string().min(20).max(200) }).strict();
 

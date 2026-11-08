@@ -1,0 +1,181 @@
+import type { ContributionRole } from "@elochair/schema";
+import type { MailMessage } from "./mail";
+
+/*
+ * Participant emails: fixed text in en, es and pt. Invitations carry no text an owner wrote
+ * except their own display name, sanitized to one line without links: ELO's signed mail must
+ * not become a vehicle for someone else's message.
+ */
+
+export type MailLang = "en" | "es" | "pt";
+
+/** The best supported language for a person ("pt-BR" → pt), else the fallback. */
+export function mailLang(preferences: readonly string[], fallback: string): MailLang {
+  for (const p of [...preferences, fallback]) {
+    const base = p.toLowerCase().split("-")[0];
+    if (base === "en" || base === "es" || base === "pt") return base;
+  }
+  return "en";
+}
+
+/** One line, no links, no control characters, at most 100 characters. */
+export function sanitizeName(name: string | null | undefined, fallback: string): string {
+  const clean = (name ?? "")
+    .replace(/\p{Cc}/gu, " ")
+    .replace(/\b(?:https?:\/\/|www\.)\S+/giu, "")
+    .replace(/\b[\w-]+(?:\.[\w-]+)+\/\S*/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+  return clean || fallback;
+}
+
+const ROLE: Record<MailLang, Record<ContributionRole, string>> = {
+  en: {
+    lead: "lead author",
+    presenter: "presenter",
+    coauthor: "co-author",
+    panelist: "panelist",
+    moderator: "moderator",
+  },
+  es: {
+    lead: "autoría principal",
+    presenter: "presentación",
+    coauthor: "coautoría",
+    panelist: "panelista",
+    moderator: "moderación",
+  },
+  pt: {
+    lead: "autoria principal",
+    presenter: "apresentação",
+    coauthor: "coautoria",
+    panelist: "painelista",
+    moderator: "moderação",
+  },
+};
+
+const SOMEONE: Record<MailLang, string> = { en: "Someone", es: "Alguien", pt: "Alguém" };
+
+export function invitationMessage(
+  lang: MailLang,
+  to: string,
+  v: {
+    ownerName: string | null;
+    conference: string;
+    format: string;
+    role: ContributionRole;
+    link: string;
+  },
+): MailMessage {
+  const owner = sanitizeName(v.ownerName, SOMEONE[lang]);
+  const role = ROLE[lang][v.role];
+  const text = {
+    en: `${owner} has listed you as ${role} on a proposal (${v.format}) for ${v.conference}.\n\nOpen this link to see the proposal and confirm or decline. You can decline without an account:\n\n${v.link}\n\nIf you do not know this person or this proposal, decline it: you will not be listed.`,
+    es: `${owner} te ha incluido con el rol de ${role} en una propuesta (${v.format}) para ${v.conference}.\n\nAbre este enlace para ver la propuesta y confirmar o rechazar. Puedes rechazar sin tener cuenta:\n\n${v.link}\n\nSi no conoces a esta persona o esta propuesta, recházala: no aparecerás en ella.`,
+    pt: `${owner} incluiu-o com o papel de ${role} numa proposta (${v.format}) para ${v.conference}.\n\nAbra este link para ver a proposta e confirmar ou recusar. Pode recusar sem ter conta:\n\n${v.link}\n\nSe não conhece esta pessoa ou esta proposta, recuse-a: não ficará associado/a a ela.`,
+  }[lang];
+  const subject = {
+    en: `${v.conference}: please confirm your participation`,
+    es: `${v.conference}: confirma tu participación`,
+    pt: `${v.conference}: confirme a sua participação`,
+  }[lang];
+  return { to, subject, text };
+}
+
+export function receivedMessage(
+  lang: MailLang,
+  to: string,
+  v: { conference: string; format: string; title: string; link: string; deadline: string },
+): MailMessage {
+  const title = sanitizeName(v.title, "—");
+  return {
+    to,
+    subject: {
+      en: `${v.conference}: proposal received`,
+      es: `${v.conference}: propuesta recibida`,
+      pt: `${v.conference}: proposta recebida`,
+    }[lang],
+    text: {
+      en: `Your proposal "${title}" (${v.format}) for ${v.conference} has been submitted.\n\nIt can still be edited until ${v.deadline}:\n\n${v.link}`,
+      es: `Tu propuesta «${title}» (${v.format}) para ${v.conference} se ha enviado.\n\nAún puede editarse hasta el ${v.deadline}:\n\n${v.link}`,
+      pt: `A sua proposta «${title}» (${v.format}) para ${v.conference} foi submetida.\n\nAinda pode ser editada até ${v.deadline}:\n\n${v.link}`,
+    }[lang],
+  };
+}
+
+export function withdrawnMessage(
+  lang: MailLang,
+  to: string,
+  v: { conference: string; format: string; title: string },
+): MailMessage {
+  const title = sanitizeName(v.title, "—");
+  return {
+    to,
+    subject: {
+      en: `${v.conference}: proposal withdrawn`,
+      es: `${v.conference}: propuesta retirada`,
+      pt: `${v.conference}: proposta retirada`,
+    }[lang],
+    text: {
+      en: `The proposal "${title}" (${v.format}) for ${v.conference} has been withdrawn by its owner.`,
+      es: `La propuesta «${title}» (${v.format}) para ${v.conference} ha sido retirada por quien la creó.`,
+      pt: `A proposta «${title}» (${v.format}) para ${v.conference} foi retirada por quem a criou.`,
+    }[lang],
+  };
+}
+
+export type Answer = "confirmed" | "declined" | "left";
+
+export function answeredMessage(
+  lang: MailLang,
+  to: string,
+  v: { conference: string; who: string; answer: Answer; link: string },
+): MailMessage {
+  const who = sanitizeName(v.who, "—");
+  const verb = {
+    en: { confirmed: "confirmed", declined: "declined", left: "left" },
+    es: {
+      confirmed: "confirmó su participación en",
+      declined: "rechazó participar en",
+      left: "dejó",
+    },
+    pt: {
+      confirmed: "confirmou a participação em",
+      declined: "recusou participar em",
+      left: "saiu de",
+    },
+  }[lang][v.answer];
+  return {
+    to,
+    subject: {
+      en: `${v.conference}: ${who} ${verb} your proposal`,
+      es: `${v.conference}: ${who} ${verb} tu propuesta`,
+      pt: `${v.conference}: ${who} ${verb} a sua proposta`,
+    }[lang],
+    text: {
+      en: `${who} ${verb} your proposal for ${v.conference}. Check that it still meets the format's requirements:\n\n${v.link}`,
+      es: `${who} ${verb} tu propuesta para ${v.conference}. Comprueba que sigue cumpliendo los requisitos del formato:\n\n${v.link}`,
+      pt: `${who} ${verb} a sua proposta para ${v.conference}. Verifique se continua a cumprir os requisitos do formato:\n\n${v.link}`,
+    }[lang],
+  };
+}
+
+export function draftDeletedMessage(
+  lang: MailLang,
+  to: string,
+  v: { conference: string },
+): MailMessage {
+  return {
+    to,
+    subject: {
+      en: `${v.conference}: an invitation was cancelled`,
+      es: `${v.conference}: se canceló una invitación`,
+      pt: `${v.conference}: um convite foi cancelado`,
+    }[lang],
+    text: {
+      en: `A draft proposal for ${v.conference} that listed you was deleted by its owner. There is nothing you need to do.`,
+      es: `Se eliminó un borrador de propuesta para ${v.conference} en el que figurabas. No tienes que hacer nada.`,
+      pt: `Foi eliminado um rascunho de proposta para ${v.conference} em que constava. Não precisa de fazer nada.`,
+    }[lang],
+  };
+}
