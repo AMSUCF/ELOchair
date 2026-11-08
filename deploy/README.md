@@ -40,6 +40,10 @@ elochair grant chair@example.org elo2027 chair  # roles: admin, chair, track_cha
 elochair grant tc@example.org elo2027 track_chair --scope track_key
 # Files on the host are not visible inside the container, so pipe them in on standard input:
 elochair import-config /dev/stdin --phase cfp_open < elo2027.json   # once the 2027 CFP is final
+# A dry run for committee volunteers, as a separate conference with its own window:
+elochair import-config /dev/stdin --slug elo2027-dryrun --phase cfp_open \
+  --window 2026-12-01T00:00:00-05:00/2026-12-15T23:59:00-05:00 < elo2027.json
+elochair set-phase elo2027 cfp_open                                 # opens the call (forward only)
 elochair export-config elo2027 > elo2027.json                       # and back out again
 ```
 
@@ -56,6 +60,13 @@ elochair list-tokens elo2027
 elochair revoke-token <token-id>
 ```
 
+- **MCP (for agents such as Claude Code):** point the agent at `https://<domain>/api/mcp` (Streamable HTTP) with the header `Authorization: Bearer elo_m_…`. The tools are read-only:
+  - `conference_overview`
+  - `list_submissions`
+  - `get_submission`
+  - `presenter_cap_report`
+
+  Each call is recorded in the audit log.
 - **Tier M (metadata)** works at `https://<domain>/api/…` with `Authorization: Bearer elo_m_…`. It returns IDs, statuses, counts and dates, but never names, titles, abstracts or reviews. It is safe to give to a cloud agent.
 - **Tier C (content)** works only on the internal listener. That listener is bound to the server's loopback interface and never published to the internet. Reach it over SSH:
 

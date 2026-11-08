@@ -12,20 +12,22 @@ It is mobile-first, and chairs can run it through agents, with submission conten
 
 ## Status
 
-**Foundations are done** ([spec 01](docs/specs/01-foundations.md)):
-- the shared schema and the ELO 2026 configuration
-- the visibility policy, with property-based blindness tests
-- the API with magic-link sign-in, tiered agent tokens and an audit log
-- the mobile web shell in three languages
-- Docker deployment
+- **Foundations are done** ([spec 01](docs/specs/01-foundations.md)): schema, visibility policy with blindness tests, sign-in, tiered agent access, audit log, mobile web shell, Docker deployment.
+- **The Submission MVP is built** ([spec 02](docs/specs/02-submission-mvp.md)):
+  - proposals from a phone: drafts, word counts, self-identification warnings
+  - co-authors invited by email who confirm or decline by link
+  - consent to the conference's agreements, receipts, withdrawal
+  - a chair page with counts, filters and CSV exports
+  - read-only MCP tools for chairs' agents
 
-**Next is the Submission MVP**: submission forms, co-authors, self-identification warnings, and read-only agent tools over MCP. See the [plan](docs/discovery/2026-11-08-discovery-and-draft-plan.md) §9.
+  It is awaiting the Barranquilla CFP and a dry run with committee volunteers.
 
 ## Try it
 
 ```bash
 npm ci
-SEED_ON_START=1 npm run dev   # API on :8080, with ELO 2026, an ELO 2027 placeholder and a synthetic sandbox
+SEED_ON_START=1 npm run dev   # API on :8080: ELO 2026, an ELO 2027 placeholder, a synthetic sandbox,
+                              # and "elo2027-open", a test call that is always open
 npm run dev:web               # open http://localhost:5173
 ```
 

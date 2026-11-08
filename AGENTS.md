@@ -30,7 +30,7 @@ npm run e2e                   # builds the web app, then runs phone-size Playwri
 npm run cli -- --help         # migrate, seed, import/export config, roles, agent tokens
 ```
 
-In development, sign in as `chair@example.org`, `admin@example.org` or `reviewer-1@example.org`. The sign-in email, with its link and 8-digit code, is printed in the server log.
+In development, sign in as `chair@example.org`, `admin@example.org` or `reviewer-1@example.org`. The `elo2027-open` call is always open: its deadlines are set relative to the clock by `seedOpenCall()`. The sign-in email, with its link and 8-digit code, is printed in the server log.
 
 Sign-in works like this:
 - Each email carries a link and a code.
@@ -77,8 +77,20 @@ These are invariants. Do not trade them away for convenience.
 
 10. **Synthetic data only.** Test and demo data come from `apps/server/src/fixtures.ts` and use fictional people and institutions. Never commit real submissions, reviews or participant data.
 
+## Submissions in one paragraph
+
+Spec 02 has the details.
+- **Ownership.** The person who creates a submission owns it. Only the owner edits, invites, submits, withdraws or deletes. Agents never write.
+- **Writes.** Every write goes through `mutateSubmission()`, which runs one transaction that locks the row and checks the policy (`canActOnSubmission`), the call window or phase, and the version. Submitted work must stay valid.
+- **Invitations.** Invitees are shown only as the owner typed them until they confirm. Inviting someone creates a conflict that outlives a decline. Declining is always possible.
+- **Consent.** Consent to the conference's agreements is recorded on submit and on confirm.
+- **Lists.** Lists, CSV exports and MCP tools all go through `querySubmissions()`, which projects first and filters afterwards.
+- **Errors.** Routes throw `Refusal(status, code)` for deliberate refusals.
+
 ## Testing notes
 
 - Server tests drive both listeners in-process with `app.request()` against an in-memory PGlite database. Use `apps/server/src/testkit.ts`.
 - Fixtures are deterministic, shaped like ELO 2026: 200 submissions and 41 reviewers. Three fictional people deliberately exceed the presenter cap.
 - `npm run e2e` uses the browsers installed for Playwright 1.63; `playwright-core` is pinned to match.
+- MCP tests drive `/api/mcp` with the real SDK `Client`, whose `fetch` is pointed at `app.request`. Every tool result goes through `findLeaks()`.
+- When you edit files with scripts, assert that each replacement matched. Biome reformats code, and a silent no-op edit cost an hour once.
