@@ -1,6 +1,6 @@
 import { findLeaks } from "@elochair/policy/testing";
 import { conferences } from "@elochair/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assignments, auditLog, contributions, people, submissions } from "./db/schema";
 import { type SandboxSummary, seedSandbox } from "./fixtures";
@@ -263,16 +263,57 @@ describe("review fixes: cap report and draft conferences", () => {
   });
 
   it("leaves a chair's own submissions out of their cap report", async () => {
-    const [own] = await t.db.select().from(submissions).limit(1);
+    // A talk counts toward the cap, so it appears in the report until the chair co-authors it.
+    const [talk] = await t.db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.typeKey, "talk"))
+      .limit(1);
+    const reportIds = async () =>
+      (
+        await call(t.public, "GET", `/api/conferences/${s.slug}/cap-report`, {
+          cookie: chairCookie,
+        })
+      ).json.counts.flatMap((x: { submissionIds: string[] }) => x.submissionIds);
+    expect(await reportIds()).toContain(talk!.id);
     const chairId = await personId(t, s.chairEmail);
     await t.db
       .insert(contributions)
-      .values({ submissionId: own!.id, personId: chairId, role: "lead", position: 99 });
-    const report = await call(t.public, "GET", `/api/conferences/${s.slug}/cap-report`, {
-      cookie: chairCookie,
-    });
-    const ids = report.json.counts.flatMap((x: { submissionIds: string[] }) => x.submissionIds);
-    expect(ids).not.toContain(own!.id);
+      .values({ submissionId: talk!.id, personId: chairId, role: "coauthor", position: 99 });
+    expect(await reportIds()).not.toContain(talk!.id);
     await t.db.delete(contributions).where(eq(contributions.personId, chairId));
+  });
+
+  it("gives a chair's tier M agent the same cap report as the chair, published work included", async () => {
+    const talks = await t.db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.typeKey, "talk"))
+      .limit(5);
+    await t.db
+      .update(submissions)
+      .set({ status: "published" })
+      .where(
+        inArray(
+          submissions.id,
+          talks.map((x) => x.id),
+        ),
+      );
+    const path = `/api/conferences/${s.slug}/cap-report?statuses=submitted,published`;
+    const asChair = await call(t.public, "GET", path, { cookie: chairCookie });
+    const asAgent = await call(t.public, "GET", path, { token: tokenM });
+    expect(asAgent.json.counts).toEqual(asChair.json.counts);
+    expect(
+      asAgent.json.counts.flatMap((x: { submissionIds: string[] }) => x.submissionIds),
+    ).toContain(talks[0]!.id);
+    await t.db
+      .update(submissions)
+      .set({ status: "submitted" })
+      .where(
+        inArray(
+          submissions.id,
+          talks.map((x) => x.id),
+        ),
+      );
   });
 });

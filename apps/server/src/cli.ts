@@ -83,19 +83,23 @@ try {
         [conferences.elo2026, "archived"],
         [conferences.elo2027, "draft"],
       ] as const) {
-        const saved = values.force
-          ? await saveConference(db, config, phase)
-          : await createConferenceIfMissing(db, config, phase);
-        if (!saved) {
+        const existed = (await getConference(db, config.slug)) !== null;
+        if (existed && !values.force) {
           console.log(`${config.slug} already exists; left unchanged (use --force to replace it)`);
           continue;
         }
+        const saved = existed
+          ? await saveConference(db, config, phase)
+          : await createConferenceIfMissing(db, config, phase);
+        if (!saved) continue;
         await audit(db, "system", {
-          action: values.force ? "conference.config_replaced" : "conference.created",
+          action: existed ? "conference.config_replaced" : "conference.created",
           conferenceId: saved.id,
+          targetType: "conference",
+          targetId: saved.id,
           details: { slug: saved.slug, phase: saved.phase, source: "seed" },
         });
-        console.log(`${values.force ? "replaced" : "added"} ${saved.slug} (phase ${saved.phase})`);
+        console.log(`${existed ? "replaced" : "added"} ${saved.slug} (phase ${saved.phase})`);
       }
       if (values.sandbox) {
         if (await getConference(db, "sandbox")) {

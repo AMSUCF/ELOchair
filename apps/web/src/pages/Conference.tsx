@@ -1,6 +1,6 @@
 import type { ConferenceConfig } from "@elochair/schema";
 import { effectiveBlindMode, localize } from "@elochair/schema/pure";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import type { ConferenceDetail } from "../api";
 import { formatDateRange, formatDateTime, viewerTimeZone } from "../format";
 import { type MessageKey, useT } from "../i18n";
@@ -23,8 +23,10 @@ export function ConferencePage() {
   if (!res.ok) {
     return (
       <>
-        <PageHeading>{t("appName")}</PageHeading>
-        <p role="alert">{res.status === 404 ? t("confNotFound") : t("errorGeneric")}</p>
+        <PageHeading>{res.status === 404 ? t("confNotFound") : t("errorGeneric")}</PageHeading>
+        <p>
+          <Link to={`/${lang}/`}>{t("navConferences")}</Link>
+        </p>
       </>
     );
   }

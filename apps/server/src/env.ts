@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 const bool = z
@@ -28,15 +29,27 @@ export const Env = z.object({
   /** Where the SQL migrations live; defaults to apps/server/drizzle next to the source. */
   MIGRATIONS_DIR: z.string().optional(),
   MIGRATE_ON_START: bool,
+  /**
+   * Server secret for keying sign-in codes (kept out of the database). Required in production;
+   * elsewhere a random one is made per process (codes then stop working on restart).
+   */
+  SECRET_KEY: z
+    .string()
+    .min(32, "SECRET_KEY must be at least 32 characters (openssl rand -hex 32)")
+    .optional(),
   /** Development and tests only: load the ELO configurations and the synthetic sandbox at boot. */
   SEED_ON_START: bool,
   /** Test-only helpers such as reading the outbox. Refused unless NODE_ENV is test. */
   ENABLE_TEST_ENDPOINTS: bool,
 });
-export type Env = z.infer<typeof Env>;
+export type Env = z.infer<typeof Env> & { SECRET_KEY: string };
 
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const env = Env.parse(source);
+  const parsed = Env.parse(source);
+  if (!parsed.SECRET_KEY && parsed.NODE_ENV === "production") {
+    throw new Error("SECRET_KEY is required in production (generate with: openssl rand -hex 32)");
+  }
+  const env: Env = { ...parsed, SECRET_KEY: parsed.SECRET_KEY ?? randomBytes(32).toString("hex") };
   if (env.MAIL_TRANSPORT === "smtp" && !env.SMTP_URL) {
     throw new Error("MAIL_TRANSPORT=smtp needs SMTP_URL");
   }

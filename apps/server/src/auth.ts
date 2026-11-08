@@ -1,6 +1,6 @@
-import { randomInt } from "node:crypto";
+import { createHmac, randomInt } from "node:crypto";
 import type { AgentViewer, PersonViewer, Tier } from "@elochair/policy";
-import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "./db/client";
 import { apiTokens, loginTokens, sessions } from "./db/schema";
 import { enqueueMail, magicLinkMessage } from "./mail";
@@ -13,11 +13,16 @@ export const SESSION_COOKIE = "elo_session";
 /** Wrong codes allowed per sign-in email before its code stops working. */
 export const MAX_CODE_ATTEMPTS = 5;
 
-const codeHash = (email: string, code: string) => hashToken(`${email}\n${code}`);
+/**
+ * Codes have only 10^8 values, so a plain hash could be reversed from a database copy in
+ * seconds. They are keyed with SECRET_KEY, which lives outside the database.
+ */
+const codeHash = (secret: string, email: string, code: string) =>
+  createHmac("sha256", secret).update(`${email}\n${code}`).digest("hex");
 
 export async function requestMagicLink(
   db: Db,
-  opts: { email: string; lang: string; appOrigin: string; now: Date },
+  opts: { email: string; lang: string; appOrigin: string; now: Date; secret: string },
 ): Promise<void> {
   const email = normalizeEmail(opts.email);
   const token = newToken();
@@ -26,7 +31,7 @@ export async function requestMagicLink(
   await db.insert(loginTokens).values({
     email,
     tokenHash: hashToken(token),
-    codeHash: codeHash(email, code),
+    codeHash: codeHash(opts.secret, email, code),
     lang: opts.lang,
     expiresAt: new Date(opts.now.getTime() + LINK_TTL_MS),
   });
@@ -66,46 +71,42 @@ async function openSession(db: Db, email: string, now: Date, userAgent?: string)
 }
 
 /**
- * Sign in with the typed code instead of the link. Every wrong code counts against all of that
- * address's live codes, which stop working after MAX_CODE_ATTEMPTS.
+ * Sign in with the typed code instead of the link. Every guess, right or wrong, first uses up
+ * one attempt on each of the address's live codes, atomically; a code is accepted only if its
+ * attempt was within MAX_CODE_ATTEMPTS. Concurrent guesses therefore cannot exceed the limit.
  */
 export async function verifyCode(
   db: Db,
-  opts: { email: string; code: string; now: Date; userAgent?: string },
+  opts: { email: string; code: string; now: Date; secret: string; userAgent?: string },
 ): Promise<{ personId: string; sessionToken: string; expiresAt: Date } | null> {
   const email = normalizeEmail(opts.email);
   const code = opts.code.replace(/\D/g, "");
-  const live = and(
-    eq(loginTokens.email, email),
-    isNull(loginTokens.usedAt),
-    gt(loginTokens.expiresAt, opts.now),
-    lt(loginTokens.codeAttempts, MAX_CODE_ATTEMPTS),
-  );
-  if (code.length === 8) {
-    const [used] = await db
-      .update(loginTokens)
-      .set({ usedAt: opts.now })
-      .where(and(live, eq(loginTokens.codeHash, codeHash(email, code))))
-      .returning({ id: loginTokens.id });
-    if (used) return openSession(db, email, opts.now, opts.userAgent);
-  }
-  const candidates = await db
-    .select({ id: loginTokens.id })
-    .from(loginTokens)
-    .where(live)
-    .orderBy(desc(loginTokens.createdAt));
-  if (candidates.length) {
-    await db
-      .update(loginTokens)
-      .set({ codeAttempts: sql`${loginTokens.codeAttempts} + 1` })
-      .where(
-        inArray(
-          loginTokens.id,
-          candidates.map((c) => c.id),
-        ),
-      );
-  }
-  return null;
+  const charged = await db
+    .update(loginTokens)
+    .set({ codeAttempts: sql`${loginTokens.codeAttempts} + 1` })
+    .where(
+      and(
+        eq(loginTokens.email, email),
+        isNull(loginTokens.usedAt),
+        gt(loginTokens.expiresAt, opts.now),
+        lt(loginTokens.codeAttempts, MAX_CODE_ATTEMPTS),
+      ),
+    )
+    .returning({
+      id: loginTokens.id,
+      codeHash: loginTokens.codeHash,
+      codeAttempts: loginTokens.codeAttempts,
+    });
+  if (code.length !== 8) return null;
+  const expected = codeHash(opts.secret, email, code);
+  const match = charged.find((r) => r.codeHash === expected && r.codeAttempts <= MAX_CODE_ATTEMPTS);
+  if (!match) return null;
+  const [used] = await db
+    .update(loginTokens)
+    .set({ usedAt: opts.now })
+    .where(and(eq(loginTokens.id, match.id), isNull(loginTokens.usedAt)))
+    .returning({ id: loginTokens.id });
+  return used ? openSession(db, email, opts.now, opts.userAgent) : null;
 }
 
 /** Consume a magic-link token (once) and open a session. Null when invalid, used or expired. */

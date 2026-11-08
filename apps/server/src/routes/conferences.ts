@@ -103,12 +103,14 @@ export const conferenceRoutes = new Hono<AppEnv>()
     if (!k || !visible(viewer, k)) return c.json({ error: "not_found" }, 404);
     if (!canChair(viewer, k.id)) return c.json({ error: "forbidden" }, 403);
     const statuses = Statuses.parse(c.req.query("statuses"));
-    // Count only submissions this viewer may manage: a chair's own or conflicted submissions
-    // are left out (another chair checks those), so the report cannot reveal them.
-    const records = (await loadSubmissionRecords(db, k)).filter((r) => {
-      const access = submissionAccess(viewer, r);
-      return access === "chair" || access === "metadata";
-    });
+    // Count only submissions the acting person may manage as a chair: their own and conflicted
+    // submissions are left out (another chair checks those), so the report cannot reveal them.
+    // Decided on the person, not the agent tier, so a chair, their tier C agent and their tier M
+    // agent all get the same report (tier M would otherwise lose published submissions).
+    const person = actingPerson(viewer);
+    const records = (await loadSubmissionRecords(db, k)).filter(
+      (r) => person !== null && submissionAccess(person, r) === "chair",
+    );
     // IDs and counts only: safe for tier M (cloud) agents.
     const report = presenterCapReport(
       k.config,

@@ -15,7 +15,7 @@ ELOchair runs as three containers: the app, Postgres 16, and Caddy, which obtain
 ```bash
 git clone https://github.com/AMSUCF/ELOchair.git /srv/elochair
 cd /srv/elochair
-cp deploy/.env.example deploy/.env      # then edit: domain, database password, SMTP
+cp deploy/.env.example deploy/.env      # then edit: domain, database password, SECRET_KEY, SMTP
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
@@ -104,6 +104,7 @@ These were checked on 2026-11-08 in a development sandbox, not yet on ELO's serv
   - the app shell is served `no-cache` and hashed assets `immutable`, with a 404 for missing assets
   - a `openssl rand -hex 32` password works in the database URL
   - a second `seed` leaves existing conferences unchanged
+  - the app refuses to start without `SECRET_KEY`, and with it is healthy and sends sign-in mail
 
 Real TLS certificates and SMTP delivery have not been tested, because they need the real domain and mail account.
 

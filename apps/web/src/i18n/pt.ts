@@ -88,5 +88,7 @@ export const pt: Messages = {
   signInCodeInvalid: "Esse código não é válido ou expirou. Peça um novo link se necessário.",
   meSignOutFailed: "Não foi possível sair. Tente novamente.",
   confPeopleOne: "{n} pessoa",
+  verifyRetry: "Tentar novamente",
+  signInHaveCode: "Já tenho um código",
   footer: "O ELOchair é feito para a Electronic Literature Organization.",
 };

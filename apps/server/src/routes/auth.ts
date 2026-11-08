@@ -67,6 +67,7 @@ export const authRoutes = new Hono<AppEnv>()
       lang: body.lang,
       appOrigin: new URL(deps.env.APP_ORIGIN).origin,
       now: deps.now(),
+      secret: deps.env.SECRET_KEY,
     });
     deliverPending(deps.db, deps.mail, { now: deps.now }).catch((err) =>
       console.error("mail delivery failed", err),
@@ -94,14 +95,17 @@ export const authRoutes = new Hono<AppEnv>()
   .post("/verify-code", async (c) => {
     const deps = c.get("deps");
     const body = Code.parse(await c.req.json());
-    const email = normalizeEmail(body.email);
-    if (!deps.limits.codePerIp.hit(c.get("clientIp")) || !deps.limits.codePerEmail.hit(email)) {
+    // Limited per IP only. Per address, brute force is already bounded by the five attempts on
+    // each code and by how many codes can be requested, and a per-address limit would let any
+    // IP block someone else's sign-in.
+    if (!deps.limits.codePerIp.hit(c.get("clientIp"))) {
       return c.json({ error: "rate_limited" }, 429);
     }
     const result = await verifyCode(deps.db, {
-      email,
+      email: normalizeEmail(body.email),
       code: body.code,
       now: deps.now(),
+      secret: deps.env.SECRET_KEY,
       userAgent: c.req.header("user-agent"),
     });
     if (!result) return c.json({ error: "invalid_or_expired" }, 400);

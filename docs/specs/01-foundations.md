@@ -195,3 +195,30 @@ The refuted findings were these:
 - A live-region role change.
 - Deep links with unsupported language prefixes.
 - Remembering the language choice, which is a feature request rather than a defect.
+
+### Second pass: reviewing the fixes (2026-11-08)
+
+A second adversarial pass (three areas, each with a refuting verifier) examined only the fix commit. It confirmed **13 issues** (2 medium, 11 low) and refuted 2. All 13 are fixed:
+
+**Codes**
+- Guesses now use up their attempt before the code is checked, in one atomic statement. Concurrent guesses can no longer exceed five per code; a test sends 8 at once.
+- Codes are keyed with a server `SECRET_KEY` (HMAC), so a database copy no longer reveals them. The key is required in production, and the container refuses to start without it.
+- Code sign-in is rate-limited per IP only. The per-code attempt limit and the link-request limit bound brute force without letting any IP block someone else.
+
+**Mail:** a call that arrives during a delivery pass now gets a follow-up pass, so mail is not left waiting for the 30-second timer.
+
+**Cap report (medium):** it is decided on the acting person, so a chair's tier M agent counts published work exactly as the chair does.
+
+**Verify page (medium):** "Try again" after a network error retries with the token held in memory, instead of reloading into "link incomplete".
+
+**Sign-in page**
+- The code form stays available after a failed re-request, and an "I already have a code" entry is always there.
+- A new request clears a stale code and its error.
+
+**Audit:** `seed --force` records `conference.created` or `conference.config_replaced` truthfully, with a conference target.
+
+**Not-found page:** an unknown conference says so in its heading and title.
+
+**Tests**
+- The outbox claim and cap-report regression tests now really exercise their fixes. Two overlapping delivery passes are tested, and the cap test uses a talk.
+- Each was mutation-checked: removing the fix makes the test fail.

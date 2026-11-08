@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loginTokens } from "./db/schema";
@@ -203,5 +204,66 @@ describe("review fixes: sign-in codes and link info", () => {
     expect((await call(t.public, "POST", "/api/auth/link-info", { body: { token } })).status).toBe(
       400,
     );
+  });
+});
+
+describe("review fixes, round 2: codes", () => {
+  async function freshCode(u: TestApp, email: string) {
+    await call(u.public, "POST", "/api/auth/request-link", { body: { email } });
+    const mail = await call(u.public, "GET", `/api/_test/outbox/latest?to=${email}`);
+    const m = /\b(\d{4}) (\d{4})\b/.exec(mail.json.text);
+    return m ? `${m[1]}${m[2]}` : "";
+  }
+
+  it("counts guesses sent at the same time: never more than five per code", async () => {
+    const u = await makeTestApp();
+    const code = await freshCode(u, "race@example.org");
+    const wrong = code === "00000000" ? "11111111" : "00000000";
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        call(u.public, "POST", "/api/auth/verify-code", {
+          body: { email: "race@example.org", code: wrong },
+        }),
+      ),
+    );
+    const [row] = await u.db
+      .select()
+      .from(loginTokens)
+      .where(eq(loginTokens.email, "race@example.org"));
+    expect(row?.codeAttempts).toBe(5);
+    const right = await call(u.public, "POST", "/api/auth/verify-code", {
+      body: { email: "race@example.org", code },
+    });
+    expect(right.status).toBe(400);
+    await u.close();
+  });
+
+  it("junk guesses for an address cannot block its owner from signing in with a new code", async () => {
+    const u = await makeTestApp();
+    await freshCode(u, "target@example.org");
+    for (let i = 0; i < 10; i++) {
+      await call(u.public, "POST", "/api/auth/verify-code", {
+        body: { email: "target@example.org", code: "12341234" },
+      });
+    }
+    const code = await freshCode(u, "target@example.org");
+    const res = await call(u.public, "POST", "/api/auth/verify-code", {
+      body: { email: "target@example.org", code },
+    });
+    expect(res.status).toBe(200);
+    await u.close();
+  });
+
+  it("stores codes keyed with the server secret, not as a plain hash", async () => {
+    const u = await makeTestApp();
+    const code = await freshCode(u, "keyed@example.org");
+    const [row] = await u.db
+      .select()
+      .from(loginTokens)
+      .where(eq(loginTokens.email, "keyed@example.org"));
+    const plain = createHash("sha256").update(`keyed@example.org\n${code}`).digest("hex");
+    expect(row?.codeHash).toBeTruthy();
+    expect(row?.codeHash).not.toBe(plain);
+    await u.close();
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Me } from "../api";
 import { useT } from "../i18n";
@@ -8,7 +8,8 @@ type State =
   | { step: "checking" }
   | { step: "missing" }
   | { step: "expired" }
-  | { step: "network" }
+  /** The server could not be reached; `email` is set when the failure was signing in. */
+  | { step: "network"; email: string | null }
   | { step: "confirm"; email: string; currentEmail: string | null }
   | { step: "signing-in"; email: string };
 
@@ -22,7 +23,8 @@ function takeToken(): string | null {
 /**
  * The link only signs in after a tap on "Sign in". Opening the page alone uses nothing up, so
  * mail scanners cannot consume links, and another site cannot sign someone into a different
- * account without them seeing which account it is.
+ * account without them seeing which account it is. The token stays in memory only, so "Try
+ * again" after a network error retries without needing the link again.
  */
 export function VerifyPage() {
   const { lang, t } = useT();
@@ -30,37 +32,38 @@ export function VerifyPage() {
   const [token] = useState(takeToken);
   const [state, setState] = useState<State>({ step: "checking" });
 
-  useEffect(() => {
+  const check = useCallback(async () => {
     if (!token) {
       setState({ step: "missing" });
       return;
     }
-    let live = true;
-    Promise.all([
+    setState({ step: "checking" });
+    const [info, me] = await Promise.all([
       api<{ email: string }>("/api/auth/link-info", { method: "POST", body: { token } }),
       api<Me>("/api/me"),
-    ]).then(([info, me]) => {
-      if (!live) return;
-      if (info.ok) {
-        const current = me.ok && me.data.kind === "person" ? (me.data.person?.email ?? null) : null;
-        setState({
-          step: "confirm",
-          email: info.data.email,
-          currentEmail: current && current !== info.data.email ? current : null,
-        });
-      } else setState({ step: info.status === 400 ? "expired" : "network" });
+    ]);
+    if (!info.ok) {
+      setState(info.status === 400 ? { step: "expired" } : { step: "network", email: null });
+      return;
+    }
+    const current = me.ok && me.data.kind === "person" ? (me.data.person?.email ?? null) : null;
+    setState({
+      step: "confirm",
+      email: info.data.email,
+      currentEmail: current && current !== info.data.email ? current : null,
     });
-    return () => {
-      live = false;
-    };
   }, [token]);
+
+  useEffect(() => {
+    check();
+  }, [check]);
 
   async function signIn(email: string) {
     setState({ step: "signing-in", email });
     const res = await api("/api/auth/verify", { method: "POST", body: { token } });
     if (res.ok) navigate(`/${lang}/me`, { replace: true });
     else if (res.status === 400) setState({ step: "expired" });
-    else setState({ step: "network" });
+    else setState({ step: "network", email });
   }
 
   return (
@@ -83,12 +86,12 @@ export function VerifyPage() {
         </div>
       )}
       {state.step === "network" && (
-        <>
+        <div className="stack">
           <p role="alert">{t("verifyNetwork")}</p>
-          <button type="button" onClick={() => window.location.reload()}>
-            {t("verifyAgain")}
+          <button type="button" onClick={() => (state.email ? signIn(state.email) : check())}>
+            {t("verifyRetry")}
           </button>
-        </>
+        </div>
       )}
       {(state.step === "expired" || state.step === "missing") && (
         <>

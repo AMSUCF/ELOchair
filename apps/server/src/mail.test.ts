@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openDatabase } from "./db/client";
 import { outbox } from "./db/schema";
 import {
+  deliverOnce,
   deliverPending,
   enqueueMail,
   MAX_ATTEMPTS,
@@ -82,5 +83,35 @@ describe("outbox delivery", () => {
     await deliverPending(db, mail, { now: () => new Date(at.getTime() + 2 * 60_000) });
     expect(mail.latestTo("retry@example.org")).toBeDefined();
     expect(MAX_ATTEMPTS).toBeGreaterThan(1);
+  });
+});
+
+class SlowTransport extends MemoryTransport {
+  override async send(msg: Parameters<MemoryTransport["send"]>[0]): Promise<void> {
+    await new Promise((r) => setTimeout(r, 30));
+    await super.send(msg);
+  }
+}
+
+describe("review fixes, round 2: delivery passes", () => {
+  it("two overlapping passes (as from two processes) send each message once", async () => {
+    const mail = new SlowTransport();
+    for (let i = 0; i < 4; i++)
+      await enqueueMail(db, "note", { to: `claim${i}@example.org`, subject: "s", text: "t" }, at);
+    await Promise.all([deliverOnce(db, mail, now), deliverOnce(db, mail, now)]);
+    const mine = mail.sent.filter((m) => m.to.startsWith("claim"));
+    expect(mine).toHaveLength(4);
+    expect(new Set(mine.map((m) => m.to)).size).toBe(4);
+  });
+
+  it("mail queued during a pass goes out in a follow-up pass, not at the next timer tick", async () => {
+    const mail = new SlowTransport();
+    await enqueueMail(db, "note", { to: "first@example.org", subject: "s", text: "t" }, at);
+    const firstPass = deliverPending(db, mail, { now });
+    await enqueueMail(db, "note", { to: "second@example.org", subject: "s", text: "t" }, at);
+    await deliverPending(db, mail, { now });
+    await firstPass;
+    expect(mail.latestTo("first@example.org")).toBeDefined();
+    expect(mail.latestTo("second@example.org")).toBeDefined();
   });
 });

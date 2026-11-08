@@ -14,13 +14,19 @@ export function SignInPage() {
   const [state, setState] = useState<State>("idle");
   const [code, setCode] = useState("");
   const [codeState, setCodeState] = useState<CodeState>("idle");
+  // Codes already emailed keep working for 20 minutes, even if a later request fails.
+  const [sentOnce, setSentOnce] = useState(false);
 
   async function requestLink(e: FormEvent) {
     e.preventDefault();
     setState("sending");
+    setCode("");
+    setCodeState("idle");
     const res = await api("/api/auth/request-link", { method: "POST", body: { email, lang } });
-    if (res.ok) setState("sent");
-    else if (res.status === 429) setState("rate_limited");
+    if (res.ok) {
+      setState("sent");
+      setSentOnce(true);
+    } else if (res.status === 429) setState("rate_limited");
     else if (res.status === 400) setState("invalid");
     else setState("error");
   }
@@ -52,6 +58,32 @@ export function SignInPage() {
     error: t("verifyNetwork"),
   }[codeState];
 
+  const codeForm = (
+    <form onSubmit={submitCode} className="stack" noValidate>
+      <p>{t("signInCodeIntro")}</p>
+      <label htmlFor="code">{t("signInCodeLabel")}</label>
+      <input
+        id="code"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="[0-9 ]*"
+        maxLength={9}
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        aria-describedby="code-status"
+      />
+      <button
+        type="submit"
+        disabled={codeState === "checking" || code.replace(/\D/g, "").length !== 8}
+      >
+        {t("signInCodeSubmit")}
+      </button>
+      <p id="code-status" aria-live="polite" className="status-line">
+        {codeMessage}
+      </p>
+    </form>
+  );
+
   return (
     <>
       <PageHeading>{t("signInTitle")}</PageHeading>
@@ -76,30 +108,13 @@ export function SignInPage() {
         {message}
       </p>
 
-      {state === "sent" && (
-        <form onSubmit={submitCode} className="stack" noValidate>
-          <p>{t("signInCodeIntro")}</p>
-          <label htmlFor="code">{t("signInCodeLabel")}</label>
-          <input
-            id="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9 ]*"
-            maxLength={9}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            aria-describedby="code-status"
-          />
-          <button
-            type="submit"
-            disabled={codeState === "checking" || code.replace(/\D/g, "").length !== 8}
-          >
-            {t("signInCodeSubmit")}
-          </button>
-          <p id="code-status" aria-live="polite" className="status-line">
-            {codeMessage}
-          </p>
-        </form>
+      {sentOnce ? (
+        codeForm
+      ) : (
+        <details>
+          <summary>{t("signInHaveCode")}</summary>
+          {codeForm}
+        </details>
       )}
     </>
   );

@@ -128,3 +128,39 @@ test("a link for another account warns before switching", async ({ page, request
   await page.goto(link as string);
   await expect(page.getByText("You are currently signed in as admin@example.org.")).toBeVisible();
 });
+
+test("retrying after a network error keeps the link working", async ({ page, request }) => {
+  const email = "track-chair-2@example.org";
+  await requestLink(page, email);
+  const link = /https?:\/\/\S+#token=\S+/.exec((await latestMail(request, email)).text)?.[0];
+  await page.goto(link as string);
+  await page.route("**/api/auth/verify", (route) => route.abort());
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("We could not reach the server.")).toBeVisible();
+  await page.unroute("**/api/auth/verify");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page).toHaveURL(/\/en\/me$/);
+});
+
+test("a code from an earlier email still works after reloading the sign-in page", async ({
+  page,
+  request,
+}) => {
+  const email = "track-chair-3@example.org";
+  await requestLink(page, email);
+  const m = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, email)).text);
+  await page.reload();
+  await page.getByLabel("Email address").fill(email);
+  await page.getByText("I already have a code").click();
+  await page.getByLabel("Code from the email").fill(`${m?.[1]}${m?.[2]}`);
+  await page.getByRole("button", { name: "Sign in with code" }).click();
+  await expect(page).toHaveURL(/\/en\/me$/);
+});
+
+test("an unknown conference says so, in the heading and the title", async ({ page }) => {
+  await page.goto("/en/c/no-such-conference");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "We could not find that conference." }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("We could not find that conference. – ELOchair");
+});

@@ -36,7 +36,7 @@ Sign-in works like this:
 - Each email carries a link and a code.
 - The link opens a confirmation page, and nothing is used up until the person taps "Sign in".
 - The code is for the installed app, and stops working after five wrong guesses.
-- Tokens and codes are stored only as hashes. The outbox redacts its copy of the email once it is sent.
+- Tokens are stored only as hashes. Codes are stored as HMACs keyed with `SECRET_KEY`, which is kept outside the database and is required in production. The outbox redacts its copy of the email once it is sent.
 
 ## House rules
 

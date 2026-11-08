@@ -23,7 +23,7 @@ export function PageHeading({ children, title }: { children: ReactNode; title?: 
   const name = title ?? (typeof children === "string" ? children : "");
 
   useEffect(() => {
-    document.title = name ? `${name} – ${t("appName")}` : t("appName");
+    document.title = name && name !== t("appName") ? `${name} – ${t("appName")}` : t("appName");
   }, [name, t]);
 
   useEffect(() => {

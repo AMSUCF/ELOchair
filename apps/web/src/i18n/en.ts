@@ -86,6 +86,8 @@ export const en = {
   signInCodeInvalid: "That code is not valid or has expired. Request a new link if needed.",
   meSignOutFailed: "Could not sign out. Please try again.",
   confPeopleOne: "{n} person",
+  verifyRetry: "Try again",
+  signInHaveCode: "I already have a code",
   footer: "ELOchair is made for the Electronic Literature Organization.",
 } as const;
 

@@ -14,7 +14,6 @@ export type Deps = {
   limits: {
     linkPerEmail: RateLimiter;
     linkPerIp: RateLimiter;
-    codePerEmail: RateLimiter;
     codePerIp: RateLimiter;
   };
 };

@@ -80,25 +80,47 @@ export function redactSecrets(body: string): string {
     .replace(/\b\d{4} \d{4}\b/g, "[redacted]");
 }
 
-const running = new WeakMap<Db, Promise<number>>();
+const inFlight = new WeakMap<Db, Promise<number>>();
+const queued = new WeakMap<Db, Promise<number>>();
 
 /**
- * Send pending mail; returns how many messages were sent. Safe to call often and from several
- * places: within one process, overlapping calls share one pass; across processes, rows are
- * claimed with FOR UPDATE SKIP LOCKED so no message is sent twice.
+ * Send pending mail; resolves with how many messages the pass that covers this call sent.
+ * Safe to call often and from several places. Within one process at most one pass runs at a
+ * time; a call that arrives during a pass gets a follow-up pass (shared by everyone who arrives
+ * meanwhile), so mail queued mid-pass is not left for the timer. Across processes, rows are
+ * claimed atomically, so no message is sent twice.
  */
 export function deliverPending(
   db: Db,
   transport: MailTransport,
   opts: { now?: () => Date; limit?: number } = {},
 ): Promise<number> {
-  const inFlight = running.get(db);
-  if (inFlight) return inFlight;
-  const pass = deliverPass(db, transport, opts.now ?? (() => new Date()), opts.limit ?? 50).finally(
-    () => running.delete(db),
-  );
-  running.set(db, pass);
-  return pass;
+  const now = opts.now ?? (() => new Date());
+  const limit = opts.limit ?? 50;
+  const start = (): Promise<number> => {
+    const pass: Promise<number> = deliverPass(db, transport, now, limit).finally(() => {
+      if (inFlight.get(db) === pass) inFlight.delete(db);
+    });
+    inFlight.set(db, pass);
+    return pass;
+  };
+  const current = inFlight.get(db);
+  if (!current) return start();
+  const waiting = queued.get(db);
+  if (waiting) return waiting;
+  const next = current
+    .catch(() => 0)
+    .then(() => {
+      queued.delete(db);
+      return start();
+    });
+  queued.set(db, next);
+  return next;
+}
+
+/** One delivery pass. Exported for tests that need two passes to overlap. */
+export function deliverOnce(db: Db, transport: MailTransport, now: () => Date, limit = 50) {
+  return deliverPass(db, transport, now, limit);
 }
 
 async function deliverPass(
