@@ -15,6 +15,7 @@ const c = (submissionId: string, personId: string, role: Contribution["role"]): 
   personId,
   role,
   position: 0,
+  status: "confirmed",
 });
 
 describe("presenterCapReport", () => {

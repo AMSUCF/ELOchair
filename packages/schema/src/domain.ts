@@ -53,12 +53,17 @@ export const Submission = z.object({
 });
 export type Submission = z.infer<typeof Submission>;
 
+/** The lead is confirmed on creation; co-authors are invited until they confirm. */
+export const ContributionStatus = z.enum(["invited", "confirmed"]);
+export type ContributionStatus = z.infer<typeof ContributionStatus>;
+
 export const Contribution = z.object({
   submissionId: Id,
   personId: Id,
   role: ContributionRole,
   /** Order in the author list, starting at 0. */
   position: z.int().min(0),
+  status: ContributionStatus,
 });
 export type Contribution = z.infer<typeof Contribution>;
 

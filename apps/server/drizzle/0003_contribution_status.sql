@@ -1,0 +1,2 @@
+ALTER TABLE "contributions" ADD COLUMN "status" text DEFAULT 'confirmed' NOT NULL;--> statement-breakpoint
+ALTER TABLE "contributions" ADD CONSTRAINT "contributions_status_check" CHECK ("contributions"."status" in ('invited','confirmed'));

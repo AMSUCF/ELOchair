@@ -107,6 +107,7 @@ function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
       personId: pid,
       role: i === 0 ? "lead" : "presenter",
       position: i,
+      status: i === 0 || i % 2 === 1 ? "confirmed" : "invited",
     });
   }
 

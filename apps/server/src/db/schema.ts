@@ -111,9 +111,12 @@ export const contributions = pgTable(
       .references(() => people.id),
     role: text("role").notNull(),
     position: integer("position").notNull(),
+    /** "invited" until the co-author confirms; the lead is "confirmed" from the start. */
+    status: text("status").notNull().default("confirmed"),
   },
   (t) => [
     primaryKey({ columns: [t.submissionId, t.personId] }),
+    check("contributions_status_check", sql`${t.status} in ('invited','confirmed')`),
     index("contributions_person_idx").on(t.personId),
   ],
 );

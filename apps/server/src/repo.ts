@@ -188,6 +188,7 @@ export async function loadSubmissionRecords(
       personId: c.personId,
       role: c.role as Contribution["role"],
       position: c.position,
+      status: c.status as Contribution["status"],
     }));
     const authors = new Set(cs.map((c) => c.personId));
     const submission: Submission = {
