@@ -12,6 +12,7 @@ import { ZodError } from "zod";
 import { audit } from "./audit";
 import { SESSION_COOKIE, sessionViewer, tokenViewer } from "./auth";
 import type { AppEnv, Deps, Exposure } from "./context";
+import { mcpHandler } from "./mcp";
 import { authRoutes } from "./routes/auth";
 import { Refusal } from "./routes/common";
 import { conferenceRoutes } from "./routes/conferences";
@@ -167,6 +168,7 @@ export function createApp(deps: Deps, exposure: Exposure) {
   app.route("/api/conferences", conferenceRoutes);
   app.route("/api/submissions", submissionRoutes);
   app.route("/api/invitations", invitationRoutes);
+  app.all("/api/mcp", mcpHandler);
   if (deps.env.ENABLE_TEST_ENDPOINTS) app.route("/api/_test", testRoutes);
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
