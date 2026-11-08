@@ -3,6 +3,7 @@ import {
   ContributorChangeInput,
   findType,
   InviteInput,
+  isCallOpen,
   type Submission,
   SubmitInput,
   sizeIssues,
@@ -84,6 +85,21 @@ export const submissionRoutes = new Hono<AppEnv>()
     const loaded = await loadSubmission(c.get("deps").db, c.req.param("id"));
     const out = loaded && projectSubmission(c.get("viewer"), loaded.rec);
     return out ? c.json(out) : c.json({ error: "not_found" }, 404);
+  })
+
+  .get("/:id/conference", async (c) => {
+    // The conference a visible submission belongs to (its configuration is public material).
+    const deps = c.get("deps");
+    const loaded = await loadSubmission(deps.db, c.req.param("id"));
+    if (!loaded || !projectSubmission(c.get("viewer"), loaded.rec))
+      throw new Refusal(404, "not_found");
+    const k = loaded.conference;
+    return c.json({
+      slug: k.slug,
+      phase: k.phase,
+      config: k.config,
+      callOpen: isCallOpen(k.config, k.phase, deps.now()),
+    });
   })
 
   .get("/:id/check", async (c) => {

@@ -3,8 +3,13 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "r
 import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, useT } from "./i18n";
 import { ConferencePage } from "./pages/Conference";
 import { HomePage } from "./pages/Home";
+import { InvitationPage } from "./pages/Invitation";
+import { ManagePage } from "./pages/Manage";
 import { MePage } from "./pages/Me";
+import { MyPage } from "./pages/My";
 import { SignInPage } from "./pages/SignIn";
+import { StartPage } from "./pages/Start";
+import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
 import { FocusPending } from "./ui";
 
@@ -18,6 +23,11 @@ export function App() {
         <Route path="sign-in" element={<SignInPage />} />
         <Route path="auth/verify" element={<VerifyPage />} />
         <Route path="me" element={<MePage />} />
+        <Route path="my" element={<MyPage />} />
+        <Route path="c/:slug/submit" element={<StartPage />} />
+        <Route path="c/:slug/manage" element={<ManagePage />} />
+        <Route path="s/:id" element={<SubmissionPage />} />
+        <Route path="invitation" element={<InvitationPage />} />
       </Route>
       <Route path="*" element={<Navigate to={`/${detectLang()}/`} replace />} />
     </Routes>
@@ -69,6 +79,7 @@ function Shell() {
             <span>{t("appName")}</span>
           </Link>
           <nav aria-label={t("navMain")} className="site-nav">
+            <Link to={`/${lang}/my`}>{t("navMySubmissions")}</Link>
             <Link to={`/${lang}/me`}>{t("navAccount")}</Link>
             <ul className="lang-list">
               {LANGS.map((l) => (

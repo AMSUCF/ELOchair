@@ -1,7 +1,9 @@
 import type { Messages } from "./en";
+import { submissionPt } from "./submission.pt";
 
 /** Machine-drafted; to be reviewed by Portuguese and Brazilian ELO members. */
 export const pt: Messages = {
+  ...submissionPt,
   appName: "ELOchair",
   tagline: "Submissões e revisão por pares para o congresso da Electronic Literature Organization.",
   skipToContent: "Saltar para o conteúdo",

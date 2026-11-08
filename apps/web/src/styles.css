@@ -11,6 +11,7 @@
   --notice-bg: #fff3cd;
   --notice-text: #5c4400;
   --focus: #0b6bcb;
+  --danger: #b3261e;
   --radius: 12px;
   --gutter: 16px;
   --touch: 44px;
@@ -29,6 +30,7 @@
     --notice-bg: #3a3112;
     --notice-text: #fbe7a6;
     --focus: #7cc4ff;
+    --danger: #ffb4ab;
   }
 }
 
@@ -331,5 +333,139 @@ button:disabled {
   }
   .cards {
     grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  }
+}
+
+/* Forms and submission pages */
+.stack.wide {
+  max-width: none;
+}
+
+textarea {
+  font: inherit;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--muted);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+fieldset.plain {
+  border: 0;
+  padding: 0;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-height: var(--touch);
+  font-weight: 400;
+}
+
+.choice input {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.word-count {
+  margin: 0;
+  color: var(--muted);
+}
+
+.word-count.under,
+.word-count.over,
+.field-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.field-error {
+  margin: 0;
+}
+
+.error-summary {
+  border: 3px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+
+.error-summary h2 {
+  margin-top: 0;
+}
+
+.error-summary a {
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+
+button.danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.people {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.agreement {
+  display: grid;
+  gap: 4px;
+}
+
+.prose {
+  white-space: pre-wrap;
+}
+
+.filters {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.filters label {
+  display: grid;
+  gap: 4px;
+}
+
+@media (min-width: 40rem) {
+  .filters {
+    grid-template-columns: repeat(3, 1fr) auto;
+    align-items: end;
   }
 }

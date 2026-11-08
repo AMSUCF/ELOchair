@@ -1,7 +1,9 @@
 import type { Messages } from "./en";
+import { submissionEs } from "./submission.es";
 
 /** Machine-drafted; to be reviewed by the ELO 2027 team. */
 export const es: Messages = {
+  ...submissionEs,
   appName: "ELOchair",
   tagline: "Envíos y revisión por pares para el congreso de la Electronic Literature Organization.",
   skipToContent: "Saltar al contenido",

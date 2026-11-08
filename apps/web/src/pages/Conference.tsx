@@ -1,7 +1,7 @@
 import type { ConferenceConfig } from "@elochair/schema";
-import { effectiveBlindMode, localize } from "@elochair/schema/pure";
+import { effectiveBlindMode, isCallOpen, localize } from "@elochair/schema/pure";
 import { Link, useParams } from "react-router";
-import type { ConferenceDetail } from "../api";
+import type { ConferenceDetail, Me } from "../api";
 import { formatDateRange, formatDateTime, viewerTimeZone } from "../format";
 import { type MessageKey, useT } from "../i18n";
 import { Localized, PageHeading } from "../ui";
@@ -52,6 +52,7 @@ export function ConferencePage() {
       </p>
 
       <SubmissionStatus config={c} />
+      <CallActions slug={res.data.slug} phase={res.data.phase} config={c} />
 
       <section aria-labelledby="dates">
         <h2 id="dates">{t("confDates")}</h2>
@@ -177,5 +178,40 @@ function Deadlines({ config: c }: { config: ConferenceConfig }) {
         })}
       </dl>
     </section>
+  );
+}
+
+/** "Submit a proposal" while the call is open; "Manage submissions" for the conference's chairs. */
+function CallActions({
+  slug,
+  phase,
+  config,
+}: {
+  slug: string;
+  phase: string;
+  config: ConferenceConfig;
+}) {
+  const { lang, t } = useT();
+  const me = useApi<Me>("/api/me");
+  const chairs =
+    me?.ok &&
+    me.data.kind === "person" &&
+    (me.data.siteAdmin ||
+      me.data.roles.some((r) => r.conference === slug && r.role !== "reviewer"));
+  const open = isCallOpen(config, phase, new Date());
+  if (!open && !chairs) return null;
+  return (
+    <p className="actions">
+      {open && (
+        <Link className="button" to={`/${lang}/c/${slug}/submit`}>
+          {t("confSubmitCta")}
+        </Link>
+      )}
+      {chairs && (
+        <Link className="button secondary" to={`/${lang}/c/${slug}/manage`}>
+          {t("confManageLink")}
+        </Link>
+      )}
+    </p>
   );
 }
