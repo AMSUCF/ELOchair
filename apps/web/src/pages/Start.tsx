@@ -19,11 +19,7 @@ export function StartPage() {
 
   if (!conf || !me) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) {
-    return (
-      <>
-        <PageHeading>{t("confNotFound")}</PageHeading>
-      </>
-    );
+    return <PageHeading>{t("confNotFound")}</PageHeading>;
   }
   const c = conf.data.config;
   const open = isCallOpen(c, conf.data.phase, new Date());
