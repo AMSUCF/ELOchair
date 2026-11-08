@@ -1,5 +1,7 @@
-import { type ConferenceConfig, type CustomField, findType } from "./config";
+import type { ConferenceConfig, CustomField } from "./config";
 import type { Contribution, FieldValue, Submission } from "./domain";
+import { LIMITS } from "./limits";
+import { findType } from "./lookup";
 import { countWords } from "./words";
 
 export type SubmissionIssue = {
@@ -15,6 +17,11 @@ export type SubmissionIssue = {
     | "unknown_option"
     | "team_size"
     | "no_lead"
+    | "multiple_leads"
+    | "lead_unconfirmed"
+    | "contributor_name_missing"
+    | "unknown_language"
+    | "too_long"
     | "empty_title";
   params?: Record<string, string | number>;
 };
@@ -74,14 +81,25 @@ export function validateSubmission(
   submission: Pick<
     Submission,
     "typeKey" | "trackKey" | "topicKeys" | "language" | "title" | "abstract" | "fields"
-  >,
-  contributions: Pick<Contribution, "role">[],
+  > & { participationMode?: Submission["participationMode"] },
+  /**
+   * The submission's contributions. Declined people are ignored. `hasName` (whether a name is
+   * known for the person, from their profile or the invitation) is checked when given.
+   */
+  contributions: (Pick<Contribution, "role"> &
+    Partial<Pick<Contribution, "status">> & { hasName?: boolean })[],
 ): SubmissionIssue[] {
   const type = findType(config, submission.typeKey);
   if (!type) return [{ path: "typeKey", code: "unknown_type" }];
 
-  const issues: SubmissionIssue[] = [];
+  const issues: SubmissionIssue[] = [...sizeIssues(config, submission)];
   if (!submission.title.trim()) issues.push({ path: "title", code: "empty_title" });
+  if (!config.languages.includes(submission.language)) {
+    issues.push({ path: "language", code: "unknown_language" });
+  }
+  if (config.modality === "hybrid" && !submission.participationMode) {
+    issues.push({ path: "participationMode", code: "required" });
+  }
 
   if (submission.trackKey && !config.tracks.some((t) => t.key === submission.trackKey)) {
     issues.push({ path: "trackKey", code: "unknown_track" });
@@ -111,7 +129,8 @@ export function validateSubmission(
     issues.push(...checkField(f, submission.fields[f.key], submission.language));
   }
 
-  const n = contributions.length;
+  const team = contributions.filter((c) => c.status !== "declined");
+  const n = team.length;
   if (n < type.team.min || n > type.team.max) {
     issues.push({
       path: "contributions",
@@ -119,8 +138,37 @@ export function validateSubmission(
       params: { count: n, min: type.team.min, max: type.team.max },
     });
   }
-  if (!contributions.some((c) => c.role === "lead")) {
-    issues.push({ path: "contributions", code: "no_lead" });
+  const leads = team.filter((c) => c.role === "lead");
+  if (leads.length === 0) issues.push({ path: "contributions", code: "no_lead" });
+  if (leads.length > 1) issues.push({ path: "contributions", code: "multiple_leads" });
+  if (leads.some((c) => c.status === "invited")) {
+    issues.push({ path: "contributions", code: "lead_unconfirmed" });
+  }
+  if (team.some((c) => c.hasName === false)) {
+    issues.push({ path: "contributions", code: "contributor_name_missing" });
+  }
+  return issues;
+}
+
+/**
+ * Size ceilings that hold even for drafts (which skip word limits): they bound storage.
+ * The abstract may be at most LIMITS.abstractCharsPerWord characters per allowed word.
+ */
+export function sizeIssues(
+  config: ConferenceConfig,
+  submission: Pick<Submission, "typeKey" | "title" | "abstract">,
+): SubmissionIssue[] {
+  const issues: SubmissionIssue[] = [];
+  if (submission.title.length > LIMITS.title) {
+    issues.push({ path: "title", code: "too_long", params: { max: LIMITS.title } });
+  }
+  const type = findType(config, submission.typeKey);
+  const maxChars = Math.min(
+    LIMITS.abstractCeiling,
+    (type?.abstract.maxWords ?? 0) * LIMITS.abstractCharsPerWord || LIMITS.abstractCeiling,
+  );
+  if (submission.abstract.length > maxChars) {
+    issues.push({ path: "abstract", code: "too_long", params: { max: maxChars } });
   }
   return issues;
 }

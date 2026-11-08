@@ -1,4 +1,4 @@
-import type { Contribution } from "@elochair/schema";
+import type { Contribution, Submission } from "@elochair/schema";
 import { describe, expect, it } from "vitest";
 import { canActOnSubmission, type SubmissionAction } from "./actions";
 import type { AgentViewer, PersonViewer } from "./viewer";
@@ -9,56 +9,87 @@ const person = (personId: string, grants: PersonViewer["grants"] = []): PersonVi
   siteAdmin: false,
   grants,
 });
-const contributions: Contribution[] = [
-  { submissionId: "s", personId: "lead", role: "lead", position: 0, status: "confirmed" },
-  { submissionId: "s", personId: "co", role: "presenter", position: 1, status: "confirmed" },
-  { submissionId: "s", personId: "inv", role: "coauthor", position: 2, status: "invited" },
+const c = (personId: string, role: Contribution["role"], status: Contribution["status"]) => ({
+  personId,
+  role,
+  status,
+});
+// The owner moderates; the lead is a confirmed co-author: edit rights follow ownership, not role.
+const contributions = [
+  c("owner", "moderator", "confirmed"),
+  c("lead", "lead", "confirmed"),
+  c("inv", "coauthor", "invited"),
+  c("gone", "presenter", "declined"),
 ];
 const ACTIONS: SubmissionAction[] = [
   "edit",
   "manage_contributors",
   "submit",
+  "unsubmit",
   "withdraw",
+  "delete_draft",
   "answer_invitation",
+  "leave",
 ];
-const allowed = (viewer: Parameters<typeof canActOnSubmission>[0], status = "draft" as const) =>
-  ACTIONS.filter((a) => canActOnSubmission(viewer, { submission: { status }, contributions }, a));
+const allowed = (
+  viewer: Parameters<typeof canActOnSubmission>[0],
+  status: Submission["status"] = "draft",
+) =>
+  ACTIONS.filter((a) =>
+    canActOnSubmission(
+      viewer,
+      { submission: { status, ownerPersonId: "owner" }, contributions },
+      a,
+    ),
+  );
 
 describe("canActOnSubmission", () => {
-  it("the lead edits, manages co-authors, submits and withdraws", () => {
-    expect(allowed(person("lead"))).toEqual(["edit", "manage_contributors", "submit", "withdraw"]);
+  it("the owner manages a draft, whatever their program role", () => {
+    expect(allowed(person("owner"))).toEqual([
+      "edit",
+      "manage_contributors",
+      "submit",
+      "delete_draft",
+    ]);
   });
 
-  it("a confirmed co-author can do nothing but read", () => {
-    expect(allowed(person("co"))).toEqual([]);
+  it("the owner of submitted work can edit, return it to draft, or withdraw it", () => {
+    expect(allowed(person("owner"), "submitted")).toEqual([
+      "edit",
+      "manage_contributors",
+      "unsubmit",
+      "withdraw",
+    ]);
   });
 
-  it("an invitee can only answer the invitation", () => {
+  it("the lead (not owner) can only leave; an invitee can only answer; a declined person nothing", () => {
+    expect(allowed(person("lead"))).toEqual(["leave"]);
     expect(allowed(person("inv"))).toEqual(["answer_invitation"]);
+    expect(allowed(person("gone"))).toEqual([]);
   });
 
-  it("chairs, reviewers, strangers and agents cannot change someone's submission", () => {
+  it("declining and leaving stay possible after submission and even after decisions", () => {
+    expect(allowed(person("inv"), "accepted")).toEqual(["answer_invitation"]);
+    expect(allowed(person("lead"), "rejected")).toEqual(["leave"]);
+  });
+
+  it("withdrawn work is closed to everyone", () => {
+    for (const who of ["owner", "lead", "inv"])
+      expect(allowed(person(who), "withdrawn")).toEqual([]);
+  });
+
+  it("chairs, strangers and agents (even the owner's) cannot change someone's submission", () => {
     const chair = person("chair", [{ conferenceId: "k", role: "chair", scope: [] }]);
     const agent: AgentViewer = {
       kind: "agent",
       tokenId: "t",
       tier: "C",
       conferenceId: "k",
-      owner: person("lead"),
+      owner: person("owner"),
     };
     expect(allowed(chair)).toEqual([]);
     expect(allowed(person("stranger"))).toEqual([]);
     expect(allowed(agent)).toEqual([]);
     expect(allowed({ kind: "public" })).toEqual([]);
-  });
-
-  it("submitted work stays editable but cannot be submitted again; withdrawn work is closed", () => {
-    expect(allowed(person("lead"), "submitted" as never)).toEqual([
-      "edit",
-      "manage_contributors",
-      "withdraw",
-    ]);
-    expect(allowed(person("lead"), "withdrawn" as never)).toEqual([]);
-    expect(allowed(person("inv"), "accepted" as never)).toEqual([]);
   });
 });

@@ -99,7 +99,7 @@ export function toPerson(r: PersonRow): Person {
     affiliation: r.affiliation,
     country: r.country,
     languages: r.languages,
-    bio: r.bio,
+    bios: (r.bios ?? {}) as Record<string, string>,
     pronouns: r.pronouns,
   };
 }
@@ -147,11 +147,16 @@ export async function grantRole(
 export async function loadSubmissionRecords(
   db: Db,
   conference: ConferenceRow,
+  only?: { submissionId: string },
 ): Promise<SubmissionRecord[]> {
   const subs = await db
     .select()
     .from(submissions)
-    .where(eq(submissions.conferenceId, conference.id))
+    .where(
+      only
+        ? and(eq(submissions.conferenceId, conference.id), eq(submissions.id, only.submissionId))
+        : eq(submissions.conferenceId, conference.id),
+    )
     .orderBy(submissions.createdAt, submissions.id);
   if (subs.length === 0) return [];
   const ids = subs.map((s) => s.id);
@@ -189,11 +194,16 @@ export async function loadSubmissionRecords(
       role: c.role as Contribution["role"],
       position: c.position,
       status: c.status as Contribution["status"],
+      invitedEmail: c.invitedEmail,
+      invitedName: c.invitedName,
+      invitedAffiliation: c.invitedAffiliation,
     }));
     const authors = new Set(cs.map((c) => c.personId));
     const submission: Submission = {
       id: s.id,
       conferenceId: s.conferenceId,
+      ownerPersonId: s.ownerPersonId,
+      version: s.version,
       typeKey: s.typeKey,
       trackKey: s.trackKey,
       topicKeys: s.topicKeys,
@@ -201,6 +211,7 @@ export async function loadSubmissionRecords(
       title: s.title,
       abstract: s.abstract,
       fields: s.fields as Submission["fields"],
+      participationMode: s.participationMode as Submission["participationMode"],
       status: s.status as Submission["status"],
       createdAt: iso(s.createdAt),
       updatedAt: iso(s.updatedAt),
@@ -237,6 +248,36 @@ export async function loadSubmissionRecords(
       people: peopleById,
     };
   });
+}
+
+/** One submission with everything the policy needs, or null if it does not exist. */
+export async function loadSubmission(
+  db: Db,
+  submissionId: string,
+): Promise<{ conference: ConferenceRow; rec: SubmissionRecord } | null> {
+  const [row] = await db
+    .select({ conferenceId: submissions.conferenceId })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId));
+  if (!row) return null;
+  const [k] = await db.select().from(conferences).where(eq(conferences.id, row.conferenceId));
+  if (!k) return null;
+  const conference = {
+    id: k.id,
+    slug: k.slug,
+    phase: k.phase,
+    config: ConferenceConfig.parse(k.config),
+  };
+  const [rec] = await loadSubmissionRecords(db, conference, { submissionId });
+  return rec ? { conference, rec } : null;
+}
+
+export async function getPersonByEmail(db: Db, email: string): Promise<Person | null> {
+  const [r] = await db
+    .select()
+    .from(people)
+    .where(eq(people.email, normalizeEmail(email)));
+  return r ? toPerson(r) : null;
 }
 
 export class NotAChairError extends Error {}

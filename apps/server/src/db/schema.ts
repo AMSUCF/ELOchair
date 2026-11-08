@@ -31,7 +31,8 @@ export const people = pgTable("people", {
   affiliation: text("affiliation"),
   country: text("country"),
   languages: text("languages").array().notNull().default(sql`'{}'::text[]`),
-  bio: text("bio"),
+  /** Bios per language: { "en": "...", "es": "..." }. */
+  bios: jsonb("bios").notNull().default({}),
   pronouns: text("pronouns"),
   siteAdmin: boolean("site_admin").notNull().default(false),
   createdAt: created(),
@@ -85,6 +86,12 @@ export const submissions = pgTable(
     conferenceId: uuid("conference_id")
       .notNull()
       .references(() => conferences.id, { onDelete: "cascade" }),
+    /** The creator: the only person who may change the submission. */
+    ownerPersonId: uuid("owner_person_id")
+      .notNull()
+      .references(() => people.id),
+    /** Optimistic concurrency: increases on every change. */
+    version: integer("version").notNull().default(1),
     typeKey: text("type_key").notNull(),
     trackKey: text("track_key"),
     topicKeys: text("topic_keys").array().notNull().default(sql`'{}'::text[]`),
@@ -92,6 +99,7 @@ export const submissions = pgTable(
     title: text("title").notNull(),
     abstract: text("abstract").notNull(),
     fields: jsonb("fields").notNull().default({}),
+    participationMode: text("participation_mode"),
     status: text("status").notNull().default("draft"),
     createdAt: created(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -111,12 +119,20 @@ export const contributions = pgTable(
       .references(() => people.id),
     role: text("role").notNull(),
     position: integer("position").notNull(),
-    /** "invited" until the co-author confirms; the lead is "confirmed" from the start. */
+    /** invited → confirmed, or → declined (kept as evidence). The owner starts confirmed. */
     status: text("status").notNull().default("confirmed"),
+    /** What the owner typed when inviting; shown instead of the profile until confirmed. */
+    invitedEmail: text("invited_email"),
+    invitedName: text("invited_name"),
+    invitedAffiliation: text("invited_affiliation"),
+    invitedAt: ts("invited_at"),
+    /** Last time an invitation email went out (for the once-an-hour resend limit). */
+    lastSentAt: ts("last_sent_at"),
   },
   (t) => [
     primaryKey({ columns: [t.submissionId, t.personId] }),
-    check("contributions_status_check", sql`${t.status} in ('invited','confirmed')`),
+    check("contributions_status_check", sql`${t.status} in ('invited','confirmed','declined')`),
+    index("contributions_invited_email_idx").on(t.invitedEmail, t.invitedAt),
     index("contributions_person_idx").on(t.personId),
   ],
 );
@@ -268,4 +284,41 @@ export const outbox = pgTable(
     lastError: text("last_error"),
   },
   (t) => [index("outbox_pending_idx").on(t.sentAt, t.nextAttemptAt)],
+);
+
+/** Who acknowledged which version of a conference agreement, and when (consent records). */
+export const agreementAcks = pgTable(
+  "agreement_acks",
+  {
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    version: text("version").notNull(),
+    acceptedAt: ts("accepted_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.personId, t.conferenceId, t.key, t.version] })],
+);
+
+/** Single-use links in invitation emails (stored as hashes, like sign-in tokens). */
+export const invitationTokens = pgTable(
+  "invitation_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    lang: text("lang").notNull().default("en"),
+    createdAt: created(),
+    expiresAt: ts("expires_at").notNull(),
+    usedAt: ts("used_at"),
+  },
+  (t) => [index("invitation_tokens_target_idx").on(t.submissionId, t.personId)],
 );

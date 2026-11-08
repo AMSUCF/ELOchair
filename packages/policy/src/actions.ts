@@ -2,46 +2,72 @@ import type { Contribution, Submission } from "@elochair/schema";
 import type { Viewer } from "./viewer";
 
 /*
- * Who may change a submission. Like submissionAccess(), this is the single place the rule
- * lives; routes ask, they do not decide. Agents never change submissions.
- * Whether the call is open (phase and deadlines) is checked separately: see isCallOpen().
+ * Who may change a submission, and when. Like submissionAccess(), this is the single place the
+ * rule lives; routes ask, they do not decide. Agents never change submissions.
  */
 
 export type SubmissionAction =
-  /** Change title, abstract, fields, track, topics, language (and type while a draft). */
+  /** Change title, abstract, fields, track, topics, language, mode (type only while a draft). */
   | "edit"
-  /** Invite, re-role, reorder or remove co-authors. */
+  /** Invite, re-role, reorder, resend to or remove co-authors. */
   | "manage_contributors"
   | "submit"
+  /** Back to draft (before the close), e.g. to change format or swap a whole panel. */
+  | "unsubmit"
   | "withdraw"
+  | "delete_draft"
   /** Confirm or decline one's own pending invitation. */
-  | "answer_invitation";
+  | "answer_invitation"
+  /** A confirmed co-author (not the owner) takes themselves off. */
+  | "leave";
+
+/**
+ * When each action is possible: "open_call" needs isCallOpen(); "withdraw_phases" needs the
+ * conference in one of WITHDRAW_PHASES; "always" needs nothing beyond the status rules below.
+ * Answering an invitation is "always" so that declining is always possible; confirming
+ * additionally needs an open call, which the route checks.
+ */
+export const ACTION_TIMING: Record<SubmissionAction, "open_call" | "withdraw_phases" | "always"> = {
+  edit: "open_call",
+  manage_contributors: "open_call",
+  submit: "open_call",
+  unsubmit: "open_call",
+  delete_draft: "open_call",
+  withdraw: "withdraw_phases",
+  answer_invitation: "always",
+  leave: "always",
+};
+
+export const WITHDRAW_PHASES = new Set(["cfp_open", "reviewing", "deciding"]);
 
 const EDITABLE = new Set<Submission["status"]>(["draft", "submitted"]);
 
-function ownContribution(viewer: Viewer, contributions: Contribution[]): Contribution | undefined {
-  if (viewer.kind !== "person") return undefined;
-  return contributions.find((c) => c.personId === viewer.personId);
-}
-
 export function canActOnSubmission(
   viewer: Viewer,
-  ctx: { submission: Pick<Submission, "status">; contributions: Contribution[] },
+  ctx: {
+    submission: Pick<Submission, "status" | "ownerPersonId">;
+    contributions: Pick<Contribution, "personId" | "status">[];
+  },
   action: SubmissionAction,
 ): boolean {
-  const mine = ownContribution(viewer, ctx.contributions);
-  if (!mine) return false;
+  if (viewer.kind !== "person") return false;
   const status = ctx.submission.status;
-  if (action === "answer_invitation") return mine.status === "invited" && EDITABLE.has(status);
+  const isOwner = ctx.submission.ownerPersonId === viewer.personId;
+  const mine = ctx.contributions.find((c) => c.personId === viewer.personId);
 
-  const isLead = mine.role === "lead" && mine.status === "confirmed";
-  if (!isLead) return false;
   switch (action) {
     case "edit":
     case "manage_contributors":
-    case "withdraw":
-      return EDITABLE.has(status);
+      return isOwner && EDITABLE.has(status);
     case "submit":
-      return status === "draft";
+    case "delete_draft":
+      return isOwner && status === "draft";
+    case "unsubmit":
+    case "withdraw":
+      return isOwner && status === "submitted";
+    case "answer_invitation":
+      return mine?.status === "invited" && status !== "withdrawn";
+    case "leave":
+      return !isOwner && mine?.status === "confirmed" && status !== "withdrawn";
   }
 }

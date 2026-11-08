@@ -3,18 +3,22 @@ import {
   type BlindMode,
   type Contribution,
   type ContributionRole,
+  type ContributionStatus,
   countWords,
   type FieldValue,
   findType,
   type Person,
   type Submission,
+  type SubmissionIssue,
 } from "@elochair/schema";
 import { type Access, type SubmissionContext, submissionAccess } from "./access";
+import { selfIdFindings, shownIdentity, submissionIssues } from "./derived";
 import type { Viewer } from "./viewer";
 
 /*
  * Projections: the only code that turns records into what a viewer may see.
  * Each output type is an explicit allow-list, so a new database column cannot leak by default.
+ * Invitees appear as the owner typed them until they confirm; declined people only to chairs.
  */
 
 export type PublicContributor = {
@@ -46,10 +50,19 @@ export type MetadataSubmission = {
   trackKey: string | null;
   topicKeys: string[];
   language: string;
+  participationMode: Submission["participationMode"];
   status: Submission["status"];
   abstractWords: number;
   filledFieldKeys: string[];
-  contributors: { personId: string; role: ContributionRole; position: number }[];
+  contributors: {
+    personId: string;
+    role: ContributionRole;
+    position: number;
+    status: ContributionStatus;
+  }[];
+  /** Rule violations (codes only); non-empty on submitted work means "incomplete". */
+  issueCodes: SubmissionIssue["code"][];
+  selfIdWarningCount: number;
   /** Absent when the agent's owner is a contributor (they must not learn who reviews it). */
   assignedReviewerIds?: string[];
   createdAt: string;
@@ -69,36 +82,78 @@ export type ReviewerSubmission = {
   title: string;
   abstract: string;
   fields: Record<string, FieldValue>;
-  /** Absent in double-blind review. Never includes email. */
+  /** Confirmed contributors only; absent in double-blind review. Never includes email. */
   contributors?: {
     displayName: string;
     affiliation: string | null;
     role: ContributionRole;
-    bio?: string | null;
+    bios?: Record<string, string>;
   }[];
 };
 
-export type FullContributor = {
+export type SubmitterContributor = {
   personId: string;
   role: ContributionRole;
   position: number;
+  status: ContributionStatus;
+  isOwner: boolean;
+  displayName: string | null;
+  affiliation: string | null;
+  /** Hidden from invitees until they confirm. */
+  email: string | null;
+};
+
+type SubmissionCore = Pick<
+  Submission,
+  | "id"
+  | "conferenceId"
+  | "ownerPersonId"
+  | "version"
+  | "typeKey"
+  | "trackKey"
+  | "topicKeys"
+  | "language"
+  | "title"
+  | "abstract"
+  | "fields"
+  | "participationMode"
+  | "status"
+  | "createdAt"
+  | "updatedAt"
+  | "submittedAt"
+>;
+
+export type SubmitterSubmission = SubmissionCore & {
+  view: "submitter" | "invitee";
+  contributors: SubmitterContributor[];
+};
+
+export type ChairContributor = {
+  personId: string;
+  role: ContributionRole;
+  position: number;
+  status: ContributionStatus;
+  isOwner: boolean;
+  /** From the person's profile (may be empty for people who never signed in). */
   displayName: string | null;
   email: string;
   affiliation: string | null;
+  country: string | null;
+  pronouns: string | null;
+  /** Self-declared until ORCID sign-in exists. */
+  orcid: string | null;
+  bios: Record<string, string>;
+  /** What the owner typed when inviting (null for the owner). */
+  invitedEmail: string | null;
+  invitedName: string | null;
+  invitedAffiliation: string | null;
 };
 
-export type SubmitterSubmission = Omit<Submission, never> & {
-  view: "submitter";
-  contributors: FullContributor[];
-};
-
-export type ChairSubmission = Omit<Submission, never> & {
+export type ChairSubmission = SubmissionCore & {
   view: "chair";
-  contributors: (FullContributor & {
-    bio: string | null;
-    country: string | null;
-    orcid: string | null;
-  })[];
+  contributors: ChairContributor[];
+  issueCodes: SubmissionIssue["code"][];
+  selfIdWarningCount: number;
   assignedReviewerIds: string[];
   conflictCount: number;
 };
@@ -115,13 +170,9 @@ export type SubmissionRecord = SubmissionContext & {
   people: Map<string, Person>;
 };
 
-const sortedContributions = (cs: Contribution[]) => [...cs].sort((a, b) => a.position - b.position);
-
-function personOf(rec: SubmissionRecord, id: string): Person {
-  const p = rec.people.get(id);
-  if (!p) throw new Error(`missing person ${id} for submission ${rec.submission.id}`);
-  return p;
-}
+const ordered = (cs: Contribution[]) => [...cs].sort((a, b) => a.position - b.position);
+const confirmed = (cs: Contribution[]) => ordered(cs).filter((c) => c.status === "confirmed");
+const live = (cs: Contribution[]) => ordered(cs).filter((c) => c.status !== "declined");
 
 function fieldsWhere(
   rec: SubmissionRecord,
@@ -136,10 +187,12 @@ function fieldsWhere(
   return out;
 }
 
-function baseCopy(s: Submission): Submission {
+function core(s: Submission): SubmissionCore {
   return {
     id: s.id,
     conferenceId: s.conferenceId,
+    ownerPersonId: s.ownerPersonId,
+    version: s.version,
     typeKey: s.typeKey,
     trackKey: s.trackKey,
     topicKeys: [...s.topicKeys],
@@ -147,6 +200,7 @@ function baseCopy(s: Submission): Submission {
     title: s.title,
     abstract: s.abstract,
     fields: { ...s.fields },
+    participationMode: s.participationMode,
     status: s.status,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
@@ -154,27 +208,24 @@ function baseCopy(s: Submission): Submission {
   };
 }
 
-function fullContributors(rec: SubmissionRecord): FullContributor[] {
-  return sortedContributions(rec.contributions).map((c) => {
-    const p = personOf(rec, c.personId);
-    return {
-      personId: c.personId,
-      role: c.role,
-      position: c.position,
-      displayName: p.displayName,
-      email: p.email,
-      affiliation: p.affiliation,
-    };
-  });
-}
-
 const reviewerIds = (assignments: Assignment[]) => assignments.map((a) => a.reviewerId).sort();
+const issueCodes = (rec: SubmissionRecord) =>
+  [
+    ...new Set(
+      submissionIssues(rec.config, rec.submission, rec.contributions, rec.people).map(
+        (i) => i.code,
+      ),
+    ),
+  ].sort();
+const selfIdCount = (rec: SubmissionRecord) =>
+  selfIdFindings(rec.config, rec.submission, rec.contributions, rec.people).length;
 
 export function renderSubmission(
   access: Access,
   rec: SubmissionRecord,
 ): ProjectedSubmission | null {
   const s = rec.submission;
+  const person = (id: string) => rec.people.get(id);
   switch (access) {
     case "none":
       return null;
@@ -190,10 +241,11 @@ export function renderSubmission(
         title: s.title,
         abstract: s.abstract,
         fields: fieldsWhere(rec, (f) => f.public),
-        contributors: sortedContributions(rec.contributions).map((c) => {
-          const p = personOf(rec, c.personId);
-          return { displayName: p.displayName ?? "", affiliation: p.affiliation, role: c.role };
-        }),
+        contributors: confirmed(rec.contributions).map((c) => ({
+          displayName: person(c.personId)?.displayName ?? "",
+          affiliation: person(c.personId)?.affiliation ?? null,
+          role: c.role,
+        })),
       };
     case "metadata":
     case "metadata_own":
@@ -205,14 +257,18 @@ export function renderSubmission(
         trackKey: s.trackKey,
         topicKeys: [...s.topicKeys],
         language: s.language,
+        participationMode: s.participationMode,
         status: s.status,
         abstractWords: countWords(s.abstract, s.language),
         filledFieldKeys: Object.keys(s.fields).sort(),
-        contributors: sortedContributions(rec.contributions).map((c) => ({
+        contributors: ordered(rec.contributions).map((c) => ({
           personId: c.personId,
           role: c.role,
           position: c.position,
+          status: c.status,
         })),
+        issueCodes: issueCodes(rec),
+        selfIdWarningCount: selfIdCount(rec),
         ...(access === "metadata" ? { assignedReviewerIds: reviewerIds(rec.assignments) } : {}),
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
@@ -236,28 +292,63 @@ export function renderSubmission(
         fields: fieldsWhere(rec, (f) => blindMode !== "double" || !f.identifying),
       };
       if (blindMode !== "double") {
-        out.contributors = sortedContributions(rec.contributions).map((c) => {
-          const p = personOf(rec, c.personId);
+        out.contributors = confirmed(rec.contributions).map((c) => {
+          const p = person(c.personId);
           const shown = {
-            displayName: p.displayName ?? "",
-            affiliation: p.affiliation,
+            displayName: p?.displayName ?? "",
+            affiliation: p?.affiliation ?? null,
             role: c.role,
           };
-          return blindMode === "open" ? { ...shown, bio: p.bio } : shown;
+          return blindMode === "open" ? { ...shown, bios: { ...(p?.bios ?? {}) } } : shown;
         });
       }
       return out;
     }
     case "submitter":
-      return { ...baseCopy(s), view: "submitter", contributors: fullContributors(rec) };
+    case "invitee":
+      return {
+        ...core(s),
+        view: access,
+        contributors: live(rec.contributions).map((c) => {
+          const shown = shownIdentity(c, person(c.personId));
+          return {
+            personId: c.personId,
+            role: c.role,
+            position: c.position,
+            status: c.status,
+            isOwner: c.personId === s.ownerPersonId,
+            displayName: shown.displayName,
+            affiliation: shown.affiliation,
+            email: access === "submitter" ? shown.email : null,
+          };
+        }),
+      };
     case "chair":
       return {
-        ...baseCopy(s),
+        ...core(s),
         view: "chair",
-        contributors: fullContributors(rec).map((c) => {
-          const p = personOf(rec, c.personId);
-          return { ...c, bio: p.bio, country: p.country, orcid: p.orcid };
+        contributors: ordered(rec.contributions).map((c) => {
+          const p = person(c.personId);
+          return {
+            personId: c.personId,
+            role: c.role,
+            position: c.position,
+            status: c.status,
+            isOwner: c.personId === s.ownerPersonId,
+            displayName: p?.displayName ?? null,
+            email: p?.email ?? c.invitedEmail ?? "",
+            affiliation: p?.affiliation ?? null,
+            country: p?.country ?? null,
+            pronouns: p?.pronouns ?? null,
+            orcid: p?.orcid ?? null,
+            bios: { ...(p?.bios ?? {}) },
+            invitedEmail: c.invitedEmail,
+            invitedName: c.invitedName,
+            invitedAffiliation: c.invitedAffiliation,
+          };
         }),
+        issueCodes: issueCodes(rec),
+        selfIdWarningCount: selfIdCount(rec),
         assignedReviewerIds: reviewerIds(rec.assignments),
         conflictCount: rec.conflicts.length,
       };
@@ -272,10 +363,57 @@ export function projectSubmission(
   return renderSubmission(submissionAccess(viewer, rec), rec);
 }
 
-/** What someone may see of a person record outside any submission (e.g. a profile page). */
+/** What someone may see of their own person record (e.g. the account page). */
 export type SelfPerson = Person & { view: "self" };
 
 export function projectSelf(viewer: Viewer, person: Person): SelfPerson | null {
   if (viewer.kind !== "person" || viewer.personId !== person.id) return null;
-  return { ...person, languages: [...person.languages], view: "self" };
+  return {
+    ...person,
+    languages: [...person.languages],
+    bios: { ...person.bios },
+    view: "self",
+  };
+}
+
+/**
+ * The submission check for its contributors and chairs (human sessions only): blocking issues,
+ * where self-identifying details appear (path and kind, never the detail itself), and the
+ * viewer's own presenter-cap count. Nothing about other people's other submissions.
+ */
+export type SubmissionCheck = {
+  issues: SubmissionIssue[];
+  selfIdentification: { path: string; kind: string }[];
+  /** The viewer's own count across submitted work (null for chairs or when there is no cap). */
+  presenterCap: { count: number; max: number } | null;
+  /** Positions of confirmed contributors without a bio, when the conference asks for bios. */
+  missingBios: number[];
+};
+
+export function projectCheck(
+  viewer: Viewer,
+  rec: SubmissionRecord,
+  ownCapCount: number | null,
+): SubmissionCheck | null {
+  if (viewer.kind !== "person") return null;
+  const access = submissionAccess(viewer, rec);
+  if (access !== "submitter" && access !== "invitee" && access !== "chair") return null;
+  const { config, submission, contributions, people } = rec;
+  const cap = config.rules.presenterCap;
+  return {
+    issues: submissionIssues(config, submission, contributions, people),
+    selfIdentification: selfIdFindings(config, submission, contributions, people).map((w) => ({
+      path: w.path,
+      kind: w.kind,
+    })),
+    presenterCap:
+      access !== "chair" && cap && ownCapCount !== null
+        ? { count: ownCapCount, max: cap.max }
+        : null,
+    missingBios: config.rules.bio?.requested
+      ? confirmed(contributions)
+          .filter((c) => Object.values(people.get(c.personId)?.bios ?? {}).every((b) => !b.trim()))
+          .map((c) => c.position)
+      : [],
+  };
 }

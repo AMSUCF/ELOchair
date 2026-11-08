@@ -4,6 +4,7 @@ export { isCallOpen } from "./call";
  * Type imports from "@elochair/schema" are erased at build time and cost nothing.
  */
 export { presenterCapReport } from "./cap";
+export { LIMITS } from "./limits";
 export { effectiveBlindMode, findType } from "./lookup";
 export {
   type IdentityHint,
@@ -13,4 +14,5 @@ export {
   selfIdentificationWarnings,
 } from "./selfid";
 export { localize, localizeWithLang } from "./text";
+export { type SubmissionIssue, sizeIssues, validateSubmission } from "./validate";
 export { countWords } from "./words";

@@ -7,6 +7,8 @@ export type CapReport = {
   max: number | null;
   counts: CapCount[];
   over: CapCount[];
+  /** Counted roles still awaiting the invitee's confirmation: never counted toward anyone. */
+  pendingCount: number;
 };
 
 /**
@@ -17,11 +19,11 @@ export type CapReport = {
 export function presenterCapReport(
   config: ConferenceConfig,
   submissions: Pick<Submission, "id" | "typeKey" | "status">[],
-  contributions: Contribution[],
+  contributions: Pick<Contribution, "submissionId" | "personId" | "role" | "status">[],
   statuses: readonly SubmissionStatus[],
 ): CapReport {
   const rule = config.rules.presenterCap;
-  if (!rule) return { max: null, counts: [], over: [] };
+  if (!rule) return { max: null, counts: [], over: [], pendingCount: 0 };
 
   const counted = new Set(
     config.submissionTypes.filter((t) => t.countsTowardPresenterCap).map((t) => t.key),
@@ -34,8 +36,12 @@ export function presenterCapReport(
   const roles = new Set<string>(rule.countedRoles);
 
   const byPerson = new Map<string, Set<string>>();
+  let pendingCount = 0;
   for (const c of contributions) {
     if (!eligible.has(c.submissionId) || !roles.has(c.role)) continue;
+    // Only people who confirmed count: nobody can push someone else over the cap.
+    if (c.status === "invited") pendingCount++;
+    if (c.status !== "confirmed") continue;
     const ids = byPerson.get(c.personId) ?? new Set<string>();
     ids.add(c.submissionId);
     byPerson.set(c.personId, ids);
@@ -44,5 +50,5 @@ export function presenterCapReport(
   const counts = [...byPerson]
     .map(([personId, ids]) => ({ personId, count: ids.size, submissionIds: [...ids].sort() }))
     .sort((a, b) => b.count - a.count || a.personId.localeCompare(b.personId));
-  return { max: rule.max, counts, over: counts.filter((c) => c.count > rule.max) };
+  return { max: rule.max, counts, over: counts.filter((c) => c.count > rule.max), pendingCount };
 }

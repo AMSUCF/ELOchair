@@ -36,7 +36,51 @@ export const elo2027: ConferenceConfigInput = {
     notification: "2027-04-30T23:59:00-05:00",
     finalMaterials: "2027-05-31T23:59:00-05:00",
   },
-  rules: { presenterCap: { max: 2, countedRoles: ["lead", "presenter"] } },
+  rules: {
+    presenterCap: { max: 2, countedRoles: ["lead", "presenter"] },
+    bio: { requested: true, maxWords: 300 },
+  },
+  // PLACEHOLDERS: replace with ELO's actual policy texts before the call opens.
+  agreements: [
+    {
+      key: "privacy",
+      version: "draft-1",
+      title: {
+        en: "Privacy notice: how ELO uses your personal data",
+        es: "Aviso de privacidad: cómo usa la ELO tus datos personales",
+        pt: "Aviso de privacidade: como a ELO usa os seus dados pessoais",
+      },
+      text: {
+        en: "ELO stores your name, email, affiliation and submissions to run the conference review and program, and publishes accepted work in the open-access archive. Placeholder text pending ELO's privacy notice.",
+        es: "La ELO guarda tu nombre, correo, institución y envíos para gestionar la revisión y el programa del congreso, y publica los trabajos aceptados en el archivo de acceso abierto. Texto provisional hasta contar con el aviso de privacidad de la ELO.",
+        pt: "A ELO guarda o seu nome, email, instituição e submissões para gerir a revisão e o programa do congresso, e publica os trabalhos aceites no arquivo de acesso aberto. Texto provisório até existir o aviso de privacidade da ELO.",
+      },
+    },
+    {
+      key: "code_of_conduct",
+      version: "draft-1",
+      title: {
+        en: "ELO Code of Conduct",
+        es: "Código de conducta de la ELO",
+        pt: "Código de conduta da ELO",
+      },
+      url: "https://eliterature.org/",
+    },
+    {
+      key: "recordings",
+      version: "draft-1",
+      title: {
+        en: "Recordings policy: sessions are recorded and published open access",
+        es: "Política de grabaciones: las sesiones se graban y se publican en acceso abierto",
+        pt: "Política de gravações: as sessões são gravadas e publicadas em acesso aberto",
+      },
+      text: {
+        en: "Sessions are recorded and published open access after the conference. Placeholder text pending ELO's recordings policy.",
+        es: "Las sesiones se graban y se publican en acceso abierto después del congreso. Texto provisional hasta contar con la política de grabaciones de la ELO.",
+        pt: "As sessões são gravadas e publicadas em acesso aberto depois do congresso. Texto provisório até existir a política de gravações da ELO.",
+      },
+    },
+  ],
   tracks: [],
   topics: [],
   reviewPools: [

@@ -10,13 +10,12 @@ const sub = (id: string, typeKey: string, status = "submitted" as const) => ({
   typeKey,
   status,
 });
-const c = (submissionId: string, personId: string, role: Contribution["role"]): Contribution => ({
-  submissionId,
-  personId,
-  role,
-  position: 0,
-  status: "confirmed",
-});
+const c = (
+  submissionId: string,
+  personId: string,
+  role: Contribution["role"],
+  status: Contribution["status"] = "confirmed",
+) => ({ submissionId, personId, role, status });
 
 describe("presenterCapReport", () => {
   const submissions = [
@@ -60,6 +59,26 @@ describe("presenterCapReport", () => {
       max: null,
       counts: [],
       over: [],
+      pendingCount: 0,
     });
+  });
+});
+
+describe("presenter cap and invitations", () => {
+  it("counts only confirmed roles, so nobody can push someone else over the cap", () => {
+    const report = presenterCapReport(
+      config,
+      [sub("s1", "talk"), sub("s2", "talk"), sub("s3", "talk")],
+      [
+        c("s1", "eve", "lead"),
+        c("s2", "eve", "presenter"),
+        c("s3", "eve", "presenter", "invited"),
+        c("s3", "x", "lead", "declined"),
+      ],
+      ["submitted"],
+    );
+    expect(report.over).toEqual([]);
+    expect(report.counts).toEqual([{ personId: "eve", count: 2, submissionIds: ["s1", "s2"] }]);
+    expect(report.pendingCount).toBe(1);
   });
 });

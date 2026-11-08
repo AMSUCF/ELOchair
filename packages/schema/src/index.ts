@@ -4,6 +4,7 @@ export * as conferences from "./conferences";
 export * from "./config";
 export * from "./domain";
 export * from "./i18n";
+export * from "./inputs";
 export * from "./selfid";
 export * from "./validate";
 export * from "./words";

@@ -28,13 +28,23 @@ export type Access =
   /** Tier M view of the owner's own submission: no reviewer assignments. */
   | "metadata_own"
   | `reviewer_${BlindMode}`
+  /** Owner or confirmed co-author: the full submission, every live contributor. */
   | "submitter"
+  /** Invited, not yet confirmed: the submission, but other contributors' emails stay hidden. */
+  | "invitee"
   | "chair";
 
 const REVIEWABLE = new Set(["submitted", "accepted", "waitlisted", "rejected", "confirmed"]);
 
+/** Never submitted: a draft in all but name (e.g. withdrawn before ever being submitted). */
+export function isNeverSubmitted(s: Pick<Submission, "status" | "submittedAt">): boolean {
+  return s.status === "draft" || s.submittedAt === null;
+}
+
 function isConflicted(personId: string, ctx: SubmissionContext): boolean {
-  const authors = new Set(ctx.contributions.map((c) => c.personId));
+  const authors = new Set(
+    ctx.contributions.filter((c) => c.status !== "declined").map((c) => c.personId),
+  );
   return ctx.conflicts.some(
     (c) =>
       c.personId === personId &&
@@ -45,11 +55,15 @@ function isConflicted(personId: string, ctx: SubmissionContext): boolean {
 
 function personAccess(p: PersonViewer, ctx: SubmissionContext, baseline: Access): Access {
   const { submission: s } = ctx;
-  // Contributor rule: your own work, always as a submitter, whatever else you are.
-  if (ctx.contributions.some((c) => c.personId === p.personId)) return "submitter";
+  // Contributor rule: your own work, always as a submitter, whatever else you are. An invitee
+  // already counts (and is conflicted from the moment of the invitation). Someone who declined
+  // or left is no longer a contributor; their invitation conflict keeps them out as a reviewer.
+  const mine = ctx.contributions.find((c) => c.personId === p.personId);
+  if (mine?.status === "confirmed") return "submitter";
+  if (mine?.status === "invited") return "invitee";
 
-  // Nobody but contributors sees drafts.
-  if (s.status === "draft") return baseline;
+  // Nobody but contributors sees work that was never submitted.
+  if (isNeverSubmitted(s)) return baseline;
 
   // Conflict rule: conflicted chairs and reviewers see only what the public sees.
   if (isConflicted(p.personId, ctx)) return baseline;
@@ -95,5 +109,5 @@ export function submissionAccess(viewer: Viewer, ctx: SubmissionContext): Access
   if (ctx.submission.status === "published") return "public";
   if (owner === "none") return "none";
   // A chair's agent looking at the chair's own submission must not learn who reviews it.
-  return owner === "submitter" ? "metadata_own" : "metadata";
+  return owner === "submitter" || owner === "invitee" ? "metadata_own" : "metadata";
 }

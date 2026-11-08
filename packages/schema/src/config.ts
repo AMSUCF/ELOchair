@@ -18,6 +18,30 @@ export type ContributionRole = z.infer<typeof ContributionRole>;
 
 export const Modality = z.enum(["online", "in_person", "hybrid"]);
 
+/** Conference phases, in order. They move forward only, except draft ⇄ cfp_open. */
+export const ConferencePhase = z.enum([
+  "draft",
+  "cfp_open",
+  "reviewing",
+  "deciding",
+  "confirming",
+  "scheduling",
+  "published",
+  "archived",
+]);
+export type ConferencePhase = z.infer<typeof ConferencePhase>;
+
+/** Whether a phase change is allowed without --force. */
+export function isForwardPhaseMove(from: string, to: string): boolean {
+  const order = ConferencePhase.options as readonly string[];
+  const a = order.indexOf(from);
+  const b = order.indexOf(to);
+  if (a < 0 || b < 0) return false;
+  if ((from === "draft" && to === "cfp_open") || (from === "cfp_open" && to === "draft"))
+    return true;
+  return b > a;
+}
+
 export const IsoDateTime = z.iso.datetime({ offset: true });
 export const IsoDate = z.iso.date();
 
@@ -75,6 +99,20 @@ export const FieldKind = z.enum([
   "boolean",
   "number",
 ]);
+
+/**
+ * Something participants must acknowledge: the privacy notice, code of conduct, recordings policy.
+ * Owners acknowledge the current version to submit; invitees to confirm. Bump the version when
+ * the text changes, and everyone acknowledges again next time.
+ */
+export const Agreement = z.object({
+  key: Key,
+  title: LocalizedText,
+  url: z.url().optional(),
+  text: LocalizedText.optional(),
+  version: z.string().min(1).max(40),
+});
+export type Agreement = z.infer<typeof Agreement>;
 
 export const CustomField = z.object({
   key: Key,
@@ -137,7 +175,10 @@ const ConferenceConfigShape = z.object({
     presenterCap: z
       .object({ max: z.int().min(1), countedRoles: z.array(ContributionRole).min(1) })
       .nullable(),
+    /** Whether contributors are asked for a bio, and how long it may be. Missing: not asked. */
+    bio: z.object({ requested: z.boolean(), maxWords: z.int().positive() }).optional(),
   }),
+  agreements: z.array(Agreement).default([]),
   tracks: z.array(z.object({ key: Key, name: LocalizedText })).default([]),
   topics: z.array(z.object({ key: Key, label: LocalizedText })).default([]),
   reviewPools: z.array(ReviewPool).min(1),
@@ -182,6 +223,15 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     ["topics"],
     c.topics.map((t) => t.key),
   );
+  unique(
+    ["agreements"],
+    c.agreements.map((a) => a.key),
+  );
+  for (const [i, a] of c.agreements.entries()) {
+    text(["agreements", i, "title"], a.title);
+    text(["agreements", i, "text"], a.text);
+    if (!a.url && !a.text) issue(["agreements", i], "an agreement needs a url or a text");
+  }
   unique(
     ["reviewPools"],
     c.reviewPools.map((p) => p.key),

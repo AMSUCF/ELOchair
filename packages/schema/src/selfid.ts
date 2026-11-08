@@ -80,19 +80,57 @@ export function normalizeWords(s: string): string {
 const stripAccents = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function surnameOf(displayName: string): string | null {
-  const words = normalizeWords(displayName).trim().split(" ");
-  const last = words.at(-1);
-  return words.length >= 2 && last && last.length >= 3 ? last : null;
+/** Name particles that are never cited on their own ("de la Cruz" is cited as "Cruz"). */
+const PARTICLES = new Set([
+  "de",
+  "del",
+  "la",
+  "las",
+  "los",
+  "da",
+  "das",
+  "do",
+  "dos",
+  "di",
+  "du",
+  "y",
+  "e",
+  "van",
+  "von",
+  "der",
+  "den",
+  "le",
+  "el",
+  "al",
+  "bin",
+  "ibn",
+]);
+
+/**
+ * Words that may be cited as a surname: every word after the first with at least three letters
+ * that is not a particle. "María José Rodríguez Vera" gives josé, rodríguez and vera (normalized),
+ * so "(Rodríguez 2021)" is found as well as "(Vera 2021)".
+ */
+export function surnameCandidates(displayName: string): string[] {
+  const words = normalizeWords(displayName).trim().split(" ").filter(Boolean);
+  if (words.length < 2) return [];
+  return [...new Set(words.slice(1).filter((w) => w.length >= 3 && !PARTICLES.has(w)))];
 }
 
-function urlsIn(text: string): { host: string; rest: string }[] {
-  const out: { host: string; rest: string }[] = [];
+/** URLs in text, with their host labels and path segments split for whole-word matching. */
+function urlsIn(text: string): { host: string; parts: Set<string> }[] {
+  const out: { host: string; parts: Set<string> }[] = [];
   const re = /\b(?:https?:\/\/|www\.)[^\s<>()"']+/giu;
   for (const m of text.matchAll(re)) {
     try {
       const u = new URL(m[0].startsWith("www.") ? `https://${m[0]}` : m[0]);
-      out.push({ host: u.hostname.toLowerCase(), rest: stripAccents(u.pathname + u.search) });
+      const host = u.hostname.toLowerCase();
+      const parts = new Set(
+        stripAccents(`${host}/${decodeURIComponent(u.pathname)}`)
+          .split(/[./\-_~]+/)
+          .filter(Boolean),
+      );
+      out.push({ host, parts });
     } catch {
       // not a URL after all
     }
@@ -121,8 +159,7 @@ export function selfIdentificationWarnings(
       if (name) {
         const n = normalizeWords(name);
         if (n.trim().split(" ").length >= 2 && words.includes(n)) add(path, "name", name);
-        const surname = surnameOf(name);
-        if (surname) {
+        for (const surname of surnameCandidates(name)) {
           const s = escapeRe(surname);
           // "(Pérez 2021)", "(Smith and Pérez, eds., 2020)" or "Pérez (2019)"
           const citation = new RegExp(
@@ -153,11 +190,11 @@ export function selfIdentificationWarnings(
 
       const domain = email.split("@")[1];
       const ownDomain = domain && !GENERIC_MAIL_DOMAINS.has(domain) ? domain : null;
-      const surname = name ? surnameOf(name) : null;
+      // Surnames match whole host labels or path segments only ("cruz" is not in veracruz.gob.mx).
+      const surnames = name ? surnameCandidates(name).filter((w) => w.length >= 4) : [];
       for (const u of urls) {
         const onOwnDomain = ownDomain && (u.host === ownDomain || u.host.endsWith(`.${ownDomain}`));
-        const hasSurname =
-          surname && surname.length >= 4 && (u.host.includes(surname) || u.rest.includes(surname));
+        const hasSurname = surnames.some((w) => u.parts.has(w));
         if (onOwnDomain || hasSurname) add(path, "url", u.host);
       }
     }

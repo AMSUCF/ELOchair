@@ -2,137 +2,238 @@
 
 **Phase:** Submission MVP (plan §9: Nov 23 – Dec 20, 2026). The portal opens in January 2027.
 **Builds on:** [spec 01](01-foundations.md). It follows the house rules in [AGENTS.md](../../AGENTS.md) throughout.
+**Revision 2:** three independent critics reviewed the first draft before any routes were built (security and privacy, ELO process and UX, maintainability and agents). This version adopts their findings; [Deferred](#deferred) lists what was set aside and why.
 
-The goal is to open a call for proposals that people can submit to from a phone, in English, Spanish or Portuguese. Chairs can follow along, and so can their agents, without seeing anything the policy hides.
+The goal is to open a call for proposals that people can submit to from a phone, in English, Spanish or Portuguese. Chairs can follow along, and so can their agents, without seeing anything the policy hides, and without the system becoming a way to probe, spam or impersonate people.
 
-## Decisions taken for this spec
+## 1. Rules
 
-These are the plan's accepted defaults, made concrete. Change them in review, not in code.
+### 1.1 Who can do what
+- **The owner** is the person who creates a submission (`submissions.owner_person_id`). The owner cannot be changed in this phase.
+  - Only the owner edits content, manages co-authors, submits, returns to draft, withdraws and deletes drafts.
+  - Edit rights never depend on the program role. The owner picks their own role (lead, presenter, co-author, panelist, moderator), so someone filing for a panel they will only moderate is not counted as a presenter.
+  - The owner's contribution row cannot be removed; its role and position can change.
+- **Co-authors** are invited by email with a role. That role excludes `lead`: there is exactly one lead, chosen by the owner, either themselves or a confirmed co-author.
+  - **Invited co-authors** can see the submission and confirm or decline.
+  - **Confirmed co-authors** can see it and leave it.
+  - Neither can edit.
+- **Agents never change submissions.** Write routes answer 403 `agents_read_only` before any other check.
+- **The decision lives in `packages/policy`** (`canActOnSubmission`). Routes ask the policy; they do not decide.
 
-- **Who edits.** The **lead** (the person who created the submission) edits content, manages co-authors, submits and withdraws. Co-authors can see the submission (submitter view) and confirm or decline their invitation, but cannot edit it. This avoids edit conflicts and is easy to explain.
-- **Co-authors.** The lead invites a co-author by email, with a role.
-  - If the person is new, the lead may supply their name and affiliation. The lead can never overwrite an existing person's profile.
-  - An invited co-author counts as a contributor straight away (strict blindness). Declining removes them.
-  - A submission can be submitted while invitations are pending.
-- **When editing is allowed.** Creating, editing, submitting and withdrawing need the conference in phase `cfp_open` *and* the current time inside the submission window from `deadlines`.
-  - After the window, submissions are read-only.
-  - A submitted submission stays editable until the deadline. Every edit is validated and audited.
-- **Warnings, not blocks.** Two things warn but never stop a submission:
-  - **Self-identification:** an anonymized text mentions an author's name, affiliation, email, ORCID iD, or a web address on an author's own domain. This applies only to double-blind types.
-  - **Presenter cap:** someone would hold more than the cap of counted roles across submitted work.
+### 1.2 Invitations protect the invitee
+- The invitation stores what the owner typed: `invited_email`, plus optionally `invited_name`, `invited_affiliation` and `invited_lang`.
+  - Nothing the owner types is ever written to `people`.
+  - Until the invitee confirms, every view renders that contributor from the invitation fields only, never from their profile. Answers are therefore identical whether or not the address already has an account.
+- **Inviting creates a conflict** (`kind: coauthor, declared_by: system`) between the invitee and the submission. It survives declining or leaving, so someone who has seen the full submission can never be assigned to review it.
+- **Declining or leaving** sets status `declined`; the row is kept as evidence.
+  - Declined contributors disappear from every view except the chair view, and from team counts and the presenter cap.
+  - Declining is always allowed, even after the deadline, because a person must always be able to refuse authorship.
+  - The owner is emailed whenever someone confirms, declines or leaves.
+- **Single-blind, open and public views list only confirmed contributors.** An unconfirmed name is never shown to reviewers.
+- **Limits:**
+  - 20 invitations per owner per day, and 5 per recipient address per day across all owners.
+  - Pending plus confirmed contributors may not exceed the type's `team.max`.
+  - Someone who declined cannot be re-invited to the same submission.
+  - Resending is limited to once an hour per invitation.
+- **The invitation email** is fixed text in the invitee's language:
+  - It contains the owner's display name (one line, with links removed), the conference title, the format, the role, and a link.
+  - It contains no submission title, no abstract, and no name the owner typed for the invitee. ELO's signed mail must not carry text an attacker wrote.
+- **The invitation link** carries a single-use token, stored only as a hash. It expires at `submissionsClose` or after 14 days, whichever is later; declining stays possible after the close.
+  - It opens `/:lang/invitation#token`. That page shows the conference, the format, the title, the owner, the role, and what the role means for the presenter cap.
+  - **Decline** needs no account.
+  - **Confirm** needs the agreements to be acknowledged (§1.5). It does not sign the person in; it offers sign-in afterwards to complete a profile.
 
-  **Blocking errors** are the existing `validateSubmission` issues: word limits, required fields, team size, a lead.
-- **Dry run.** Committee volunteers try the CFP on a separate conference (for example `elo2027-dryrun`), imported with `import-config` and opened with `set-phase`. No special mode exists.
-- **Mail language.** Mail goes in the recipient's first profile language among en, es and pt, or else the language of the request.
+### 1.3 Lifecycle and deadlines
+- `draft → submitted ⇄ draft` (return to draft, before the close) `→ withdrawn` (final).
+- Drafts are created only by an explicit **Start**, after a format and abstract language are chosen.
+- Drafts can be deleted outright: a hard delete by the owner. The audit row keeps IDs only, and pending invitees are told.
+- **The call is open** when the phase is `cfp_open` and the server's receipt time `t` satisfies `submissionsOpen ≤ t < submissionsClose` (`isCallOpen`). There is no grace period, and the client clock never decides anything.
+  - Create, edit, invite, remove, return to draft, submit and delete need an open call.
+  - **Withdraw** (from `submitted` only) is allowed in phases `cfp_open`, `reviewing` and `deciding`, whether or not the call is open. Withdrawal mail goes to every contributor and to `contactEmail`.
+  - **Confirm** needs an open call. **Decline and leave** are always allowed.
+- **Submitted work stays valid.** A submitted submission always passes `validateSubmission`.
+  - An edit or co-author change that would break this returns 422 `issues` and saves nothing.
+  - To make bigger changes (swap a full panel, change format), return to draft, edit, and submit again before the close.
+  - A decline after the close can still invalidate a submission. Its metadata then carries `issueCodes`, and chairs see it as **incomplete**.
+- **Concurrency.**
+  - Every submission has an integer `version`. Writes must send the version they edited; a stale one gets 409 `stale`.
+  - Each mutation runs in one transaction that locks the submission row and uses one `now` for the whole request.
+  - Submit is `UPDATE … WHERE status = 'draft'`: mail goes out only if a row changed, so a double tap on a phone sends one receipt.
+- **Phases** move forward only, except `draft ⇄ cfp_open`. Any other move needs `--force` and a reason. Every move is audited (the API or CLI user, from, to, reason).
+- **Visibility.** The policy treats a submission that was never submitted (`submittedAt` null) like a draft, whatever its status. Contributors only.
 
-## In scope
+### 1.4 What each person learns
+- **Presenter cap.** People are told about their own counts only.
+  - `/check` and the submit response report only the requesting person's count, as `{ count, max }`.
+  - The invitation page tells the invitee what confirming would do to their own count.
+  - Only chairs see everyone's counts. The cap report counts **confirmed** contributions only, and lists pending invitations separately as a number.
+  - The wording comes from the configuration: "This conference programs at most {max} first-author or presenting roles per person ({types} do not count). You have {n} in submitted proposals."
+- **Self-identification checks** run live in the browser on the owner's own data, as names, affiliations and emails the owner can already see. The server check (`/check`, submit) is authoritative and adds ORCID iDs and email domains.
+  - The server returns `{ path, kind }` only. Chairs and agents see counts.
+  - Reviewers never receive findings or contributor person IDs.
+- **`/check`** is for human sessions with `submitter` or `chair` access. It is built by `projectCheck()` in `packages/policy`, not hand-assembled. Agents get 403; reviewers and strangers get 404.
+- **Audit details** hold IDs, enum values and the names of changed keys only, never field values, emails or names. The audit log cannot be redacted, so it must never hold content.
 
-### M1. Schema and policy
-- **`Contribution.status`:** `invited` or `confirmed`. The lead is confirmed when the submission is created.
-- **Input schemas** (Zod, in `packages/schema`):
-  - creating a submission (type, language)
-  - updating content (title, abstract, track, topics, language, fields, and type while it is a draft)
-  - inviting a co-author (email, role, optional name and affiliation for a new person)
-  - changing a co-author (role, order)
-  - editing your own profile
-- **`selfIdentificationWarnings()`** (Zod-free, exported from `/pure` so the form can warn live). Matching is accent- and case-insensitive and respects word boundaries. It checks for:
-  - author full names
-  - surnames used as citations, such as "(Surname 2021)" or "Surname (2021)"
-  - affiliations
-  - emails
-  - ORCID iDs
-  - URLs on an author's non-generic email domain or containing their surname
+### 1.5 Agreements (consent)
+- Each conference's configuration lists `agreements`: privacy notice, code of conduct, and recordings policy. Each is localized, versioned, and has a link or text.
+- The owner must acknowledge the current versions to submit; an invitee must acknowledge them to confirm.
+- Acknowledgments are stored as `{person, conference, key, version, at}` and audited. This is the "prior, express authorization" Colombia's Ley 1581 requires before processing personal data.
+- ELO 2027's agreements are placeholders until ELO's actual policy texts are supplied.
 
-  It scans the title, abstract and every non-identifying custom field, and returns paths and kinds only.
-- **Policy decides who edits:** `canEditSubmission`, `canManageContributors`, and the invited person's confirm and decline. Agents never edit.
-- **Projections:**
-  - The submitter and chair views carry contributor `status`.
-  - Metadata (tier M) adds `contributorStatuses` and a count of self-identification warnings. Both are numbers or enums only.
-  - New blindness properties cover the new fields.
+### 1.6 Profiles
+- `PUT /api/me/profile` takes a strict object: `displayName` (required to submit, 1–200 characters, one line), `affiliation`, `country`, `languages`, `pronouns`, `orcid` (shown as self-declared), and `bios` (per language).
+  - Any other key, including `email` or `id`, gets 400. Changing your email is not possible in this phase.
+- Bios are stored per language (`bios: { en, es, … }`) and kept on the person, never on the submission.
+  - The configuration says whether a bio is requested and how long it may be (`rules.bio`).
+  - A missing requested bio is a warning, not a block.
+- The chair view and CSV include pronouns.
 
-### M2. Server
-- **Migration:** `contributions.status`.
-- **Routes** (cookie sessions; agents are read-only):
+### 1.7 What ELO's formats need now
+- **`participationMode`** (`in_person`, `online` or `undecided`) is a core submission field. It is required when the conference is hybrid, and it is visible to tier M as an enumeration.
+- **`language`** is the language of the abstract, one of the conference's languages.
+- **Panels** get one session abstract. Per-paper panel abstracts (2022, 2025) depend on the Barranquilla CFP; see Deferred.
 
-  | Route | What it does |
-  |---|---|
-  | `POST /api/conferences/:slug/submissions` | Create a draft. Returns the submitter view. |
-  | `GET /api/submissions/:id` | Get a projection for the viewer. |
-  | `GET /api/submissions/:id/check` | `{ issues, warnings: { selfIdentification, presenterCap } }` |
-  | `PATCH /api/submissions/:id` | Update content (lead, inside the window). |
-  | `POST /api/submissions/:id/submit` | Submit. 422 with `issues` when invalid. Otherwise emails every contributor and returns any warnings. |
-  | `POST /api/submissions/:id/withdraw` | Withdraw (lead). Emails contributors. |
-  | `POST /api/submissions/:id/contributors` | Invite a co-author (lead). Emails the invitee. |
-  | `PATCH /api/submissions/:id/contributors/:personId`, `DELETE …` | Change or remove a co-author (lead; the lead cannot be removed). |
-  | `POST /api/submissions/:id/invitation/confirm`, `…/decline` | The invited person answers. |
-  | `GET /api/me/submissions` | Every submission you contribute to, with its conference and deadline. |
-  | `GET /api/me/invitations` | Your pending invitations. |
-  | `PUT /api/me/profile` | Edit your own profile. |
-  | `PUT /api/conferences/:slug/phase` | Admin, human only, audited. |
-  | `GET /api/conferences/:slug/submissions?status=&type=&track=&language=&q=` | Filters on the existing projected list. `q` matches title text only for viewers who can see titles. |
-  | `GET /api/conferences/:slug/submissions.csv` | Chairs. Human sessions, or tier C on the internal listener. Built from chair projections. |
+## 2. Contracts
 
-- **CLI:** `set-phase <slug> <phase>`.
-- **Mail** in en, es and pt for submission received, submission withdrawn, and co-author invitation.
-- Every mutation is audited.
+### 2.1 One query, one shape
+- **`SubmissionQuery`** (Zod, `packages/schema`) is used by the REST list, both CSVs and the MCP tools:
+  - filters: `status[]`, `type`, `track`, `language`, `participationMode`
+  - booleans: `hasSelfIdWarnings`, `hasPendingInvitations`, `incomplete`
+  - `q`, a title search
+  - paging: `cursor` and `limit`
+- **`querySubmissions(viewer, conference, query)`**, on the server:
+  - projects every record first, then filters only on projected fields, ordered by `(createdAt, id)`
+  - returns `{ items, total, excludedCount, nextCursor }`
+  - when the viewer cannot see titles, `q` gets 400 `q_not_allowed`
+- **Errors:**
 
-### M3. MCP endpoint (read-only)
-- **Endpoint:** `/mcp` on both listeners. Streamable HTTP, stateless, JSON responses, bearer agent tokens only.
-- **Tier rules:** tier M works on the public listener; tier C is refused there and works on the internal one (the same rule as the REST API).
-- **Tools:**
+  | Situation | Status | Body |
+  |---|---|---|
+  | Invisible or missing | 404 | `not_found` |
+  | Malformed input | 400 | `invalid` with `{path, message}` |
+  | Breaks a submission rule | 422 | `{ error: "invalid", issues: SubmissionIssue[] }` |
+  | Call closed or wrong phase | 409 | `call_closed` |
+  | Stale version | 409 | `stale` |
+  | Agent on a write route | 403 | `agents_read_only` |
+  | Over a limit | 429 | `rate_limited`, audited |
 
-  | Tool | Returns |
-  |---|---|
-  | `conference_overview` | Phase, deadlines, types and tracks, plus counts by status, type, track and language |
-  | `list_submissions` | Filters (status, type, track, language) and paging; projections only |
-  | `get_submission` | One submission, projected |
-  | `presenter_cap_report` | Presenter-cap counts and who is over the cap |
+### 2.2 Routes
 
-  Each tool returns what the token's tier allows: metadata for M; the chair view for C, internal listener only.
-- Every tool call is written to the audit log (tool name and arguments, never results).
+| Route | Who | Notes |
+|---|---|---|
+| `POST /api/conferences/:slug/submissions` | signed-in person | `{typeKey, language, ownRole}`; owner is confirmed |
+| `GET /api/submissions/:id` | per policy | projection |
+| `GET /api/submissions/:id/check` | submitter or chair (human) | `projectCheck()` |
+| `PATCH /api/submissions/:id` | owner, open call | `{version, …content}`; type change only while a draft; 422 if it would invalidate submitted work |
+| `DELETE /api/submissions/:id` | owner, draft, open call | hard delete; invitees told |
+| `POST /api/submissions/:id/submit` | owner, open call | `{version, acceptedAgreements}`; mail to contributors |
+| `POST /api/submissions/:id/unsubmit` | owner, open call | back to draft |
+| `POST /api/submissions/:id/withdraw` | owner | submitted only; phases cfp_open, reviewing, deciding |
+| `POST /api/submissions/:id/contributors` | owner, open call | invite `{version, email, role, name?, affiliation?, lang}` |
+| `PATCH /api/submissions/:id/contributors/:personId` | owner, open call | `{version, role?, position?}` |
+| `DELETE /api/submissions/:id/contributors/:personId` | owner, open call | not the owner |
+| `POST /api/submissions/:id/contributors/:personId/resend` | owner, open call | once an hour |
+| `POST /api/submissions/:id/leave` | confirmed contributor (not owner) | always |
+| `POST /api/invitations/info` | holder of an invitation token | details for the invitation page |
+| `POST /api/invitations/answer` | holder of an invitation token | `{token, answer, acceptedAgreements?}` |
+| `GET /api/me/submissions` | person | with conference, deadline, own cap count |
+| `GET /api/me/invitations` | person | pending invitations (also answerable while signed in) |
+| `POST /api/me/invitations/:submissionId/answer` | person | same as above, by session |
+| `PUT /api/me/profile` | person | strict |
+| `PUT /api/conferences/:slug/phase` | admin (human) | forward only unless `force` + `reason` |
+| `GET /api/conferences/:slug/submissions` | per policy | `SubmissionQuery` |
+| `GET /api/conferences/:slug/submissions.csv` and `contributors.csv` | chair (human), or tier C on internal | §2.3 |
 
-### M4. Web
-- **CFP page:** a "Submit a proposal" call to action while the window is open.
-- **Choose a format:** `/:lang/c/:slug/submit` lists the formats and creates a draft.
-- **Edit a submission** at `/:lang/s/:id`:
-  - title and abstract with live word counts against the limits
-  - track, topics, language, and custom fields by kind
-  - co-authors: invite, change role, reorder, remove
-  - an error summary with links to the fields
-  - live self-identification and presenter-cap warnings
-  - save draft, submit, and withdraw (with confirmation)
-  - a warning before leaving with unsaved changes
-- **My submissions** at `/:lang/my`, with status and deadline.
-- **Account** (`/:lang/me`): profile editing and pending invitations with confirm and decline.
-- **Chair list** at `/:lang/c/:slug/manage`: filters, counts, presenter-cap warnings and a CSV download.
-- **Language:** every string in en, es and pt.
+Write routes have a 64 KB body limit and 60 writes a minute per person. Input schemas cap characters: title 300, abstract 8 × maxWords, each field 10,000.
 
-### M5. Tests and acceptance
+### 2.3 CSV exports
+- **Rows:** only submissions where `submissionAccess(person, r) === "chair"` (so a chair's own and conflicted submissions are left out). The response says how many were omitted. List filters apply.
+- **`submissions.csv`**, one row per submission:
+  - reference, id, status, type (key and label), track, topics, language, participationMode
+  - title, abstract, abstract words
+  - created, submitted and updated times (ISO 8601 in the conference time zone)
+  - contributors (`Name <email> (role, status)` joined with `; `)
+  - pending invitations, issue codes, self-identification warning count, over-cap flag
+  - one `<type>.<field>` column per custom field
+- **`contributors.csv`**, one row per contribution: reference, position, role, status, name, email, affiliation, country, pronouns, has-bio.
+- **Format:**
+  - UTF-8 with a BOM, every cell quoted (RFC 4180)
+  - any cell starting with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'`
+  - `Content-Disposition: attachment` and `Cache-Control: no-store`
+  - each export is audited (`submissions.exported`, with kind, row count and filters)
 
-- **Policy:** blindness properties pass for the new fields. Edit permissions are tested for the lead, a co-author, an invitee, a chair, a reviewer and agents.
-- **Server:** every route is tested for the following:
-  - the happy path
-  - permission refusals: wrong person, agent, outside the window, wrong phase
-  - validation (422 with issues)
-  - audit rows
-  - mail sent in the right language
-  - CSV and MCP access rules
-  - leak checks on tier M responses, including MCP
-- **e2e at phone size:**
-  1. Open the CFP.
-  2. Create a talk.
-  3. Watch the word count.
-  4. See a self-identification warning.
-  5. Invite a co-author, who confirms.
-  6. Submit and receive the confirmation email.
-  7. Find it under "My submissions".
-  8. Have a chair find it in the chair list and download the CSV.
+### 2.4 MCP (read-only)
+- **Endpoint:** `/api/mcp`, so it inherits the token resolution, tier C refusal on the public listener and agent audit of `/api/*`. Cookie sessions get 401. Transport is Streamable HTTP, stateless, with JSON responses.
+- Only read tools are registered. Each tool call writes one `agent.mcp_tool` audit row containing the tool name and its validated enum and ID arguments.
+- Each tool calls the same service function as its REST counterpart, through projections. The tools are:
+  - **`conference_overview`** returns:
+    - phase and deadlines; formats and tracks
+    - counts by status, type, track, language and participation mode (non-draft, own and conflicted included, since counts reveal nothing)
+    - `draftCount`, a single number
+    - `submittedByDay`, in the conference time zone
+    - `withSelfIdWarnings`, `withPendingInvitations` and `incomplete`
+    - `withoutAvailableChair`: submitted proposals that no chair or track chair can manage, because each is a contributor or conflicted
+  - **`list_submissions`** takes a `SubmissionQuery` and returns projections.
+  - **`get_submission`** returns one projection.
+  - **`presenter_cap_report`** returns the chair report: confirmed contributions only, within the acting person's chair access, plus the pending count.
+- **Tiers:** tier M gets metadata. The contributors in the metadata view carry `status`, and the view also includes `participationMode`, `issueCodes` and the self-identification warning count. Tier C gets exactly what its owner would see.
 
-  axe reports no WCAG 2.1 A/AA violations on any new page.
-- **CI:** green.
+### 2.5 Fixtures and the dry run
+- **`seedOpenCall(db, { slug, now })`** clones ELO 2027 with deadlines relative to the clock and the phase set to `cfp_open`. Development and the e2e tests use it, so tests pass on any date.
+- **Dry run:** `import-config <file> --slug elo2027-dryrun --window <open>/<close>`. It is human-only and audited, and the runbook shows the exact command.
 
-## Out of scope (later)
-- File uploads (full papers, posters). Exhibition works are submitted by URL in this phase.
-- Reviews, assignments UI, decisions, notifications (review-setup phase onward).
-- Late-submission extensions per person.
-- Membership checks (confirmation phase).
+## 3. Acceptance
+
+**Policy**
+- Blindness properties for every new field:
+  - an invitee's profile markers appear in no view until they confirm
+  - unconfirmed or declined names never reach single-blind, open or public views
+  - a declined invitee is conflicted
+  - a never-submitted submission is invisible to non-contributors whatever its status
+  - `/check` output for a lead never contains another person's cap count or another submission's ID
+  - reviewer output is the same whether or not a cited surname belongs to an author
+- Every action is tested for the owner, a confirmed co-author, an invitee, a declined person, a chair, a reviewer and agents.
+
+**Server, for every route**
+- the happy path
+- refusals: wrong person, agent, closed call, wrong phase, stale version
+- 422 issues
+- rate limits
+- audit rows, with `findLeaks(auditRows, markers)` empty after every mutation
+- mail language
+- CSV injection escaping and row selection
+- leak checks on tier M responses
+
+**MCP:** a real `Client` over Streamable HTTP lists the tools and calls each one with a tier M token, and `findLeaks` passes on each result. A tier C token on the public listener gets 403 and an audit row, and a cookie gets 401.
+
+**e2e at 390×844, on any date**
+1. Open the call.
+2. Start a talk.
+3. Watch the word count.
+4. See a self-identification warning.
+5. Invite a co-author, who confirms by the invitation link.
+6. Acknowledge the agreements and submit.
+7. Receive the receipt.
+8. Find it in My submissions.
+9. A panel of three invitees: one declines and is replaced.
+10. An exhibition work submitted by URL.
+11. A chair finds the submissions and downloads both CSVs.
+
+axe reports no violations on any new page. CI is green.
+
+## Deferred
+
+These were set aside on purpose, with the reason for each.
+
+**Waiting on the Barranquilla team**
+- **Per-paper panel abstracts.** This depends on their CFP. If it asks for them, add `panelItems` to the submission type.
+
+**Not needed for the January launch**
+- **Transferring ownership.** Chairs can reassign it in the database, with an audit row.
+- **A chair removing a pending invitee.** The invitation conflict and `withoutAvailableChair` expose the abuse case in the meantime.
+- **Purging people created by unanswered invitations.** This belongs with the data-retention work.
+- **Presentation and work languages.** Use custom fields if the CFP needs them.
+- **Several affiliations per person.**
+- **Email change.**
+- **ORCID sign-in.**
+- **File uploads.**

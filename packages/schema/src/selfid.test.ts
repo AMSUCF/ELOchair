@@ -35,7 +35,7 @@ describe("selfIdentificationWarnings", () => {
     expect(kinds("Contact aperez@imaginaria.edu.co")).toEqual(["email"]);
     expect(kinds("ORCID 0000 0002 1825 0097")).toEqual(["orcid"]);
     expect(kinds("See https://lab.imaginaria.edu.co/works/1")).toEqual(["url"]);
-    expect(kinds("See www.anaperez-poetry.net or https://example.org/perez/works")).toEqual([
+    expect(kinds("See www.perez-poetry.net or https://example.org/perez/works")).toEqual([
       "url",
       "url",
     ]);
@@ -62,5 +62,40 @@ describe("selfIdentificationWarnings", () => {
   it("does not match a name inside a longer word", () => {
     const bo = { displayName: "Bo Lin", affiliation: null, email: "b@x.org", orcid: null };
     expect(kinds("A bolin gear and Bo Lindqvist", [bo])).toEqual([]);
+  });
+});
+
+describe("surnames in Spanish and Portuguese names", () => {
+  const maria = {
+    displayName: "María José Rodríguez Vera",
+    affiliation: null,
+    email: "m@gmail.com",
+    orcid: null,
+  };
+  const anaPaula = {
+    displayName: "Ana Paula da Silva Santos",
+    affiliation: null,
+    email: "a@gmail.com",
+    orcid: null,
+  };
+  const k = (text: string, p: IdentityHint) =>
+    selfIdentificationWarnings([{ path: "a", text }], [p]).map((w) => w.match);
+
+  it("finds citations of either family name and skips particles", () => {
+    expect(k("as shown (Rodríguez 2021)", maria)).toEqual(["rodriguez"]);
+    expect(k("see Vera (2019)", maria)).toEqual(["vera"]);
+    expect(k("(Silva 2020)", anaPaula)).toEqual(["silva"]);
+    expect(k("(da 2020)", anaPaula)).toEqual([]);
+  });
+
+  it("matches surnames in links only as whole labels or path segments", () => {
+    const cruz = {
+      displayName: "Juan de la Cruz",
+      affiliation: null,
+      email: "j@gmail.com",
+      orcid: null,
+    };
+    expect(k("https://www.veracruz.gob.mx/turismo", cruz)).toEqual([]);
+    expect(k("https://cruz.example.net/works", cruz)).toEqual(["cruz.example.net"]);
   });
 });

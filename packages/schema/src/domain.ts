@@ -16,7 +16,8 @@ export const Person = z.object({
   /** ISO 3166-1 alpha-2 */
   country: z.string().length(2).nullable(),
   languages: z.array(LanguageCode),
-  bio: z.string().nullable(),
+  /** Bios per language ({ en: "...", es: "..." }); kept on the person, never on submissions. */
+  bios: z.record(LanguageCode, z.string()),
   pronouns: z.string().nullable(),
 });
 export type Person = z.infer<typeof Person>;
@@ -36,9 +37,17 @@ export type SubmissionStatus = z.infer<typeof SubmissionStatus>;
 export const FieldValue = z.union([z.string(), z.array(z.string()), z.boolean(), z.number()]);
 export type FieldValue = z.infer<typeof FieldValue>;
 
+/** How a contributor intends to take part; required when the conference is hybrid. */
+export const ParticipationMode = z.enum(["in_person", "online", "undecided"]);
+export type ParticipationMode = z.infer<typeof ParticipationMode>;
+
 export const Submission = z.object({
   id: Id,
   conferenceId: Id,
+  /** The person who created it: the only one who may change it. Never changes in this phase. */
+  ownerPersonId: Id,
+  /** Increases on every change; writes must send the version they edited. */
+  version: z.int().min(1),
   typeKey: Key,
   trackKey: Key.nullable(),
   topicKeys: z.array(Key),
@@ -46,6 +55,7 @@ export const Submission = z.object({
   title: z.string(),
   abstract: z.string(),
   fields: z.record(Key, FieldValue),
+  participationMode: ParticipationMode.nullable(),
   status: SubmissionStatus,
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
@@ -53,8 +63,11 @@ export const Submission = z.object({
 });
 export type Submission = z.infer<typeof Submission>;
 
-/** The lead is confirmed on creation; co-authors are invited until they confirm. */
-export const ContributionStatus = z.enum(["invited", "confirmed"]);
+/**
+ * The owner is confirmed on creation. Co-authors are invited until they confirm. Declining (or
+ * leaving) keeps the row as "declined": it is evidence, and the invitation conflict stays.
+ */
+export const ContributionStatus = z.enum(["invited", "confirmed", "declined"]);
 export type ContributionStatus = z.infer<typeof ContributionStatus>;
 
 export const Contribution = z.object({
@@ -64,6 +77,13 @@ export const Contribution = z.object({
   /** Order in the author list, starting at 0. */
   position: z.int().min(0),
   status: ContributionStatus,
+  /**
+   * What the owner typed when inviting. Until the person confirms, every view shows these and
+   * never their profile, so an invitation reveals nothing about existing accounts.
+   */
+  invitedEmail: z.string().nullable(),
+  invitedName: z.string().nullable(),
+  invitedAffiliation: z.string().nullable(),
 });
 export type Contribution = z.infer<typeof Contribution>;
 

@@ -18,7 +18,7 @@ import {
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { submissionAccess } from "./access";
-import { projectSubmission, type SubmissionRecord } from "./projections";
+import { projectCheck, projectSubmission, type SubmissionRecord } from "./projections";
 import { findLeaks } from "./testing";
 import type { AgentViewer, PersonViewer, Tier } from "./viewer";
 
@@ -40,11 +40,19 @@ type Built = {
   conferenceId: string;
   reviewerId: string;
   chairId: string;
+  ownerId: string;
   m: {
+    /** Profile details of everyone, whatever their status. */
     names: string[];
     emails: string[];
     affiliations: string[];
     bios: string[];
+    /** Profile details of people who have not confirmed (invited or declined). */
+    unconfirmedProfile: string[];
+    /** What the owner typed for people still invited. */
+    invitedTyped: string[];
+    /** What the owner typed for people who declined. */
+    declinedTyped: string[];
     content: string[]; // title, abstract
     identifyingFields: string[];
     otherFields: string[];
@@ -55,6 +63,7 @@ type Scenario = {
   config: ConferenceConfig;
   typePick: number;
   nContrib: number;
+  statuses: Contribution["status"][];
   status: SubmissionStatus;
   ids: string[];
 };
@@ -63,11 +72,15 @@ const scenario: fc.Arbitrary<Scenario> = fc.record({
   config: fc.constantFrom(...CONFIGS),
   typePick: fc.nat(),
   nContrib: fc.integer({ min: 1, max: 6 }),
+  statuses: fc.array(fc.constantFrom<Contribution["status"]>("confirmed", "invited", "declined"), {
+    minLength: 6,
+    maxLength: 6,
+  }),
   status: fc.constantFrom(...NOT_PUBLISHED),
   ids: fc.uniqueArray(fc.uuid(), { minLength: 12, maxLength: 12 }),
 });
 
-function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
+function build({ config, typePick, nContrib, statuses, status, ids }: Scenario): Built {
   const id = (i: number) => ids[i] as string;
   const [conferenceId, submissionId, reviewerId, chairId] = [id(0), id(1), id(2), id(3)];
   const type = config.submissionTypes[typePick % config.submissionTypes.length]!;
@@ -80,12 +93,17 @@ function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
     emails: [],
     affiliations: [],
     bios: [],
+    unconfirmedProfile: [],
+    invitedTyped: [],
+    declinedTyped: [],
     content: [],
     identifyingFields: [],
     otherFields: [],
   };
   for (let i = 0; i < nContrib; i++) {
     const pid = id(4 + i);
+    // The owner (position 0) is always confirmed; the others vary.
+    const cstatus = i === 0 ? "confirmed" : (statuses[i] ?? "confirmed");
     const p: Person = {
       id: pid,
       email: `mail${i}x${tag}@example.test`,
@@ -94,20 +112,36 @@ function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
       affiliation: `AFF${i}x${tag}`,
       country: "CO",
       languages: ["es"],
-      bio: `BIO${i}x${tag}`,
+      bios: { es: `BIO${i}x${tag}` },
       pronouns: null,
     };
     people.set(pid, p);
+    const profile = [p.displayName!, p.email, p.affiliation!, `BIO${i}x${tag}`];
     m.names.push(p.displayName!);
     m.emails.push(p.email);
     m.affiliations.push(p.affiliation!);
-    m.bios.push(p.bio!);
+    m.bios.push(`BIO${i}x${tag}`);
+    if (cstatus !== "confirmed") m.unconfirmedProfile.push(...profile);
+    const typed =
+      i === 0
+        ? { invitedEmail: null, invitedName: null, invitedAffiliation: null }
+        : {
+            invitedEmail: `invmb${i}x${tag}@example.test`,
+            invitedName: `INVNM${i}x${tag}`,
+            invitedAffiliation: `INVORG${i}x${tag}`,
+          };
+    if (i > 0) {
+      const values = [typed.invitedEmail!, typed.invitedName!, typed.invitedAffiliation!];
+      if (cstatus === "invited") m.invitedTyped.push(...values);
+      if (cstatus === "declined") m.declinedTyped.push(...values);
+    }
     contributions.push({
       submissionId,
       personId: pid,
       role: i === 0 ? "lead" : "presenter",
       position: i,
-      status: i === 0 || i % 2 === 1 ? "confirmed" : "invited",
+      status: cstatus,
+      ...typed,
     });
   }
 
@@ -125,6 +159,8 @@ function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
   const submission: Submission = {
     id: submissionId,
     conferenceId,
+    ownerPersonId: id(4),
+    version: 3,
     typeKey: type.key,
     trackKey: null,
     topicKeys: [],
@@ -132,6 +168,7 @@ function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
     title,
     abstract,
     fields,
+    participationMode: "online",
     status,
     createdAt: now,
     updatedAt: now,
@@ -145,6 +182,7 @@ function build({ config, typePick, nContrib, status, ids }: Scenario): Built {
     conferenceId,
     reviewerId,
     chairId,
+    ownerId: id(4),
     m,
   };
 }
@@ -169,9 +207,15 @@ const agent = (owner: PersonViewer, tier: Tier, conferenceId: string): AgentView
   owner,
 });
 const identity = (b: Built) => [...b.m.names, ...b.m.emails, ...b.m.affiliations, ...b.m.bios];
+/** Everything about people who have not confirmed: their profiles and what the owner typed. */
+const unconfirmed = (b: Built) => [
+  ...b.m.unconfirmedProfile,
+  ...b.m.invitedTyped,
+  ...b.m.declinedTyped,
+];
 
 describe("reviewers", () => {
-  it("never see what their submission type's blind mode hides", () => {
+  it("never see what their submission type's blind mode hides, nor anyone unconfirmed", () => {
     fc.assert(
       fc.property(scenario, (s) => {
         const b = build(s);
@@ -180,10 +224,10 @@ describe("reviewers", () => {
         const mode = effectiveBlindMode(b.rec.config, b.rec.submission.typeKey);
         const forbidden =
           mode === "double"
-            ? [...identity(b), ...b.m.identifyingFields]
+            ? [...identity(b), ...b.m.identifyingFields, ...unconfirmed(b)]
             : mode === "single"
-              ? [...b.m.emails, ...b.m.bios]
-              : b.m.emails;
+              ? [...b.m.emails, ...b.m.bios, ...unconfirmed(b)]
+              : [...b.m.emails, ...unconfirmed(b)];
         expect(findLeaks(out, forbidden)).toEqual([]);
         // ...while still getting what they need to review.
         expect(findLeaks(out, b.m.content)).toEqual(b.m.content);
@@ -204,7 +248,7 @@ describe("reviewers", () => {
             conferenceId: b.conferenceId,
             personId: b.reviewerId,
             submissionId: how === 1 ? b.rec.submission.id : null,
-            otherPersonId: how === 2 ? b.rec.contributions.at(-1)!.personId : null,
+            otherPersonId: how === 2 ? b.ownerId : null,
             kind: how === 1 ? "declared" : "institution",
             declaredBy: "reviewer",
           };
@@ -212,6 +256,21 @@ describe("reviewers", () => {
         }
         if (how === 3) viewer = reviewer(b, ["some_other_pool"]);
         expect(projectSubmission(viewer, b.rec)).toBeNull();
+      }),
+      RUNS,
+    );
+  });
+
+  it("get the same view whether or not a cited surname belongs to an author (double-blind)", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        if (effectiveBlindMode(b.rec.config, b.rec.submission.typeKey) !== "double") return;
+        b.rec.submission.abstract = "As shown before (Quintanilla 2020), electronic literature";
+        const a = projectSubmission(reviewer(b), b.rec);
+        const owner = b.rec.people.get(b.ownerId)!;
+        b.rec.people.set(b.ownerId, { ...owner, displayName: "Ana Quintanilla" });
+        expect(projectSubmission(reviewer(b), b.rec)).toEqual(a);
       }),
       RUNS,
     );
@@ -227,11 +286,18 @@ describe("tier M agents (cloud-safe)", () => {
         expect(out?.view).toBe("metadata");
         const forbidden = [
           ...identity(b),
+          ...unconfirmed(b),
           ...b.m.content,
           ...b.m.identifyingFields,
           ...b.m.otherFields,
         ];
         expect(findLeaks(out, forbidden)).toEqual([]);
+        if (out?.view === "metadata") {
+          expect(typeof out.selfIdWarningCount).toBe("number");
+          expect(
+            out.contributors.every((c) => ["invited", "confirmed", "declined"].includes(c.status)),
+          ).toBe(true);
+        }
       }),
       RUNS,
     );
@@ -244,7 +310,9 @@ describe("tier M agents (cloud-safe)", () => {
         b.rec.submission.status = "published";
         const out = projectSubmission(agent(chair(b), "M", b.conferenceId), b.rec);
         expect(out?.view).toBe("public");
-        expect(findLeaks(out, [...b.m.emails, ...b.m.bios, ...b.m.otherFields])).toEqual([]);
+        expect(
+          findLeaks(out, [...b.m.emails, ...b.m.bios, ...b.m.otherFields, ...unconfirmed(b)]),
+        ).toEqual([]);
       }),
       RUNS,
     );
@@ -279,16 +347,65 @@ describe("agents in general", () => {
   });
 });
 
-describe("chairs and contributors", () => {
+describe("contributors and invitations", () => {
+  const asPerson = (personId: string, grants: PersonViewer["grants"] = []): PersonViewer => ({
+    kind: "person",
+    personId,
+    siteAdmin: false,
+    grants,
+  });
+
+  it("the owner sees invitees only as typed: never an unconfirmed person's profile", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        const out = projectSubmission(asPerson(b.ownerId), b.rec);
+        expect(out?.view).toBe("submitter");
+        expect(findLeaks(out, [...b.m.unconfirmedProfile, ...b.m.declinedTyped])).toEqual([]);
+        expect(findLeaks(out, b.m.invitedTyped)).toEqual(b.m.invitedTyped);
+      }),
+      RUNS,
+    );
+  });
+
+  it("an invitee sees the submission but nobody's email, and no unconfirmed profile", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        const invitee = b.rec.contributions.find((c) => c.status === "invited");
+        if (!invitee) return;
+        const out = projectSubmission(asPerson(invitee.personId), b.rec);
+        expect(out?.view).toBe("invitee");
+        const typedEmails = b.rec.contributions
+          .map((c) => c.invitedEmail)
+          .filter((e): e is string => !!e);
+        expect(findLeaks(out, [...b.m.emails, ...typedEmails, ...b.m.unconfirmedProfile])).toEqual(
+          [],
+        );
+      }),
+      RUNS,
+    );
+  });
+
+  it("someone who declined is no longer a contributor and sees nothing", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        const declined = b.rec.contributions.find((c) => c.status === "declined");
+        if (!declined) return;
+        expect(projectSubmission(asPerson(declined.personId), b.rec)).toBeNull();
+      }),
+      RUNS,
+    );
+  });
+
   it("a chair who is also a contributor sees only the submitter view", () => {
     fc.assert(
       fc.property(scenario, (s) => {
         const b = build(s);
-        const authorChair = chair(b, b.rec.contributions[0]!.personId);
-        const out = projectSubmission(authorChair, b.rec);
+        const out = projectSubmission(chair(b, b.ownerId), b.rec);
         expect(out?.view).toBe("submitter");
-        expect(findLeaks(out, [b.reviewerId])).toEqual([]); // who reviews it stays hidden
-        expect(findLeaks(out, b.m.bios)).toEqual([]);
+        expect(findLeaks(out, [b.reviewerId, ...b.m.bios])).toEqual([]);
       }),
       RUNS,
     );
@@ -298,8 +415,7 @@ describe("chairs and contributors", () => {
     fc.assert(
       fc.property(scenario, (s) => {
         const b = build(s);
-        const authorChair = chair(b, b.rec.contributions[0]!.personId);
-        const out = projectSubmission(agent(authorChair, "M", b.conferenceId), b.rec);
+        const out = projectSubmission(agent(chair(b, b.ownerId), "M", b.conferenceId), b.rec);
         expect(out?.view).toBe("metadata");
         expect(findLeaks(out, [b.reviewerId])).toEqual([]);
         expect(out && "assignedReviewerIds" in out).toBe(false);
@@ -308,27 +424,22 @@ describe("chairs and contributors", () => {
     );
   });
 
-  it("drafts are visible to contributors only", () => {
+  it("work never submitted is visible to contributors only, whatever its status", () => {
     fc.assert(
-      fc.property(scenario, (s) => {
+      fc.property(scenario, fc.constantFrom<SubmissionStatus>("draft", "withdrawn"), (s, st) => {
         const b = build(s);
-        b.rec.submission.status = "draft";
+        b.rec.submission.status = st;
+        b.rec.submission.submittedAt = null;
         expect(projectSubmission(chair(b), b.rec)).toBeNull();
         expect(projectSubmission(reviewer(b), b.rec)).toBeNull();
         expect(projectSubmission(agent(chair(b), "C", b.conferenceId), b.rec)).toBeNull();
-        const author: PersonViewer = {
-          kind: "person",
-          personId: b.rec.contributions[0]!.personId,
-          siteAdmin: false,
-          grants: [],
-        };
-        expect(projectSubmission(author, b.rec)?.view).toBe("submitter");
+        expect(projectSubmission(asPerson(b.ownerId), b.rec)?.view).toBe("submitter");
       }),
       RUNS,
     );
   });
 
-  it("the public sees published work only, without contact details or private fields", () => {
+  it("the public sees published work only, confirmed people only, without private fields", () => {
     fc.assert(
       fc.property(scenario, (s) => {
         const b = build(s);
@@ -336,7 +447,51 @@ describe("chairs and contributors", () => {
         b.rec.submission.status = "published";
         const out = projectSubmission({ kind: "public" }, b.rec);
         expect(out?.view).toBe("public");
-        expect(findLeaks(out, [...b.m.emails, ...b.m.bios, ...b.m.otherFields])).toEqual([]);
+        expect(
+          findLeaks(out, [...b.m.emails, ...b.m.bios, ...b.m.otherFields, ...unconfirmed(b)]),
+        ).toEqual([]);
+      }),
+      RUNS,
+    );
+  });
+});
+
+describe("the submission check", () => {
+  it("tells a contributor only their own cap count, never other people or submissions", () => {
+    fc.assert(
+      fc.property(scenario, fc.nat({ max: 5 }), (s, own) => {
+        const b = build(s);
+        const out = projectCheck(
+          { kind: "person", personId: b.ownerId, siteAdmin: false, grants: [] },
+          b.rec,
+          own,
+        );
+        expect(out).not.toBeNull();
+        const cap = b.rec.config.rules.presenterCap;
+        expect(out?.presenterCap).toEqual(cap ? { count: own, max: cap.max } : null);
+        const others = b.rec.contributions.map((c) => c.personId);
+        expect(findLeaks(out, [...others, b.reviewerId, b.rec.submission.id])).toEqual([]);
+        expect(
+          out?.selfIdentification.every((w) => Object.keys(w).sort().join() === "kind,path"),
+        ).toBe(true);
+      }),
+      RUNS,
+    );
+  });
+
+  it("is not available to reviewers, strangers or agents", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        expect(projectCheck(reviewer(b), b.rec, 0)).toBeNull();
+        expect(
+          projectCheck(
+            { kind: "person", personId: "stranger", siteAdmin: false, grants: [] },
+            b.rec,
+            0,
+          ),
+        ).toBeNull();
+        expect(projectCheck(agent(chair(b), "C", b.conferenceId), b.rec, 0)).toBeNull();
       }),
       RUNS,
     );
@@ -349,6 +504,7 @@ describe("track chairs", () => {
       config: CONFIGS[0]!,
       typePick: 1,
       nContrib: 1,
+      statuses: ["confirmed", "confirmed", "confirmed", "confirmed", "confirmed", "confirmed"],
       status: "submitted",
       ids: Array.from(
         { length: 12 },

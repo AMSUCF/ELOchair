@@ -45,7 +45,7 @@ beforeAll(async () => {
   everything = {
     names: ps.map((p) => p.displayName).filter((x): x is string => !!x && x.includes(" ")),
     emails: ps.map((p) => p.email),
-    bios: ps.map((p) => p.bio).filter((x): x is string => !!x),
+    bios: ps.flatMap((p) => Object.values((p.bios ?? {}) as Record<string, string>)),
     content: subs.flatMap((x) => [x.title, x.abstract]),
   };
 }, 120_000);

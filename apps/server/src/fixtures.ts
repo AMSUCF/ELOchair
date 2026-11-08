@@ -299,7 +299,7 @@ export async function seedSandbox(
     displayName: string;
     affiliation: string;
     languages: string[];
-    bio: string;
+    bios: Record<string, string>;
   };
   let n = 0;
   const makePerson = (): P => {
@@ -311,7 +311,7 @@ export async function seedSandbox(
       displayName: `${first} ${last}`,
       affiliation: r.pick(INSTITUTIONS),
       languages: r.sample(["en", "es", "pt"], r.int(1, 3)),
-      bio: `${first} ${last} is a fictional participant generated for testing ELOchair.`,
+      bios: { en: `${first} ${last} is a fictional participant generated for testing ELOchair.` },
     };
   };
   const insertPeople = async (ps: P[]) => {
@@ -419,6 +419,7 @@ export async function seedSandbox(
       });
       subs.push({
         conferenceId: conf.id,
+        ownerPersonId: id(team[0]?.person as P),
         typeKey: type.key,
         trackKey: type.key === "exhibition" ? null : r.pick(config.tracks).key,
         topicKeys: r.sample(
