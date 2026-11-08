@@ -1,20 +1,12 @@
 import { useEffect, useRef } from "react";
-import {
-  Link,
-  Navigate,
-  Outlet,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router";
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router";
 import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, useT } from "./i18n";
 import { ConferencePage } from "./pages/Conference";
 import { HomePage } from "./pages/Home";
 import { MePage } from "./pages/Me";
 import { SignInPage } from "./pages/SignIn";
 import { VerifyPage } from "./pages/Verify";
+import { FocusPending } from "./ui";
 
 export function App() {
   return (
@@ -42,61 +34,65 @@ function Layout() {
   );
 }
 
+/** The same page in another language: swap the leading /xx segment, keep the rest. */
+function pathIn(lang: string, pathname: string, search: string): string {
+  const rest = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, "");
+  return `/${lang}${rest || "/"}${search}`;
+}
+
 function Shell() {
   const { lang, t } = useT();
   const location = useLocation();
-  const navigate = useNavigate();
-  const main = useRef<HTMLElement>(null);
+  const focusPending = useRef(false);
+  const lastKey = useRef(location.key);
+
+  // A route change (not the first load) asks the next page heading to take focus, so screen
+  // reader and keyboard users land on the new content. Set during render, before child effects.
+  if (lastKey.current !== location.key) {
+    lastKey.current = location.key;
+    focusPending.current = true;
+  }
 
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  // On navigation, move focus to the page content so screen readers announce the new page.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on path change by design
-  useEffect(() => {
-    const heading = main.current?.querySelector("h1");
-    if (heading instanceof HTMLElement) {
-      heading.tabIndex = -1;
-      heading.focus({ preventScroll: true });
-    }
-  }, [location.pathname]);
-
-  const switchTo = (next: string) => {
-    const rest = location.pathname.replace(/^\/[a-z]{2}(?=\/|$)/, "");
-    navigate(`/${next}${rest || "/"}${location.search}`);
-  };
-
   return (
-    <div className="shell">
-      <a className="skip-link" href="#main">
-        {t("skipToContent")}
-      </a>
-      <header className="site-header">
-        <Link to={`/${lang}/`} className="brand">
-          <img src="/icon.svg" alt="" width="28" height="28" />
-          <span>{t("appName")}</span>
-        </Link>
-        <nav aria-label={t("navConferences")} className="site-nav">
-          <Link to={`/${lang}/me`}>{t("navAccount")}</Link>
-          <label className="lang-select">
-            <span className="visually-hidden">{t("navLanguage")}</span>
-            <select value={lang} onChange={(e) => switchTo(e.target.value)}>
+    <FocusPending.Provider value={focusPending}>
+      <div className="shell">
+        <a className="skip-link" href="#main">
+          {t("skipToContent")}
+        </a>
+        <header className="site-header">
+          <Link to={`/${lang}/`} className="brand">
+            <img src="/icon.svg" alt="" width="28" height="28" />
+            <span>{t("appName")}</span>
+          </Link>
+          <nav aria-label={t("navMain")} className="site-nav">
+            <Link to={`/${lang}/me`}>{t("navAccount")}</Link>
+            <ul className="lang-list">
               {LANGS.map((l) => (
-                <option key={l} value={l} lang={l}>
-                  {LANG_NAMES[l]}
-                </option>
+                <li key={l}>
+                  <Link
+                    to={pathIn(l, location.pathname, location.search)}
+                    lang={l}
+                    hrefLang={l}
+                    aria-current={l === lang ? "true" : undefined}
+                  >
+                    {LANG_NAMES[l]}
+                  </Link>
+                </li>
               ))}
-            </select>
-          </label>
-        </nav>
-      </header>
-      <main id="main" ref={main}>
-        <Outlet />
-      </main>
-      <footer className="site-footer">
-        <p>{t("footer")}</p>
-      </footer>
-    </div>
+            </ul>
+          </nav>
+        </header>
+        <main id="main">
+          <Outlet />
+        </main>
+        <footer className="site-footer">
+          <p>{t("footer")}</p>
+        </footer>
+      </div>
+    </FocusPending.Provider>
   );
 }

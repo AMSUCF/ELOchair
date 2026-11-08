@@ -10,7 +10,7 @@ import { loadEnv } from "./env";
 /** Test harness: an in-memory database and both listeners, driven without sockets. */
 export const ORIGIN = "https://chair.example.org";
 
-export async function makeTestApp() {
+export async function makeTestApp(envOverrides: Record<string, string> = {}) {
   const database = openDatabase({});
   await database.migrate();
   const env = loadEnv({
@@ -18,6 +18,7 @@ export async function makeTestApp() {
     APP_ORIGIN: ORIGIN,
     MAIL_TRANSPORT: "memory",
     ENABLE_TEST_ENDPOINTS: "1",
+    ...envOverrides,
   });
   let clock = new Date("2027-02-01T12:00:00Z");
   const deps = makeDeps(database.db, env, { now: () => clock });

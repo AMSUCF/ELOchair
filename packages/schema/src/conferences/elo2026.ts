@@ -5,6 +5,10 @@ import type { ConferenceConfigInput } from "../config";
  * A historical reference and test fixture: it records what 2026 actually did, e.g.
  * performance statements were anonymized (double-blind) while exhibition pieces were not.
  * Reviews per submission and scoring criteria were not published; they use the 2027 defaults.
+ * Where the CFP is silent, values come from the 2026 schedule (AMSUCF/ELO2026 data/events.json):
+ * workshops ran in 60-minute blocks, one with five facilitators; experimental sessions had no
+ * fixed length (60 and 225 minutes), so none is set. The presenter cap is not in the 2026 CFP;
+ * it carries over the cap the 2024 CFP stated (two lead/presenting roles, panels excluded).
  */
 export const elo2026: ConferenceConfigInput = {
   slug: "elo2026",
@@ -108,8 +112,8 @@ export const elo2026: ConferenceConfigInput = {
       },
       reviewPool: "scientific",
       abstract: { label: { en: "Abstract (anonymized)" }, minWords: 250, maxWords: 300 },
-      durationMinutes: 75,
-      team: { min: 1, max: 4 },
+      durationMinutes: 60,
+      team: { min: 1, max: 6 },
       fields: [
         {
           key: "needs",
@@ -171,7 +175,6 @@ export const elo2026: ConferenceConfigInput = {
       },
       reviewPool: "scientific",
       abstract: { label: { en: "Session abstract (anonymized)" }, minWords: 350, maxWords: 500 },
-      durationMinutes: 75,
       team: { min: 1, max: 6 },
       fields: [
         {

@@ -143,3 +143,55 @@ The goal is to lay down the parts every later phase builds on, so the Submission
 | F6 Deploy | Done and verified in a sandbox: the image builds, compose comes up healthy through Caddy, the internal listener is loopback-only, and backup and restore work. **Not yet verified on ELO's server**: real TLS and SMTP. |
 
 Deviation from the original plan: the README now reflects that conference configuration lives in the database and is managed through the API and CLI (`import-config`, `export-config`). It is not stored as versioned files.
+
+## Adversarial review (2026-11-08)
+
+Five independent reviewers covered auth and security, blindness and policy, schema and configuration, server data and ops, and the web app. Each finding then went to a skeptic told to refute it. Of 42 candidates, **37 were confirmed** (several overlapping) and **5 refuted**. Every confirmed finding is fixed, most with a regression test.
+
+**Sign-in**
+- A request refused for its IP no longer uses up the target address's rate limit; before, one IP could silently lock anyone out.
+- The limiter's sweep is bounded.
+- The verify page now shows which account a link is for and waits for a tap. This stops mail scanners from using up links, and another site from signing someone into a different account. It warns when switching accounts, and network errors are no longer reported as "expired".
+- Sign-in emails also carry an 8-digit code, so the installed app on iOS can finish signing in. Five wrong guesses and the code stops working.
+- The stored copy of a sign-in email is redacted once sent, so tokens really exist only as hashes.
+
+**Outbox**
+- Rows are claimed atomically (`FOR UPDATE SKIP LOCKED`, plus one pass per process), so mail is never sent twice.
+- Failed sends back off exponentially instead of using up every attempt in seconds.
+- Expired sign-in mail is never sent late.
+
+**Policy**
+- A chair-author's tier M agent no longer sees who reviews the chair's own submission (new blindness property).
+- The cap report counts only submissions the viewer may manage, and never drafts.
+- The cap-report and config routes no longer reveal that a draft conference exists.
+
+**Schema**
+- Required checkboxes are enforced, and whitespace-only text counts as empty.
+- The final-materials deadline must fall strictly before day one, in the conference's own time zone.
+- Duplicate option keys are refused, and only IANA time-zone names are accepted.
+- Regional language keys ("pt-BR") are used for the Portuguese interface.
+- The 2026 workshop length (60 minutes) and team size (up to 6) now follow the 2026 schedule, and experimental sessions have no fixed length.
+
+**Operations**
+- The example password is URL-safe.
+- `seed` no longer overwrites existing conferences (use `--force`), and it is audited.
+- Backups are created owner-only.
+- The runbook's `import-config` step pipes the file in.
+- The production bundle finds its migrations on its own.
+- Revoking a token twice keeps the original revocation time.
+- **Caching headers were never applied** (this `serveStatic` has no `onFound` hook). They now are, and missing assets return 404 instead of the app shell. Re-verified in Docker.
+
+**Web**
+- Focus follows the page heading once data has loaded.
+- Every page has its own title.
+- Language is chosen with links, not a select that navigates on change.
+- Fallback-language text carries `lang`.
+- The submission status line names its time zone.
+- Safe-area insets are respected, "1 person" is singular, and sign-out reports failures.
+
+The refuted findings were these:
+- Hyphenated words count as two, which is the specified `Intl.Segmenter` behaviour.
+- The 2026 config's presenter cap, which is now documented as carried over from 2024.
+- A live-region role change.
+- Deep links with unsupported language prefixes.
+- Remembering the language choice, which is a feature request rather than a defect.

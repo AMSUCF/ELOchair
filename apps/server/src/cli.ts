@@ -10,6 +10,7 @@ import { loadEnv } from "./env";
 import { seedSandbox } from "./fixtures";
 import {
   createApiToken,
+  createConferenceIfMissing,
   findOrCreatePerson,
   getConference,
   grantRole,
@@ -20,8 +21,9 @@ import {
 const HELP = `ELOchair command line. Usage: npm run cli -- <command> [options]
 
   migrate                                   apply database migrations
-  seed [--sandbox]                          load the ELO 2026 and ELO 2027 configurations;
-                                            --sandbox also loads synthetic test data
+  seed [--sandbox] [--force]                add the ELO 2026 and ELO 2027 configurations if
+                                            missing (--force replaces them); --sandbox also
+                                            loads synthetic test data
   import-config <file.json> [--phase P]     create or replace a conference from a JSON config
   export-config <slug>                      print a conference's configuration as JSON
   site-admin <email>                        make someone a site administrator
@@ -37,6 +39,7 @@ const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
     sandbox: { type: "boolean" },
+    force: { type: "boolean" },
     phase: { type: "string" },
     scope: { type: "string" },
     tier: { type: "string" },
@@ -76,10 +79,29 @@ try {
       break;
     case "seed": {
       await database.migrate();
-      await saveConference(db, conferences.elo2026, "archived");
-      await saveConference(db, conferences.elo2027, "draft");
-      console.log("loaded elo2026 (archived) and elo2027 (draft placeholder)");
+      for (const [config, phase] of [
+        [conferences.elo2026, "archived"],
+        [conferences.elo2027, "draft"],
+      ] as const) {
+        const saved = values.force
+          ? await saveConference(db, config, phase)
+          : await createConferenceIfMissing(db, config, phase);
+        if (!saved) {
+          console.log(`${config.slug} already exists; left unchanged (use --force to replace it)`);
+          continue;
+        }
+        await audit(db, "system", {
+          action: values.force ? "conference.config_replaced" : "conference.created",
+          conferenceId: saved.id,
+          details: { slug: saved.slug, phase: saved.phase, source: "seed" },
+        });
+        console.log(`${values.force ? "replaced" : "added"} ${saved.slug} (phase ${saved.phase})`);
+      }
       if (values.sandbox) {
+        if (await getConference(db, "sandbox")) {
+          console.log("sandbox already exists; left unchanged");
+          break;
+        }
         const s = await seedSandbox(db);
         console.log(
           `sandbox: ${s.submissionCount} synthetic submissions, ${s.assignmentCount} assignments\n` +
@@ -181,7 +203,7 @@ try {
     }
     case "revoke-token": {
       const ok = await revokeApiToken(db, arg(0, "token-id"));
-      if (!ok) fail("no such token");
+      if (!ok) fail("no such token, or it was already revoked");
       await audit(db, "system", {
         action: "agent_token.revoked",
         targetType: "api_token",

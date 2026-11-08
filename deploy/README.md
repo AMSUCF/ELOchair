@@ -33,12 +33,14 @@ docker compose -f deploy/docker-compose.yml up -d --no-build
 Run the command-line tool inside the app container:
 
 ```bash
-alias elochair='docker compose -f deploy/docker-compose.yml exec app node apps/server/dist/cli.js'
-elochair seed                                   # loads elo2026 (archived) and elo2027 (draft placeholder)
+alias elochair='docker compose -f deploy/docker-compose.yml exec -T app node apps/server/dist/cli.js'
+elochair seed                                   # adds elo2026 (archived) and elo2027 (draft placeholder) if missing
 elochair site-admin you@example.org             # a site administrator
 elochair grant chair@example.org elo2027 chair  # roles: admin, chair, track_chair, reviewer
 elochair grant tc@example.org elo2027 track_chair --scope track_key
-elochair import-config elo2027.json --phase cfp_open   # once the 2027 CFP is final
+# Files on the host are not visible inside the container, so pipe them in on standard input:
+elochair import-config /dev/stdin --phase cfp_open < elo2027.json   # once the 2027 CFP is final
+elochair export-config elo2027 > elo2027.json                       # and back out again
 ```
 
 People sign in with a link sent to their email; there are no passwords.
@@ -98,6 +100,10 @@ These were checked on 2026-11-08 in a development sandbox, not yet on ELO's serv
 - Security headers are present.
 - `seed` works inside the container.
 - `backup.sh` writes a dump that restores into a fresh database.
+- After the review fixes, the checks were repeated:
+  - the app shell is served `no-cache` and hashed assets `immutable`, with a 404 for missing assets
+  - a `openssl rand -hex 32` password works in the database URL
+  - a second `seed` leaves existing conferences unchanged
 
 Real TLS certificates and SMTP delivery have not been tested, because they need the real domain and mail account.
 

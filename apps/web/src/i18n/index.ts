@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { en, type MessageKey, type Messages } from "./en";
 import { es } from "./es";
 import { pt } from "./pt";
@@ -34,10 +34,12 @@ export const LangContext = createContext<Lang>("en");
 
 export function useT() {
   const lang = useContext(LangContext);
-  return {
-    lang,
-    t: (key: MessageKey, vars?: Record<string, string | number>) => translate(lang, key, vars),
-  };
+  // Stable per language, so it can be an effect dependency.
+  const t = useMemo(
+    () => (key: MessageKey, vars?: Record<string, string | number>) => translate(lang, key, vars),
+    [lang],
+  );
+  return { lang, t };
 }
 
 export type { MessageKey };

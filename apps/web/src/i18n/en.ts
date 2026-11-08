@@ -57,7 +57,7 @@ export const en = {
   signInSent: "Check your email. The link works once and expires in 20 minutes.",
   signInRateLimited: "Too many requests. Please wait a few minutes and try again.",
   signInInvalid: "Please enter a valid email address.",
-  verifyTitle: "Signing you in…",
+  verifyTitle: "Confirm sign-in",
   verifyFailed: "This link has expired or has already been used.",
   verifyMissing: "This link is incomplete. Please use the link from your email.",
   verifyAgain: "Request a new link",
@@ -73,6 +73,19 @@ export const en = {
   role_chair: "Chair",
   role_track_chair: "Track chair",
   role_reviewer: "Reviewer",
+  navMain: "Account and language",
+  verifyConfirm: "This link signs you in as {email}.",
+  verifyButton: "Sign in",
+  verifySigningIn: "Signing in…",
+  verifySwitchWarning:
+    "You are currently signed in as {email}. Continuing will sign you out of that account.",
+  verifyNetwork: "We could not reach the server. Check your connection and try again.",
+  signInCodeIntro: "Or type the 8-digit code from the email:",
+  signInCodeLabel: "Code from the email",
+  signInCodeSubmit: "Sign in with code",
+  signInCodeInvalid: "That code is not valid or has expired. Request a new link if needed.",
+  meSignOutFailed: "Could not sign out. Please try again.",
+  confPeopleOne: "{n} person",
   footer: "ELOchair is made for the Electronic Literature Organization.",
 } as const;
 

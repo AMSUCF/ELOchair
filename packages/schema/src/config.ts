@@ -21,12 +21,31 @@ export const Modality = z.enum(["online", "in_person", "hybrid"]);
 export const IsoDateTime = z.iso.datetime({ offset: true });
 export const IsoDate = z.iso.date();
 
+/**
+ * An IANA zone name such as "America/Bogota" (or "UTC"). Offsets ("+05:00") and abbreviations
+ * ("EST") are refused even where the runtime accepts them: they ignore daylight saving.
+ */
 function isValidTimeZone(tz: string): boolean {
+  if (!/^(UTC|[A-Za-z]+(\/[A-Za-z0-9_+-]+)+)$/.test(tz)) return false;
   try {
     new Intl.DateTimeFormat("en", { timeZone: tz });
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The calendar date ("2026-05-15") of an instant, as seen in a time zone. */
+function dateIn(iso: string, timeZone: string): string | null {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return null;
   }
 }
 
@@ -209,6 +228,10 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {
         issue([...fat, "options"], "select fields need options");
       }
+      unique(
+        [...fat, "options"],
+        (f.options ?? []).map((o) => o.key),
+      );
       for (const [k, o] of (f.options ?? []).entries())
         text([...fat, "options", k, "label"], o.label);
     });
@@ -225,7 +248,9 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       issue(["deadlines", b], `${b} must not be before ${a}`);
   }
   if (c.dates.start > c.dates.end) issue(["dates", "end"], "end must not be before start");
-  if (d.finalMaterials.slice(0, 10) > c.dates.start) {
+  // Compare calendar dates in the conference's own time zone: due strictly before day one.
+  const finalDay = dateIn(d.finalMaterials, c.timezone);
+  if (finalDay && finalDay >= c.dates.start) {
     issue(["deadlines", "finalMaterials"], "final materials must be due before the conference");
   }
 }

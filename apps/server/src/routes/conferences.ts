@@ -3,6 +3,7 @@ import {
   isConferenceAdmin,
   isConferenceChair,
   projectSubmission,
+  submissionAccess,
   type Viewer,
 } from "@elochair/policy";
 import { presenterCapReport, SubmissionStatus } from "@elochair/schema";
@@ -41,11 +42,12 @@ function summary(k: ConferenceRow) {
   };
 }
 
+/** Drafts are never counted: they are visible to their contributors only. */
 const Statuses = z
   .string()
   .default("submitted")
   .transform((s) => s.split(","))
-  .pipe(z.array(SubmissionStatus).min(1));
+  .pipe(z.array(SubmissionStatus.exclude(["draft"])).min(1));
 
 export const conferenceRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
@@ -62,7 +64,8 @@ export const conferenceRoutes = new Hono<AppEnv>()
     const viewer = c.get("viewer");
     const { db } = c.get("deps");
     const k = await getConference(db, c.req.param("slug"));
-    if (!k) return c.json({ error: "not_found" }, 404);
+    // Draft conferences do not exist for people who cannot see them.
+    if (!k || !visible(viewer, k)) return c.json({ error: "not_found" }, 404);
     // Configuration changes are human-only: agents can read but not reconfigure a conference.
     if (viewer.kind !== "person" || !isConferenceAdmin(viewer, k.id)) {
       return c.json({ error: "forbidden" }, 403);
@@ -97,10 +100,15 @@ export const conferenceRoutes = new Hono<AppEnv>()
     const viewer = c.get("viewer");
     const { db } = c.get("deps");
     const k = await getConference(db, c.req.param("slug"));
-    if (!k) return c.json({ error: "not_found" }, 404);
+    if (!k || !visible(viewer, k)) return c.json({ error: "not_found" }, 404);
     if (!canChair(viewer, k.id)) return c.json({ error: "forbidden" }, 403);
     const statuses = Statuses.parse(c.req.query("statuses"));
-    const records = await loadSubmissionRecords(db, k);
+    // Count only submissions this viewer may manage: a chair's own or conflicted submissions
+    // are left out (another chair checks those), so the report cannot reveal them.
+    const records = (await loadSubmissionRecords(db, k)).filter((r) => {
+      const access = submissionAccess(viewer, r);
+      return access === "chair" || access === "metadata";
+    });
     // IDs and counts only: safe for tier M (cloud) agents.
     const report = presenterCapReport(
       k.config,

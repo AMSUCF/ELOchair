@@ -185,6 +185,10 @@ export const loginTokens = pgTable("login_tokens", {
   /** SHA-256 of the token; the token itself is only ever in the email. */
   tokenHash: text("token_hash").notNull().unique(),
   lang: text("lang").notNull().default("en"),
+  /** SHA-256 of email + the 8-digit code from the same email (for typing into an installed app). */
+  codeHash: text("code_hash"),
+  /** Wrong codes tried against this token; it stops accepting codes at the limit. */
+  codeAttempts: integer("code_attempts").notNull().default(0),
   createdAt: created(),
   expiresAt: ts("expires_at").notNull(),
   usedAt: ts("used_at"),
@@ -254,7 +258,11 @@ export const outbox = pgTable(
     createdAt: created(),
     sentAt: ts("sent_at"),
     attempts: integer("attempts").notNull().default(0),
+    /** Set while a delivery pass owns the row, so overlapping passes never send twice. */
+    claimedAt: ts("claimed_at"),
+    /** Earliest time of the next attempt (exponential backoff after failures). */
+    nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
     lastError: text("last_error"),
   },
-  (t) => [index("outbox_pending_idx").on(t.sentAt, t.createdAt)],
+  (t) => [index("outbox_pending_idx").on(t.sentAt, t.nextAttemptAt)],
 );

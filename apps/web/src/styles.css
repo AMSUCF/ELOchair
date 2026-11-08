@@ -68,12 +68,18 @@ body {
   flex-direction: column;
 }
 
+/* Respect notches and rounded corners (index.html sets viewport-fit=cover). */
+:root {
+  --pad-left: max(var(--gutter), env(safe-area-inset-left));
+  --pad-right: max(var(--gutter), env(safe-area-inset-right));
+}
+
 main {
   flex: 1;
   width: 100%;
   max-width: 46rem;
   margin: 0 auto;
-  padding: 8px var(--gutter) 48px;
+  padding: 8px var(--pad-right) 48px var(--pad-left);
 }
 
 h1 {
@@ -136,7 +142,7 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px var(--gutter);
+  padding: max(8px, env(safe-area-inset-top)) var(--pad-right) 8px var(--pad-left);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
@@ -153,11 +159,26 @@ a {
 
 .site-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 16px;
 }
 
-.site-nav a {
+.lang-list {
+  display: flex;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lang-list a[aria-current="true"] {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-nav a,
+.lang-list a {
   display: inline-flex;
   align-items: center;
   min-height: var(--touch);
@@ -165,7 +186,7 @@ a {
 
 .site-footer {
   border-top: 1px solid var(--line);
-  padding: 16px var(--gutter);
+  padding: 16px var(--pad-right) max(16px, env(safe-area-inset-bottom)) var(--pad-left);
   color: var(--muted);
   font-size: 0.9rem;
   text-align: center;

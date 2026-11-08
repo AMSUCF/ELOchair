@@ -10,4 +10,4 @@ export type LanguageCode = z.infer<typeof LanguageCode>;
 export const LocalizedText = z.record(LanguageCode, z.string().min(1));
 export type LocalizedText = z.infer<typeof LocalizedText>;
 
-export { localize } from "./text";
+export { localize, localizeWithLang } from "./text";

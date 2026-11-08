@@ -4,6 +4,7 @@ import { useParams } from "react-router";
 import type { ConferenceDetail } from "../api";
 import { formatDateRange, formatDateTime, viewerTimeZone } from "../format";
 import { type MessageKey, useT } from "../i18n";
+import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
 const DEADLINES = [
@@ -22,25 +23,30 @@ export function ConferencePage() {
   if (!res.ok) {
     return (
       <>
-        <h1>{t("appName")}</h1>
+        <PageHeading>{t("appName")}</PageHeading>
         <p role="alert">{res.status === 404 ? t("confNotFound") : t("errorGeneric")}</p>
       </>
     );
   }
   const c = res.data.config;
-  const loc = (text: Parameters<typeof localize>[0]) => localize(text, lang, c.defaultLanguage);
+  const fb = c.defaultLanguage;
 
   return (
     <article className="conference">
-      <h1>{loc(c.title)}</h1>
+      <PageHeading title={localize(c.title, lang, fb)}>
+        <Localized text={c.title} fallback={fb} />
+      </PageHeading>
       {c.placeholder && (
         <p className="notice" role="note">
           {t("confPlaceholder")}
         </p>
       )}
-      <p className="lede">{loc(c.theme)}</p>
+      <p className="lede">
+        <Localized text={c.theme} fallback={fb} />
+      </p>
       <p className="meta">
-        {loc(c.location)} · {t(`modality_${c.modality}` as MessageKey)} · {c.host}
+        <Localized text={c.location} fallback={fb} /> · {t(`modality_${c.modality}` as MessageKey)}{" "}
+        · {c.host}
       </p>
 
       <SubmissionStatus config={c} />
@@ -57,18 +63,24 @@ export function ConferencePage() {
         <ul className="cards">
           {c.submissionTypes.map((type) => (
             <li key={type.key} className="card">
-              <h3>{loc(type.name)}</h3>
-              <p>{loc(type.description)}</p>
+              <h3>
+                <Localized text={type.name} fallback={fb} />
+              </h3>
+              <p>
+                <Localized text={type.description} fallback={fb} />
+              </p>
               <ul className="facts">
                 <li>
-                  {loc(type.abstract.label)}:{" "}
+                  <Localized text={type.abstract.label} fallback={fb} />:{" "}
                   {t("confWords", { min: type.abstract.minWords, max: type.abstract.maxWords })}
                 </li>
                 {type.durationMinutes && <li>{t("confMinutes", { n: type.durationMinutes })}</li>}
                 <li>
-                  {type.team.min === type.team.max
-                    ? t("confPeopleExact", { n: type.team.min })
-                    : t("confPeopleRange", { min: type.team.min, max: type.team.max })}
+                  {type.team.min !== type.team.max
+                    ? t("confPeopleRange", { min: type.team.min, max: type.team.max })
+                    : new Intl.PluralRules(lang).select(type.team.min) === "one"
+                      ? t("confPeopleOne", { n: type.team.min })
+                      : t("confPeopleExact", { n: type.team.min })}
                 </li>
                 <li>{t(`review_${effectiveBlindMode(c, type.key)}` as MessageKey)}</li>
               </ul>
@@ -78,7 +90,7 @@ export function ConferencePage() {
                   <ul className="facts">
                     {type.fields.map((f) => (
                       <li key={f.key}>
-                        {loc(f.label)}
+                        <Localized text={f.label} fallback={fb} />
                         {f.required && ` (${t("confRequired")})`}
                       </li>
                     ))}
@@ -95,7 +107,9 @@ export function ConferencePage() {
           <h2 id="tracks">{t("confTracks")}</h2>
           <ul>
             {c.tracks.map((tr) => (
-              <li key={tr.key}>{loc(tr.name)}</li>
+              <li key={tr.key}>
+                <Localized text={tr.name} fallback={fb} />
+              </li>
             ))}
           </ul>
         </section>
@@ -105,7 +119,9 @@ export function ConferencePage() {
           <h2 id="topics">{t("confTopics")}</h2>
           <ul>
             {c.topics.map((tp) => (
-              <li key={tp.key}>{loc(tp.label)}</li>
+              <li key={tp.key}>
+                <Localized text={tp.label} fallback={fb} />
+              </li>
             ))}
           </ul>
         </section>
@@ -120,7 +136,8 @@ function SubmissionStatus({ config: c }: { config: ConferenceConfig }) {
   const now = Date.now();
   const open = Date.parse(c.deadlines.submissionsOpen);
   const close = Date.parse(c.deadlines.submissionsClose);
-  const at = (iso: string) => formatDateTime(iso, lang, c.timezone);
+  // Always say which clock a deadline is on.
+  const at = (iso: string) => `${formatDateTime(iso, lang, c.timezone)} (${c.timezone})`;
   const text =
     now < open
       ? t("confSubmitNotYet", { date: at(c.deadlines.submissionsOpen) })

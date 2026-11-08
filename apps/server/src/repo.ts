@@ -8,7 +8,7 @@ import {
   type RoleGrant,
   type Submission,
 } from "@elochair/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Db } from "./db/client";
 import {
   apiTokens,
@@ -52,6 +52,21 @@ export async function listConferences(db: Db): Promise<ConferenceRow[]> {
     phase: r.phase,
     config: ConferenceConfig.parse(r.config),
   }));
+}
+
+/** Create a conference only if its slug is new. Returns null when it already exists. */
+export async function createConferenceIfMissing(
+  db: Db,
+  input: unknown,
+  phase: string,
+): Promise<ConferenceRow | null> {
+  const config = ConferenceConfig.parse(input);
+  const [row] = await db
+    .insert(conferences)
+    .values({ slug: config.slug, config, phase })
+    .onConflictDoNothing({ target: conferences.slug })
+    .returning();
+  return row ? { id: row.id, slug: row.slug, phase: row.phase, config } : null;
 }
 
 /** Create or replace a conference's configuration (validated first). */
@@ -256,11 +271,12 @@ export async function createApiToken(
   return { id: row.id, token };
 }
 
+/** Revoke a token. False when there is no such token or it was already revoked (kept as is). */
 export async function revokeApiToken(db: Db, id: string): Promise<boolean> {
   const rows = await db
     .update(apiTokens)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiTokens.id, id)))
+    .where(and(eq(apiTokens.id, id), isNull(apiTokens.revokedAt)))
     .returning({ id: apiTokens.id });
   return rows.length > 0;
 }

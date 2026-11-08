@@ -59,3 +59,42 @@ describe("validateSubmission", () => {
     expect(codes).toEqual(["unknown_track", "unknown_topic"]);
   });
 });
+
+describe("review fixes: required fields", () => {
+  const withConsent = ConferenceConfig.parse({
+    ...structuredClone(elo2026),
+    submissionTypes: elo2026.submissionTypes.map((t) =>
+      t.key === "talk"
+        ? {
+            ...t,
+            fields: [
+              {
+                key: "consent",
+                label: { en: "I agree to be recorded" },
+                kind: "boolean",
+                required: true,
+              },
+              { key: "note", label: { en: "Note" }, kind: "text", required: true },
+            ],
+          }
+        : t,
+    ),
+  });
+
+  it("a required checkbox must be ticked", () => {
+    const paths = (fields: Record<string, string | boolean>) =>
+      validateSubmission(withConsent, { ...base, fields }, lead).map((i) => i.path);
+    expect(paths({ note: "x" })).toEqual(["fields.consent"]);
+    expect(paths({ note: "x", consent: false })).toEqual(["fields.consent"]);
+    expect(paths({ note: "x", consent: true })).toEqual([]);
+  });
+
+  it("whitespace does not satisfy a required text field", () => {
+    const issues = validateSubmission(
+      withConsent,
+      { ...base, fields: { consent: true, note: "   " } },
+      lead,
+    );
+    expect(issues).toEqual([{ path: "fields.note", code: "required" }]);
+  });
+});

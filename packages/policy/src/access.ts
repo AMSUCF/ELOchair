@@ -25,6 +25,8 @@ export type Access =
   | "none"
   | "public"
   | "metadata"
+  /** Tier M view of the owner's own submission: no reviewer assignments. */
+  | "metadata_own"
   | `reviewer_${BlindMode}`
   | "submitter"
   | "chair";
@@ -91,5 +93,7 @@ export function submissionAccess(viewer: Viewer, ctx: SubmissionContext): Access
   if (viewer.tier === "C") return owner;
   // Tier M: published records are public anyway; everything else collapses to metadata.
   if (ctx.submission.status === "published") return "public";
-  return owner === "none" ? "none" : "metadata";
+  if (owner === "none") return "none";
+  // A chair's agent looking at the chair's own submission must not learn who reviews it.
+  return owner === "submitter" ? "metadata_own" : "metadata";
 }

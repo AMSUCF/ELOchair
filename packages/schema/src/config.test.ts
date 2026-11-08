@@ -92,3 +92,45 @@ describe("effectiveBlindMode", () => {
     expect(effectiveBlindMode(c2026, "mystery")).toBe("double");
   });
 });
+
+describe("review fixes: configuration rules", () => {
+  it("requires final materials strictly before the first day, in the conference's time zone", () => {
+    const sameDay = clone(elo2026);
+    sameDay.deadlines = { ...sameDay.deadlines, finalMaterials: "2026-07-15T09:00:00-04:00" };
+    expect(issuePaths(sameDay)).toContain("deadlines.finalMaterials");
+    // 2026-07-15T02:00Z is still July 14 in New York: allowed.
+    const eveBefore = clone(elo2026);
+    eveBefore.deadlines = { ...eveBefore.deadlines, finalMaterials: "2026-07-15T02:00:00Z" };
+    expect(issuePaths(eveBefore)).not.toContain("deadlines.finalMaterials");
+  });
+
+  it("rejects fixed offsets and abbreviations as time zones", () => {
+    for (const tz of ["+05:00", "EST", "GMT-5"]) {
+      const c = clone(elo2026);
+      c.timezone = tz;
+      expect(issuePaths(c)).toContain("timezone");
+    }
+    const utc = clone(elo2026);
+    utc.timezone = "UTC";
+    expect(issuePaths(utc)).toEqual([]);
+  });
+
+  it("rejects duplicate option keys in a select field", () => {
+    const c = clone(elo2026);
+    c.submissionTypes[2] = {
+      ...c.submissionTypes[2]!,
+      fields: [
+        {
+          key: "format",
+          label: { en: "Format" },
+          kind: "select",
+          options: [
+            { key: "online", label: { en: "Online" } },
+            { key: "online", label: { en: "Also online" } },
+          ],
+        },
+      ],
+    };
+    expect(issuePaths(c)).toContain("submissionTypes.2.fields.0.options.1.key");
+  });
+});

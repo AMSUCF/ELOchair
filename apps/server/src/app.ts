@@ -152,21 +152,32 @@ export function createApp(deps: Deps, exposure: Exposure) {
 
   const dist = deps.env.WEB_DIST;
   if (exposure === "public" && dist) {
+    // (This serveStatic has no onFound hook, so caching headers are set after it runs.)
+    const cacheFor = (value: string, when: (contentType: string) => boolean) =>
+      (async (c, next) => {
+        await next();
+        if (c.res.status === 200 && when(c.res.headers.get("content-type") ?? "")) {
+          c.res.headers.set("Cache-Control", value);
+        }
+      }) as MiddlewareHandler<AppEnv>;
+    // Hashed build assets never change: cache them for a year.
     app.use(
       "/assets/*",
-      serveStatic({
-        root: dist,
-        onFound: (_p, c) => {
-          c.header("Cache-Control", "public, max-age=31536000, immutable");
-        },
-      }),
+      cacheFor("public, max-age=31536000, immutable", () => true),
+    );
+    app.use("/assets/*", serveStatic({ root: dist }));
+    // A missing hashed asset is a 404, not the app shell (a stale page would parse HTML as JS).
+    app.get("/assets/*", (c) => c.text("not found", 404));
+    // The app shell must always be revalidated so new deployments reach people.
+    app.use(
+      "*",
+      cacheFor("no-cache", (type) => type.startsWith("text/html")),
     );
     app.use("*", serveStatic({ root: dist }));
     // Single-page app: unknown paths get index.html so client-side routes work on refresh.
     let indexHtml: string | undefined;
     app.get("*", async (c) => {
       indexHtml ??= await readFile(join(dist, "index.html"), "utf8");
-      c.header("Cache-Control", "no-cache");
       return c.html(indexHtml);
     });
   }

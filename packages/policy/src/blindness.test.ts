@@ -293,6 +293,20 @@ describe("chairs and contributors", () => {
     );
   });
 
+  it("a chair-contributor's tier M agent never learns who reviews their submission", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        const authorChair = chair(b, b.rec.contributions[0]!.personId);
+        const out = projectSubmission(agent(authorChair, "M", b.conferenceId), b.rec);
+        expect(out?.view).toBe("metadata");
+        expect(findLeaks(out, [b.reviewerId])).toEqual([]);
+        expect(out && "assignedReviewerIds" in out).toBe(false);
+      }),
+      RUNS,
+    );
+  });
+
   it("drafts are visible to contributors only", () => {
     fc.assert(
       fc.property(scenario, (s) => {

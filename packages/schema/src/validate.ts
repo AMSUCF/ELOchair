@@ -30,9 +30,16 @@ const isUrl = (v: string) => {
 
 function checkField(f: CustomField, v: FieldValue | undefined, lang: string): SubmissionIssue[] {
   const path = `fields.${f.key}`;
-  const empty = v === undefined || v === "" || (Array.isArray(v) && v.length === 0) || v === false;
-  if (empty) return f.required && f.kind !== "boolean" ? [{ path, code: "required" }] : [];
-  if (f.required && f.kind === "boolean" && v !== true) return [{ path, code: "required" }];
+  // A required checkbox (consent, licence) must be ticked; an unticked optional one is fine.
+  if (f.kind === "boolean") {
+    if (v === undefined || v === false) return f.required ? [{ path, code: "required" }] : [];
+    return typeof v === "boolean" ? [] : [{ path, code: "wrong_kind" }];
+  }
+  const empty =
+    v === undefined ||
+    (typeof v === "string" && v.trim() === "") ||
+    (Array.isArray(v) && v.length === 0);
+  if (empty) return f.required ? [{ path, code: "required" }] : [];
 
   const options = new Set(f.options?.map((o) => o.key));
   switch (f.kind) {
@@ -53,8 +60,6 @@ function checkField(f: CustomField, v: FieldValue | undefined, lang: string): Su
     case "multiselect":
       if (!Array.isArray(v)) return [{ path, code: "wrong_kind" }];
       return v.every((x) => options.has(x)) ? [] : [{ path, code: "unknown_option" }];
-    case "boolean":
-      return typeof v === "boolean" ? [] : [{ path, code: "wrong_kind" }];
     case "number":
       return typeof v === "number" && Number.isFinite(v) ? [] : [{ path, code: "wrong_kind" }];
   }

@@ -125,3 +125,83 @@ describe("health and headers", () => {
     expect((await call(t.internal, "GET", "/healthz")).json.exposure).toBe("internal");
   });
 });
+
+describe("review fixes: rate limits", () => {
+  it("a request refused for its IP does not use up the target address's budget", async () => {
+    const u = await makeTestApp();
+    for (let i = 0; i < 30; i++) {
+      await call(u.public, "POST", "/api/auth/request-link", {
+        body: { email: `junk${i}@example.org` },
+      });
+    }
+    for (let i = 0; i < 6; i++) {
+      const r = await call(u.public, "POST", "/api/auth/request-link", {
+        body: { email: "victim@example.org" },
+      });
+      expect(r.status).toBe(429);
+    }
+    // From another IP the victim can still ask for links: their own budget was never touched.
+    expect(u.deps.limits.linkPerEmail.hit("victim@example.org")).toBe(true);
+    await u.close();
+  });
+
+  it("the limiter stays bounded and cheap under a flood of distinct keys", async () => {
+    const { RateLimiter } = await import("./ratelimit");
+    const limiter = new RateLimiter(5, 60_000, () => 1_000, 1_000);
+    const start = performance.now();
+    for (let i = 0; i < 50_000; i++) limiter.hit(`k${i}`);
+    expect(limiter.size).toBeLessThanOrEqual(1_000);
+    expect(performance.now() - start).toBeLessThan(2_000);
+  });
+});
+
+describe("review fixes: sign-in codes and link info", () => {
+  async function requestCode(email: string) {
+    await call(t.public, "POST", "/api/auth/request-link", { body: { email } });
+    const mail = await call(t.public, "GET", `/api/_test/outbox/latest?to=${email}`);
+    const code = /\b(\d{4}) (\d{4})\b/.exec(mail.json.text);
+    const token = /#token=([A-Za-z0-9_-]+)/.exec(mail.json.text)?.[1] as string;
+    return { code: code ? `${code[1]}${code[2]}` : "", token };
+  }
+
+  it("signs in with the typed code, once", async () => {
+    const { code } = await requestCode("code@example.org");
+    expect(code).toMatch(/^\d{8}$/);
+    const ok = await call(t.public, "POST", "/api/auth/verify-code", {
+      body: { email: "Code@Example.org", code: `${code.slice(0, 4)} ${code.slice(4)}` },
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("set-cookie")).toMatch(/elo_session=/);
+    const again = await call(t.public, "POST", "/api/auth/verify-code", {
+      body: { email: "code@example.org", code },
+    });
+    expect(again.status).toBe(400);
+  });
+
+  it("stops accepting a code after five wrong guesses", async () => {
+    const { code } = await requestCode("guess@example.org");
+    const wrong = code === "00000000" ? "11111111" : "00000000";
+    for (let i = 0; i < 5; i++) {
+      const r = await call(t.public, "POST", "/api/auth/verify-code", {
+        body: { email: "guess@example.org", code: wrong },
+      });
+      expect(r.status).toBe(400);
+    }
+    const right = await call(t.public, "POST", "/api/auth/verify-code", {
+      body: { email: "guess@example.org", code },
+    });
+    expect(right.status).toBe(400);
+  });
+
+  it("link-info names the address without using up the link", async () => {
+    const { token } = await requestCode("info@example.org");
+    const info = await call(t.public, "POST", "/api/auth/link-info", { body: { token } });
+    expect(info.json).toEqual({ email: "info@example.org" });
+    expect((await call(t.public, "POST", "/api/auth/verify", { body: { token } })).status).toBe(
+      200,
+    );
+    expect((await call(t.public, "POST", "/api/auth/link-info", { body: { token } })).status).toBe(
+      400,
+    );
+  });
+});

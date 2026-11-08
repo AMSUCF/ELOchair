@@ -30,7 +30,13 @@ npm run e2e                   # builds the web app, then runs phone-size Playwri
 npm run cli -- --help         # migrate, seed, import/export config, roles, agent tokens
 ```
 
-In development, sign in as `chair@example.org`, `admin@example.org` or `reviewer-1@example.org`. The sign-in link is printed in the server log.
+In development, sign in as `chair@example.org`, `admin@example.org` or `reviewer-1@example.org`. The sign-in email, with its link and 8-digit code, is printed in the server log.
+
+Sign-in works like this:
+- Each email carries a link and a code.
+- The link opens a confirmation page, and nothing is used up until the person taps "Sign in".
+- The code is for the installed app, and stops working after five wrong guesses.
+- Tokens and codes are stored only as hashes. The outbox redacts its copy of the email once it is sent.
 
 ## House rules
 

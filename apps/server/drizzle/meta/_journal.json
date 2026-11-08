@@ -15,6 +15,13 @@
       "when": 1794161625791,
       "tag": "0001_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794164879848,
+      "tag": "0002_signin_codes_outbox_claims",
+      "breakpoints": true
     }
   ]
 }

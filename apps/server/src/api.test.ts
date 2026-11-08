@@ -237,3 +237,42 @@ describe("conference configuration", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("review fixes: cap report and draft conferences", () => {
+  it("refuses draft statuses and hides draft conferences from non-chairs", async () => {
+    const bad = await call(
+      t.public,
+      "GET",
+      `/api/conferences/${s.slug}/cap-report?statuses=draft`,
+      { cookie: chairCookie },
+    );
+    expect(bad.status).toBe(400);
+    const reviewerCookie = await signIn(t, s.reviewerEmails[2] as string);
+    expect(
+      (
+        await call(t.public, "GET", "/api/conferences/elo2027/cap-report", {
+          cookie: reviewerCookie,
+        })
+      ).status,
+    ).toBe(404);
+    const put = await call(t.public, "PUT", "/api/conferences/elo2027/config", {
+      cookie: reviewerCookie,
+      body: {},
+    });
+    expect(put.status).toBe(404);
+  });
+
+  it("leaves a chair's own submissions out of their cap report", async () => {
+    const [own] = await t.db.select().from(submissions).limit(1);
+    const chairId = await personId(t, s.chairEmail);
+    await t.db
+      .insert(contributions)
+      .values({ submissionId: own!.id, personId: chairId, role: "lead", position: 99 });
+    const report = await call(t.public, "GET", `/api/conferences/${s.slug}/cap-report`, {
+      cookie: chairCookie,
+    });
+    const ids = report.json.counts.flatMap((x: { submissionIds: string[] }) => x.submissionIds);
+    expect(ids).not.toContain(own!.id);
+    await t.db.delete(contributions).where(eq(contributions.personId, chairId));
+  });
+});

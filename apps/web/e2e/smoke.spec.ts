@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -15,11 +15,25 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+async function latestMail(request: APIRequestContext, email: string) {
+  return (await (await request.get(`/api/_test/outbox/latest?to=${email}`)).json()) as {
+    text: string;
+  };
+}
+
+async function requestLink(page: Page, email: string) {
+  await page.goto("/en/sign-in");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("button", { name: "Email me a link" }).click();
+  await expect(page.getByText("Check your email.")).toBeVisible();
+}
+
 test("the 2026 call for proposals reads well on a phone", async ({ page }) => {
   await page.goto("/en/c/elo2026");
   await expect(
     page.getByRole("heading", { level: 1, name: "ELO 2026: (un)supervised" }),
   ).toBeVisible();
+  await expect(page).toHaveTitle("ELO 2026: (un)supervised – ELOchair");
   await expect(page.getByRole("heading", { name: "Individual talk" })).toBeVisible();
   await expect(page.getByText("250–300 words").first()).toBeVisible();
   await expect(
@@ -28,35 +42,51 @@ test("the 2026 call for proposals reads well on a phone", async ({ page }) => {
   // Deadlines in conference time and, for this Lisbon visitor, in their own time.
   await expect(page.getByText("Conference time (America/New_York)").first()).toBeVisible();
   await expect(page.getByText("Your time (Europe/Lisbon)").first()).toBeVisible();
+  await expect(page.getByText(/Submissions are closed\./)).toBeVisible();
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await page.setViewportSize({ width: 360, height: 740 });
   await expectNoHorizontalScroll(page);
 });
 
-test("the interface switches language", async ({ page }) => {
+test("navigating moves focus to the new page's heading once it has loaded", async ({ page }) => {
   await page.goto("/en/");
-  await page.getByLabel("Language").selectOption("es");
+  await page.getByRole("link", { name: "ELO 2026: (un)supervised" }).click();
+  const h1 = page.getByRole("heading", { level: 1, name: "ELO 2026: (un)supervised" });
+  await expect(h1).toBeFocused();
+});
+
+test("the interface switches language with links", async ({ page }) => {
+  await page.goto("/en/");
+  await page.getByRole("link", { name: "Español" }).click();
   await expect(page).toHaveURL(/\/es\/$/);
   await expect(page.getByRole("heading", { level: 1, name: "Congresos" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  await expect(page.getByRole("link", { name: "Español" })).toHaveAttribute("aria-current", "true");
+  // English-only configuration text is marked as English inside the Spanish page.
+  await expect(page.locator('a[href="/es/c/elo2026"] span[lang="en"]')).toHaveText(
+    "ELO 2026: (un)supervised",
+  );
   await expectAccessible(page);
 });
 
-test("sign in with a magic link, then sign out", async ({ page, request }) => {
+test("sign in with a magic link after confirming, then sign out", async ({ page, request }) => {
   const email = "chair@example.org";
   await page.goto("/en/sign-in");
   await expectAccessible(page);
-  await page.getByLabel("Email address").fill(email);
-  await page.getByRole("button", { name: "Email me a link" }).click();
-  await expect(page.getByText("Check your email.")).toBeVisible();
+  await requestLink(page, email);
 
-  const mail = await (await request.get(`/api/_test/outbox/latest?to=${email}`)).json();
-  const link = /https?:\/\/\S+#token=\S+/.exec(mail.text)?.[0];
+  const link = /https?:\/\/\S+#token=\S+/.exec((await latestMail(request, email)).text)?.[0];
   expect(link).toBeTruthy();
 
+  // Opening the link alone signs nobody in: it says who, and waits for a tap.
   await page.goto(link as string);
-  await expect(page).toHaveURL(/\/en\/me$/); // token removed from the address bar
+  await expect(page.getByText(`This link signs you in as ${email}.`)).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/auth\/verify$/); // token removed from the address bar
+  await expectAccessible(page);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/en\/me$/);
   await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
   await expect(page.getByText(email)).toBeVisible();
   await expect(page.getByText("sandbox: Chair")).toBeVisible();
@@ -68,6 +98,33 @@ test("sign in with a magic link, then sign out", async ({ page, request }) => {
 
   await page.goto("/en/me");
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
   await page.goto("/en/me");
   await expect(page.getByText("Please sign in to see your account.")).toBeVisible();
+});
+
+test("sign in by typing the code (for the installed app)", async ({ page, request }) => {
+  const email = "reviewer-1@example.org";
+  await requestLink(page, email);
+  const m = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, email)).text);
+  expect(m).toBeTruthy();
+  await page.getByLabel("Code from the email").fill(`${m?.[1]} ${m?.[2]}`);
+  await page.getByRole("button", { name: "Sign in with code" }).click();
+  await expect(page).toHaveURL(/\/en\/me$/);
+  await expect(page.getByText("sandbox: Reviewer")).toBeVisible();
+});
+
+test("a link for another account warns before switching", async ({ page, request }) => {
+  await requestLink(page, "admin@example.org");
+  const m = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, "admin@example.org")).text);
+  await page.getByLabel("Code from the email").fill(`${m?.[1]}${m?.[2]}`);
+  await page.getByRole("button", { name: "Sign in with code" }).click();
+  await expect(page).toHaveURL(/\/en\/me$/);
+
+  await requestLink(page, "track-chair-1@example.org");
+  const link = /https?:\/\/\S+#token=\S+/.exec(
+    (await latestMail(request, "track-chair-1@example.org")).text,
+  )?.[0];
+  await page.goto(link as string);
+  await expect(page.getByText("You are currently signed in as admin@example.org.")).toBeVisible();
 });

@@ -4,5 +4,5 @@
  */
 export { presenterCapReport } from "./cap";
 export { effectiveBlindMode, findType } from "./lookup";
-export { localize } from "./text";
+export { localize, localizeWithLang } from "./text";
 export { countWords } from "./words";

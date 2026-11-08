@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
@@ -16,7 +17,15 @@ export type Database = {
   close: () => Promise<void>;
 };
 
-const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+/**
+ * apps/server/drizzle, seen from the source file (src/db/client.ts) or from the production
+ * bundle (dist/main.js). MIGRATIONS_DIR overrides both.
+ */
+const migrationsFolder =
+  ["../../drizzle", "../drizzle"]
+    .map((rel) => fileURLToPath(new URL(rel, import.meta.url)))
+    .find((dir) => existsSync(`${dir}/meta/_journal.json`)) ??
+  fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 /**
  * Production uses Postgres (DATABASE_URL). Without one, PGlite (Postgres compiled to WASM) runs

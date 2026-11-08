@@ -50,7 +50,8 @@ export type MetadataSubmission = {
   abstractWords: number;
   filledFieldKeys: string[];
   contributors: { personId: string; role: ContributionRole; position: number }[];
-  assignedReviewerIds: string[];
+  /** Absent when the agent's owner is a contributor (they must not learn who reviews it). */
+  assignedReviewerIds?: string[];
   createdAt: string;
   updatedAt: string;
   submittedAt: string | null;
@@ -195,6 +196,7 @@ export function renderSubmission(
         }),
       };
     case "metadata":
+    case "metadata_own":
       return {
         view: "metadata",
         id: s.id,
@@ -211,7 +213,7 @@ export function renderSubmission(
           role: c.role,
           position: c.position,
         })),
-        assignedReviewerIds: reviewerIds(rec.assignments),
+        ...(access === "metadata" ? { assignedReviewerIds: reviewerIds(rec.assignments) } : {}),
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         submittedAt: s.submittedAt,

@@ -164,8 +164,8 @@ export const elo2027: ConferenceConfigInput = {
         minWords: 250,
         maxWords: 300,
       },
-      durationMinutes: 75,
-      team: { min: 1, max: 4 },
+      durationMinutes: 60,
+      team: { min: 1, max: 6 },
       fields: [
         {
           key: "needs",

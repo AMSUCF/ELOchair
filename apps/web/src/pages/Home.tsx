@@ -1,8 +1,8 @@
-import { localize } from "@elochair/schema/pure";
 import { Link } from "react-router";
 import type { ConferenceSummary } from "../api";
 import { formatDateRange } from "../format";
 import { type MessageKey, useT } from "../i18n";
+import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
 export function HomePage() {
@@ -11,7 +11,7 @@ export function HomePage() {
 
   return (
     <>
-      <h1>{t("homeTitle")}</h1>
+      <PageHeading>{t("homeTitle")}</PageHeading>
       <p className="lede">{t("tagline")}</p>
       {!res && <p role="status">{t("loading")}</p>}
       {res && !res.ok && <p role="alert">{t("errorGeneric")}</p>}
@@ -21,10 +21,12 @@ export function HomePage() {
           {res.data.conferences.map((k) => (
             <li key={k.slug} className="card">
               <h2>
-                <Link to={`/${lang}/c/${k.slug}`}>{localize(k.title, lang)}</Link>
+                <Link to={`/${lang}/c/${k.slug}`}>
+                  <Localized text={k.title} />
+                </Link>
               </h2>
               <p className="meta">
-                {localize(k.location, lang)} · {t(`modality_${k.modality}` as MessageKey)}
+                <Localized text={k.location} /> · {t(`modality_${k.modality}` as MessageKey)}
               </p>
               <p className="meta">{formatDateRange(k.dates.start, k.dates.end, lang)}</p>
               <p>

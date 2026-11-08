@@ -11,7 +11,12 @@ export type Deps = {
   env: Env;
   mail: MailTransport;
   now: () => Date;
-  limits: { linkPerEmail: RateLimiter; linkPerIp: RateLimiter };
+  limits: {
+    linkPerEmail: RateLimiter;
+    linkPerIp: RateLimiter;
+    codePerEmail: RateLimiter;
+    codePerIp: RateLimiter;
+  };
 };
 
 export type AppEnv = {

@@ -1,18 +1,21 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Me } from "../api";
 import { type MessageKey, useT } from "../i18n";
+import { PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
 export function MePage() {
   const { lang, t } = useT();
   const navigate = useNavigate();
   const res = useApi<Me>("/api/me");
+  const [signOutFailed, setSignOutFailed] = useState(false);
 
   if (!res) return <p role="status">{t("loading")}</p>;
   if (!res.ok || res.data.kind !== "person") {
     return (
       <>
-        <h1>{t("meTitle")}</h1>
+        <PageHeading>{t("meTitle")}</PageHeading>
         <p>{t("meNeedSignIn")}</p>
         <p>
           <Link className="button" to={`/${lang}/sign-in`}>
@@ -24,12 +27,13 @@ export function MePage() {
   }
   const me = res.data;
   async function signOut() {
-    await api("/api/auth/logout", { method: "POST", body: {} });
-    navigate(`/${lang}/`);
+    const out = await api("/api/auth/logout", { method: "POST", body: {} });
+    if (out.ok) navigate(`/${lang}/`);
+    else setSignOutFailed(true);
   }
   return (
     <>
-      <h1>{t("meTitle")}</h1>
+      <PageHeading>{t("meTitle")}</PageHeading>
       <dl className="details">
         <div>
           <dt>{t("meEmail")}</dt>
@@ -56,6 +60,9 @@ export function MePage() {
       <button type="button" onClick={signOut}>
         {t("meSignOut")}
       </button>
+      <p role="alert" className="status-line">
+        {signOutFailed ? t("meSignOutFailed") : ""}
+      </p>
     </>
   );
 }
