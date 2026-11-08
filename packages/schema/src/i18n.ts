@@ -1,0 +1,20 @@
+import { z } from "zod";
+
+/** BCP-47 primary language subtag, optionally with a region: "en", "es", "pt-BR". */
+export const LanguageCode = z
+  .string()
+  .regex(/^[a-z]{2,3}(-[A-Z]{2})?$/, "expected a language code such as en, es, pt-BR");
+export type LanguageCode = z.infer<typeof LanguageCode>;
+
+/** Text in several languages, keyed by language code. */
+export const LocalizedText = z.record(LanguageCode, z.string().min(1));
+export type LocalizedText = z.infer<typeof LocalizedText>;
+
+/**
+ * Pick the best string for `lang`: exact match, then the bare language ("pt" for "pt-BR"),
+ * then the fallback language, then any value.
+ */
+export function localize(text: LocalizedText, lang: string, fallback = "en"): string {
+  const base = lang.split("-")[0] ?? lang;
+  return text[lang] ?? text[base] ?? text[fallback] ?? Object.values(text)[0] ?? "";
+}

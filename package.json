@@ -1,0 +1,33 @@
+{
+  "name": "elochair",
+  "private": true,
+  "description": "Submission and peer-review system for the Electronic Literature Organization conference",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "check": "npm run lint && npm run typecheck && npm test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc -p packages/schema && tsc -p packages/policy && tsc -p apps/server && tsc -p apps/web",
+    "test": "vitest run",
+    "dev": "npm run dev -w @elochair/server",
+    "dev:web": "npm run dev -w @elochair/web",
+    "build": "npm run build -w @elochair/web",
+    "e2e": "npm run build && npm run e2e -w @elochair/web",
+    "cli": "npm run cli -w @elochair/server --"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.6",
+    "@types/node": "^22.20.5",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
