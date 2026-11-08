@@ -1,0 +1,61 @@
+# ELOchair on one server: the app, Postgres, and Caddy (automatic HTTPS).
+#   cp deploy/.env.example deploy/.env   # then edit it
+#   docker compose -f deploy/docker-compose.yml up -d --build
+name: elochair
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: elochair:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://elochair:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/elochair
+      MIGRATE_ON_START: "1"
+      TRUST_PROXY: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080" # public listener, reached only through Caddy
+    ports:
+      # Internal listener (tier C agents / local models). Bound to the host's loopback only:
+      # never published to the internet. Chairs reach it with: ssh -L 8081:127.0.0.1:8081 <server>
+      - "127.0.0.1:8081:8081"
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: elochair
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: elochair
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elochair -d elochair"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ELOCHAIR_DOMAIN: ${ELOCHAIR_DOMAIN:?set ELOCHAIR_DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

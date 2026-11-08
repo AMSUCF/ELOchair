@@ -25,7 +25,11 @@ export const Env = z.object({
   MAIL_FROM: z.string().default("ELOchair <no-reply@eliterature.org>"),
   /** Directory of the built web app to serve; unset in development (Vite serves it). */
   WEB_DIST: z.string().optional(),
+  /** Where the SQL migrations live; defaults to apps/server/drizzle next to the source. */
+  MIGRATIONS_DIR: z.string().optional(),
   MIGRATE_ON_START: bool,
+  /** Development and tests only: load the ELO configurations and the synthetic sandbox at boot. */
+  SEED_ON_START: bool,
   /** Test-only helpers such as reading the outbox. Refused unless NODE_ENV is test. */
   ENABLE_TEST_ENDPOINTS: bool,
 });
@@ -35,6 +39,9 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   const env = Env.parse(source);
   if (env.MAIL_TRANSPORT === "smtp" && !env.SMTP_URL) {
     throw new Error("MAIL_TRANSPORT=smtp needs SMTP_URL");
+  }
+  if (env.SEED_ON_START && env.NODE_ENV === "production") {
+    throw new Error("SEED_ON_START is not allowed in production");
   }
   if (env.ENABLE_TEST_ENDPOINTS && env.NODE_ENV !== "test") {
     throw new Error("ENABLE_TEST_ENDPOINTS is only allowed when NODE_ENV=test");

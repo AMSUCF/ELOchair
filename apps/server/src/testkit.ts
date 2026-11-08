@@ -66,6 +66,7 @@ export async function call(app: Hono<AppEnv>, method: string, path: string, opts
   } catch {
     json = text;
   }
+  // biome-ignore lint/suspicious/noExplicitAny: tests assert on loosely typed JSON responses
   return { status: res.status, json: json as any, headers: res.headers };
 }
 

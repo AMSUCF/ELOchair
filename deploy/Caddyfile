@@ -1,0 +1,7 @@
+# Caddy obtains and renews the TLS certificate for ELOCHAIR_DOMAIN automatically.
+# It replaces any client-sent X-Forwarded-For, so the app can trust the header (TRUST_PROXY=1).
+# Security headers (CSP, HSTS, referrer policy) come from the app itself.
+{$ELOCHAIR_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8080
+}

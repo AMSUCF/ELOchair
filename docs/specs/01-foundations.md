@@ -130,3 +130,16 @@ The goal is to lay down the parts every later phase builds on, so the Submission
 
 - **The ELO 2027 CFP** (types, dates, languages, modality) from the Barranquilla team. Until then, `elo2027` stays a placeholder.
 - **Access to ELO's server and DNS/SMTP for eliterature.org.** Until then, deployment is verified locally only.
+
+## Status (2026-11-08)
+
+| Item | Result |
+|---|---|
+| F1 Monorepo and conventions | Done. `npm run check` passes. CI workflow added; it will report on its first run on GitHub. |
+| F2 Schema | Done. `elo2026` and `elo2027` validate. 21 tests cover the configuration rules, multilingual word counts, the presenter cap, and submission validation. |
+| F3 Policy | Done. 10 blindness properties at 250 runs each. While being written, they caught one real bug: a chair's tier M agent got the metadata view instead of the public view for *published* submissions. Fixed. |
+| F4 Server | Done. 26 API tests cover the auth round trip, cross-origin and non-JSON rejection, tier C refused on the public listener and served on the internal one, audit rows plus the trigger, blinded reviewer views over HTTP, the cap report, and configuration validation. The production bundle was also run against a real Postgres 16. |
+| F5 Web | Done. 3 Playwright tests at 390×844 (CFP → language switch → sign in → me → link reuse refused → sign out) report zero axe WCAG 2.1 A/AA violations, and there is no horizontal scrolling at 360px. JS is 88 KB gzipped. |
+| F6 Deploy | Done and verified in a sandbox: the image builds, compose comes up healthy through Caddy, the internal listener is loopback-only, and backup and restore work. **Not yet verified on ELO's server**: real TLS and SMTP. |
+
+Deviation from the original plan: the README now reflects that conference configuration lives in the database and is managed through the API and CLI (`import-config`, `export-config`). It is not stored as versioned files.

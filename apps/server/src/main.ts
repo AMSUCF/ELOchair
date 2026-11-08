@@ -1,14 +1,28 @@
+import { conferences } from "@elochair/schema";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app";
 import { openDatabase } from "./db/client";
 import { makeDeps } from "./deps";
 import { loadEnv } from "./env";
+import { seedSandbox } from "./fixtures";
 import { deliverPending } from "./mail";
+import { getConference, saveConference } from "./repo";
 
 const env = loadEnv();
 const dataDir = env.DATA_DIR ?? (env.DATABASE_URL ? undefined : ".data/pglite");
-const database = openDatabase({ url: env.DATABASE_URL, dataDir });
+const database = openDatabase({
+  url: env.DATABASE_URL,
+  dataDir,
+  migrationsDir: env.MIGRATIONS_DIR,
+});
 if (env.MIGRATE_ON_START || !env.DATABASE_URL) await database.migrate();
+
+if (env.SEED_ON_START) {
+  await saveConference(database.db, conferences.elo2026, "archived");
+  await saveConference(database.db, conferences.elo2027, "draft");
+  if (!(await getConference(database.db, "sandbox"))) await seedSandbox(database.db);
+  console.log("seeded elo2026, elo2027 and the synthetic sandbox (sign in as chair@example.org)");
+}
 
 const deps = makeDeps(database.db, env);
 const publicServer = serve({

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import type { Db } from "./db/client";
 import { outbox } from "./db/schema";

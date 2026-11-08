@@ -235,14 +235,4 @@ export const ConferenceConfig = ConferenceConfigShape.superRefine(checkConfig);
 export type ConferenceConfig = z.infer<typeof ConferenceConfig>;
 export type ConferenceConfigInput = z.input<typeof ConferenceConfig>;
 
-export function findType(config: ConferenceConfig, typeKey: string): SubmissionType | undefined {
-  return config.submissionTypes.find((t) => t.key === typeKey);
-}
-
-/** The blind mode that applies to a submission type: the type's override, else its pool's. */
-export function effectiveBlindMode(config: ConferenceConfig, typeKey: string): BlindMode {
-  const type = findType(config, typeKey);
-  if (!type) return "double"; // unknown types fail closed
-  if (type.blindMode) return type.blindMode;
-  return config.reviewPools.find((p) => p.key === type.reviewPool)?.blindMode ?? "double";
-}
+export { effectiveBlindMode, findType } from "./lookup";

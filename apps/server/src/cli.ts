@@ -55,6 +55,7 @@ const env = loadEnv();
 const database = openDatabase({
   url: env.DATABASE_URL,
   dataDir: env.DATA_DIR ?? (env.DATABASE_URL ? undefined : ".data/pglite"),
+  migrationsDir: env.MIGRATIONS_DIR,
 });
 const { db } = database;
 

@@ -1,0 +1,12 @@
+{
+  "name": "ELOchair",
+  "short_name": "ELOchair",
+  "description": "Submissions and peer review for the Electronic Literature Organization conference.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#1d1b3a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

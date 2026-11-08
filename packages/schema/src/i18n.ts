@@ -10,11 +10,4 @@ export type LanguageCode = z.infer<typeof LanguageCode>;
 export const LocalizedText = z.record(LanguageCode, z.string().min(1));
 export type LocalizedText = z.infer<typeof LocalizedText>;
 
-/**
- * Pick the best string for `lang`: exact match, then the bare language ("pt" for "pt-BR"),
- * then the fallback language, then any value.
- */
-export function localize(text: LocalizedText, lang: string, fallback = "en"): string {
-  const base = lang.split("-")[0] ?? lang;
-  return text[lang] ?? text[base] ?? text[fallback] ?? Object.values(text)[0] ?? "";
-}
+export { localize } from "./text";
