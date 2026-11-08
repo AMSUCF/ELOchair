@@ -10,7 +10,8 @@ import { LIMITS } from "./limits";
  * Character caps bound storage even for drafts, which skip word-limit validation.
  */
 
-const CONTROL = /[\u0000-\u001f\u007f]/;
+/** Control characters (newlines, tabs, NUL...), matched by the Unicode Cc category. */
+const CONTROL = /\p{Cc}/u;
 
 /** One line of text, trimmed, without control characters. */
 export const OneLine = (max: number) =>
