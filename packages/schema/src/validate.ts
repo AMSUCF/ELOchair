@@ -29,6 +29,8 @@ export type SubmissionIssue = {
     | "already_contributor"
     | "declined_cannot_reinvite"
     | "owner_cannot_be_removed"
+    /** A custom-field key the submission type does not define. */
+    | "unknown_field"
     | "empty_title";
   params?: Record<string, string | number>;
 };

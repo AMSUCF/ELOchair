@@ -50,7 +50,13 @@ export type ConferenceSummary = {
   placeholder: boolean;
 };
 
-export type ConferenceDetail = { slug: string; phase: string; config: ConferenceConfig };
+export type ConferenceDetail = {
+  slug: string;
+  phase: string;
+  config: ConferenceConfig;
+  /** Decided by the server clock. */
+  callOpen: boolean;
+};
 
 export type Me =
   | {

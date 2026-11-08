@@ -120,6 +120,7 @@ export const submissionEn = {
   issue_already_contributor: "That person is already listed.",
   issue_declined_cannot_reinvite: "That person declined and cannot be invited again.",
   issue_owner_cannot_be_removed: "The owner cannot be removed.",
+  issue_unknown_field: "This format has no such field.",
   issue_generic: "Check this value.",
 
   myTitle: "My submissions",

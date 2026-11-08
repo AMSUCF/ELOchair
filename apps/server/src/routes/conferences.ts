@@ -80,7 +80,9 @@ export const conferenceRoutes = new Hono<AppEnv>()
   .get("/:slug", async (c) => {
     const k = await getConference(c.get("deps").db, c.req.param("slug"));
     if (!k || !visible(c.get("viewer"), k)) return c.json({ error: "not_found" }, 404);
-    return c.json({ slug: k.slug, phase: k.phase, config: k.config });
+    // The server clock decides whether the call is open; the browser only displays it.
+    const callOpen = isCallOpen(k.config, k.phase, c.get("deps").now());
+    return c.json({ slug: k.slug, phase: k.phase, config: k.config, callOpen });
   })
   .put("/:slug/config", async (c) => {
     const viewer = c.get("viewer");

@@ -125,6 +125,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issue_already_contributor: "Essa pessoa já consta da proposta.",
   issue_declined_cannot_reinvite: "Essa pessoa recusou e não pode ser convidada novamente.",
   issue_owner_cannot_be_removed: "Não é possível remover quem criou a proposta.",
+  issue_unknown_field: "Este formato não tem esse campo.",
   issue_generic: "Verifique este valor.",
 
   myTitle: "As minhas submissões",
