@@ -135,7 +135,7 @@ The goal is to lay down the parts every later phase builds on, so the Submission
 
 | Item | Result |
 |---|---|
-| F1 Monorepo and conventions | Done. `npm run check` passes. CI workflow added; it will report on its first run on GitHub. |
+| F1 Monorepo and conventions | Done. `npm run check` passes locally and in CI. The first GitHub Actions run (#1) passed every step, including the e2e tests. |
 | F2 Schema | Done. `elo2026` and `elo2027` validate. 21 tests cover the configuration rules, multilingual word counts, the presenter cap, and submission validation. |
 | F3 Policy | Done. 10 blindness properties at 250 runs each. While being written, they caught one real bug: a chair's tier M agent got the metadata view instead of the public view for *published* submissions. Fixed. |
 | F4 Server | Done. 26 API tests cover the auth round trip, cross-origin and non-JSON rejection, tier C refused on the public listener and served on the internal one, audit rows plus the trigger, blinded reviewer views over HTTP, the cap report, and configuration validation. The production bundle was also run against a real Postgres 16. |
