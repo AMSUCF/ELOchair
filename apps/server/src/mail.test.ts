@@ -214,7 +214,7 @@ describe("review fixes, round 3: secrets and owner-written text in mail", () => 
   it("sanitizeName shares the definition of invisible characters: writing kept, hidden text gone", () => {
     // Persian and Sinhala are spelled with joiners; the Scotland flag is a tag sequence.
     const persian = "علی\u200Cرضا صادقی\u200Cنژاد";
-    const sinhala = "\u0D81\u0DCA\u200D\u0DBB\u0DD3 Perera";
+    const sinhala = "\u0DC1\u0DCA\u200D\u0DBB\u0DD3 Perera";
     const scotland = "Ailsa \u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
     for (const name of [persian, sinhala, scotland]) expect(sanitizeName(name, "?")).toBe(name);
     // A byte per variation selector, or per tag-plane character, spells hidden instructions.
@@ -225,6 +225,15 @@ describe("review fixes, round 3: secrets and owner-written text in mail", () => 
       "Ana Pérez",
     );
     expect(sanitizeName(`Ana\uFE01\uFE02\uFE03 Pérez`, "?")).toBe("Ana Pérez");
+    // A kept joiner must not split a domain so that the link rules miss it.
+    expect(sanitizeName("Ana evil-phish.c\u200Dom", "?")).toBe("Ana");
+    expect(sanitizeName("Ana x.o\u200Crg now", "?")).toBe("Ana now");
+    expect(sanitizeName("Ana \u0645\u0648\u0642\u0639.\u0645\u0635\u200C\u0631", "?")).toBe("Ana");
+    expect(sanitizeName("Ana 10\uFE0F.0.0.1", "?")).toBe("Ana");
+    // The 100-character cut falls between whole characters and leaves nothing stray.
+    const flag = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
+    expect(sanitizeName(`${"A".repeat(97)}${flag}`, "?")).toBe("A".repeat(97));
+    expect(sanitizeName(`${"A".repeat(93)}${flag}`, "?")).toBe(`${"A".repeat(93)}${flag}`);
   });
 });
 

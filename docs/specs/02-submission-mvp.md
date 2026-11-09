@@ -100,9 +100,11 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - The configuration says whether a bio is requested and how long it may be (`rules.bio`).
   - A missing requested bio, and a bio longer than `rules.bio.maxWords` in any language (`longBios`), are warnings, not blocks.
 - **Input hygiene.** Title, abstract, custom-field text and bios accept tabs and line breaks but no other control characters, and no ill-formed Unicode (400 `invalid`). One-line fields (display name, affiliation, pronouns, invited name and affiliation) also refuse invisible characters (format characters and default-ignorable code points: bidi controls, zero-width spaces, soft hyphens, variation selectors, tag characters, combining grapheme joiners, Hangul fillers) and need at least one letter or digit. Any of these could carry hidden text, one character per byte. The exceptions are defined once in `packages/schema/src/invisible.ts`, which mail cleanup and the browser use too:
-  - a zero-width joiner between visible letters or pictographs (Persian names, Indic conjuncts, emoji sequences);
-  - one presentation selector after an emoji;
-  - the three standard subdivision flags (England, Scotland, Wales). Machine keys are at most 64 characters.
+  - a zero-width joiner between visible letters or pictographs (Persian names, Indic conjuncts, emoji sequences), but never next to a Latin, Greek or Cyrillic letter or an ASCII digit, where no spelling needs one;
+  - a joiner after an Indic virama (legacy Malayalam chillus, Bengali khanda ta);
+  - one presentation selector after an emoji, and after a digit, `#` or `*` only in a keycap;
+  - the three standard subdivision flags (England, Scotland, Wales).
+  - Halves of surrogate pairs are stray too. What remains can carry at most a bit or two per character of Indic, Arabic-script or emoji text, which cannot spell instructions. Japanese ideographic variation selectors and Mongolian variation selectors are not kept, a deliberate trade-off. Machine keys are at most 64 characters.
 - The chair view and CSV include pronouns.
 
 ### 1.7 What ELO's formats need now
@@ -117,7 +119,10 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - filters: `status[]`, `type`, `track`, `language`, `participationMode`
   - booleans: `hasSelfIdWarnings`, `hasPendingInvitations`, `incomplete`
   - `q`, a title search
-  - paging: `cursor` and `limit`. Paging is by key. The cursor is the position just after the last item of the previous page, written `<createdAt in ms>.<id>`. It is compared, never looked up, so a page continues correctly whatever happened to that item since (withdrawn, returned to draft, deleted), and a cursor reveals nothing about submissions the viewer cannot see. A malformed cursor gets 400 `invalid` at path `cursor`; an empty one means the first page.
+  - paging: `cursor` and `limit`. Paging is by key: the cursor holds the position just after the last item of the previous page (`createdAt`, `id`), sealed with AES-GCM under a key derived from `SECRET_KEY`.
+    - Compared, never looked up, a cursor continues correctly whatever happened to that item since (withdrawn, returned to draft, deleted).
+    - Sealed, it shows no creation time the viewer's projection leaves out, and cannot be forged to probe for submissions.
+    - A cursor the server did not seal gets 400 `invalid` at path `cursor` (REST) or `{invalid: ["cursor"]}` (MCP); an empty one means the first page. Changing `SECRET_KEY` invalidates open cursors, and clients start over.
 - **`querySubmissions(viewer, conference, query)`**, on the server:
   - projects every record first, then filters only on projected fields, ordered by `(createdAt, id)`
   - returns `{ items, total, excludedCount, nextCursor }`
@@ -252,7 +257,7 @@ axe reports no violations on any new page, in light and dark mode. CI is green.
 
 ## 4. Review before the dry run
 
-On November 8–9, 2026, the built MVP had an adversarial review, followed by three more review rounds on the fixes.
+On November 8–9, 2026, the built MVP had an adversarial review, followed by four more review rounds on the fixes.
 
 | Round | Reviewed | Confirmed | Rejected | Notes |
 |---|---|---|---|---|
@@ -260,6 +265,7 @@ On November 8–9, 2026, the built MVP had an adversarial review, followed by th
 | 2 | The round 1 fixes, area by area | 19 (17 distinct) | — | 1 high: quadratic backtracking in the new citation patterns |
 | 3 | The round 2 fixes | 6 | — | All low: tag characters as a hidden-text channel; lost citation forms; a cursor that revealed whether an unseen draft existed; a late retry moving focus |
 | 4 | The round 3 fixes | 5 | — | 1 medium: other invisible characters (variation selectors, unassigned tags, grapheme joiners) still carried hidden text; low: paging broke when the boundary item was returned to draft (now a position cursor), invitation mail used its own invisible-character rule, two documentation claims |
+| 5 | The round 4 fixes | 7 | — | 2 medium: a kept joiner could split a domain in invitation mail; the position cursor showed creation times to reviewers and the public (now sealed). Low: surrogate halves, legacy Malayalam names, joiners in Latin text, the name cut, test fixtures and comments |
 
 How each round worked:
 - Each finding had a concrete scenario, most reproduced against the running app.

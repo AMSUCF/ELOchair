@@ -10,6 +10,7 @@ import {
 } from "@elochair/policy";
 import { presenterCapReport, type SubmissionQuery, type SubmissionStatus } from "@elochair/schema";
 import { eq } from "drizzle-orm";
+import { type CursorCodec, internalCursors, type PagePosition } from "../cursor";
 import type { Db } from "../db/client";
 import { submissions } from "../db/schema";
 import { type ConferenceRow, loadSubmissionRecords } from "../repo";
@@ -51,8 +52,10 @@ export function ownCapCount(
 }
 
 export class QueryNotAllowed extends Error {}
+/** The cursor did not open: forged, damaged, or sealed under another key (400 at "cursor"). */
+export class CursorRefused extends Error {}
 /** Paging order: (createdAt, id), at the millisecond precision a cursor carries. */
-type PagingKey = readonly [number, string];
+type PagingKey = PagePosition;
 const pagingKey = (r: SubmissionRecord): PagingKey => [
   Date.parse(r.submission.createdAt),
   r.submission.id,
@@ -62,12 +65,6 @@ const byPagingKey = (a: SubmissionRecord, b: SubmissionRecord) => {
   const [x, y] = [pagingKey(a), pagingKey(b)];
   return comesAfter(x, y) ? 1 : comesAfter(y, x) ? -1 : 0;
 };
-/** The cursor format is checked by SubmissionQuery (PageCursor): "<ms>.<id>". */
-function parseCursor(cursor: string): PagingKey {
-  const dot = cursor.indexOf(".");
-  return [Number(cursor.slice(0, dot)), cursor.slice(dot + 1)];
-}
-const cursorAt = ([ms, id]: PagingKey) => `${ms}.${id}`;
 
 export type QueryResult = {
   items: ProjectedSubmission[];
@@ -96,16 +93,17 @@ export function viewerChairs(viewer: Viewer, conferenceId: string): boolean {
  * filters only on projected fields, so a filter can never reveal what the projection hides.
  *
  * Paging is by key: the cursor is the position just after the last item of the previous page,
- * in the order (createdAt, id). It is compared, never looked up, so a page continues where the
- * last one ended whatever happened to that item since (withdrawn, returned to draft, deleted),
- * and a cursor cannot be used to learn whether a submission exists.
+ * in the order (createdAt, id), sealed by `cursors` (see cursor.ts). It is compared, never
+ * looked up, so a page continues where the last one ended whatever happened to that item since
+ * (withdrawn, returned to draft, deleted). Sealed, it shows no creation time and cannot be
+ * forged to learn whether a submission exists.
  */
 export async function querySubmissions(
   db: Db,
   viewer: Viewer,
   conference: ConferenceRow,
   query: SubmissionQuery,
-  records?: SubmissionRecord[],
+  { cursors, records }: { cursors: CursorCodec; records?: SubmissionRecord[] },
 ): Promise<QueryResult> {
   if (query.q && viewer.kind === "agent" && viewer.tier === "M") {
     throw new QueryNotAllowed("q_not_allowed");
@@ -117,7 +115,8 @@ export async function querySubmissions(
   const projected = all
     .map((r) => projectSubmission(viewer, r))
     .filter((p): p is ProjectedSubmission => p !== null);
-  const after = query.cursor ? parseCursor(query.cursor) : null;
+  const after = query.cursor ? cursors.open(query.cursor) : null;
+  if (query.cursor && !after) throw new CursorRefused("cursor");
 
   const q = query.q?.toLocaleLowerCase();
   const matches = projected.filter((p) => {
@@ -156,7 +155,7 @@ export async function querySubmissions(
     items: page,
     total: matches.length,
     excludedCount: excludedCount(viewer, conference, all),
-    nextCursor: last && page.length < rest.length ? cursorAt(keyOf(last.id)) : null,
+    nextCursor: last && page.length < rest.length ? cursors.seal(keyOf(last.id)) : null,
   };
 }
 
@@ -201,7 +200,7 @@ export async function queryAllSubmissions(
       viewer,
       conference,
       { ...filters, cursor, limit: pageSize },
-      all,
+      { cursors: internalCursors, records: all },
     );
     items.push(...page.items);
     if (!page.nextCursor || page.items.length === 0) {

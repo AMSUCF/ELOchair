@@ -24,7 +24,8 @@ export function mailLang(preferences: readonly string[], fallback: string): Mail
 
 /** Dots that mail clients and IDNA treat as a domain separator. */
 const DOT = "[.\\u3002\\uFF0E\\uFF61]";
-const LABEL = "[\\p{L}\\p{M}\\p{N}_-]+";
+/** A host label. Joiners count as part of it: a kept joiner must not split "evil.c<ZWJ>om". */
+const LABEL = "[\\p{L}\\p{M}\\p{N}_\\u200C\\u200D-]+";
 /**
  * Links with a scheme: "https://...", "ftp://...", "mailto:a@b", "tel:5550100". A scheme
  * without "//" needs a target right after its colon, so words such as "Data:" or "Tel: Aviv"
@@ -36,10 +37,14 @@ const SCHEME_LINK =
  * Bare host names ("evil-phish.com", "www.x.org/path"): a dotted name whose last label has two
  * or more letters, like every top-level domain. Initials ("J.R.R.") and "e.g." do not match.
  */
-const BARE_HOST = new RegExp(`${LABEL}(?:${DOT}${LABEL})*${DOT}\\p{L}[\\p{L}\\p{M}-]+\\S*`, "gu");
+const BARE_HOST = new RegExp(
+  `${LABEL}(?:${DOT}${LABEL})*${DOT}\\p{L}[\\p{L}\\p{M}\\u200C\\u200D-]+\\S*`,
+  "gu",
+);
 /** A dotted name followed by a path, whatever it ends in ("10.0.0.1/x"). */
 const HOST_WITH_PATH = new RegExp(`${LABEL}(?:${DOT}${LABEL})+[/?#]\\S*`, "gu");
-const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/gu;
+/** Four dotted numbers, marks after a digit included ("10<U+FE0F>.0.0.1"). */
+const IPV4 = /(?<!\p{N})(?:\d\p{M}*){1,3}(?:\.(?:\d\p{M}*){1,3}){3}(?!\p{N})/gu;
 
 /**
  * Owner-written text for ELO-signed mail to people who have agreed to nothing (the owner's name
@@ -49,6 +54,8 @@ const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/gu;
  * or reorder text. Ordinary names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil",
  * Persian and Indic names spelled with joiners) pass.
  */
+const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
+
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
   // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule. Kept
   // joiners sit only between letters or pictographs, so they cannot rejoin a removed domain.
@@ -62,10 +69,15 @@ export function sanitizeName(name: string | null | undefined, fallback: string):
     .replace(IPV4, "")
     .replace(/\s+/g, " ")
     .trim();
-  return Array.from(clean).slice(0, 100).join("").trim() || fallback;
+  // At most 100 code points, cut between whole characters so no flag or joiner sequence is
+  // split, then cleaned again in case a removal left a joiner with nothing to join.
+  let kept = "";
+  for (const { segment } of GRAPHEMES.segment(clean)) {
+    if (Array.from(kept + segment).length > 100) break;
+    kept += segment;
+  }
+  return removeStrayInvisible(kept).trim() || fallback;
 }
-
-const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 /**
  * Owner-written text for mail to people who are part of the proposal (its title in receipts and

@@ -20,6 +20,7 @@ import { z } from "zod";
 import { audit } from "../audit";
 import type { AppEnv } from "../context";
 import { contributorsCsv, submissionsCsv } from "../csv";
+import { cursorsFor } from "../cursor";
 import type { Db } from "../db/client";
 import { contributions, submissions } from "../db/schema";
 import {
@@ -34,6 +35,7 @@ import {
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
 import {
   COUNTED_STATUSES,
+  CursorRefused,
   QueryNotAllowed,
   queryAllSubmissions,
   querySubmissions,
@@ -178,9 +180,16 @@ export const conferenceRoutes = new Hono<AppEnv>()
     if (!k || !visible(viewer, k)) throw new Refusal(404, "not_found");
     const query = SubmissionQuery.parse(c.req.query());
     try {
-      return c.json(await querySubmissions(db, viewer, k, query));
+      const cursors = cursorsFor(c.get("deps").env.SECRET_KEY);
+      return c.json(await querySubmissions(db, viewer, k, query, { cursors }));
     } catch (err) {
       if (err instanceof QueryNotAllowed) throw new Refusal(400, "q_not_allowed");
+      if (err instanceof CursorRefused) {
+        // Shaped like any other malformed input (a ZodError): the paging has to start again.
+        throw new Refusal(400, "invalid", {
+          issues: [{ path: "cursor", message: "not a cursor from a previous page" }],
+        });
+      }
       throw err;
     }
   })

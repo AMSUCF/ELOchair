@@ -175,20 +175,15 @@ const flag = z.preprocess(
   z.boolean(),
 );
 
-/** One query shape for the REST list, the CSV exports and the MCP tools. */
 /**
- * A paging cursor: the position just after the last item of the previous page, written
- * "<createdAt in milliseconds>.<id>". It is a position in the conference's order, not a lookup,
- * so a page continues correctly whatever happened to that item since (withdrawn, returned to
- * draft, deleted), and a cursor reveals nothing about submissions the viewer cannot see.
+ * A paging cursor: nextCursor from a previous page, opaque to clients. The server seals a
+ * position in the conference's order into it, and refuses cursors it did not seal.
  */
 export const PageCursor = z
   .string()
-  .regex(
-    /^\d{1,15}\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    "nextCursor from a previous page",
-  );
+  .regex(/^[A-Za-z0-9_-]{40,200}$/, "nextCursor from a previous page");
 
+/** One query shape for the REST list, the CSV exports and the MCP tools. */
 export const SubmissionQuery = z
   .object({
     status: list(SubmissionStatus.exclude(["draft"])).optional(),

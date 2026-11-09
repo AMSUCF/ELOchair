@@ -4,6 +4,7 @@ import { ConferenceConfig, conferences } from "@elochair/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contributorsCsv, submissionsCsv } from "./csv";
+import { cursorsFor, internalCursors } from "./cursor";
 import { auditLog, contributions, people, submissions } from "./db/schema";
 import { type SandboxSummary, seedSandbox } from "./fixtures";
 import {
@@ -221,7 +222,8 @@ describe("CSV exports", () => {
     const k = await getConference(t.db, s.slug);
     const viewer = await loadPersonViewer(t.db, chairId);
     const records = (await loadSubmissionRecords(t.db, k!)).slice(0, 60);
-    const query = { status: ["submitted" as const], cursor: records[5]?.submission.id, limit: 3 };
+    // Any cursor and limit in the filters are ignored: exports always start from the first row.
+    const query = { status: ["submitted" as const], cursor: "ignored-cursor", limit: 3 };
     const out = await queryAllSubmissions(t.db, viewer!, k!, query, records, 7);
     const ids = out.items.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -232,7 +234,7 @@ describe("CSV exports", () => {
       viewer!,
       k!,
       { ...query, cursor: undefined, limit: 500 },
-      records,
+      { cursors: internalCursors, records },
     );
     expect(ids).toEqual(onePage.items.map((i) => i.id));
     expect(out.total).toBeGreaterThan(50);
@@ -443,12 +445,9 @@ describe("csv.ts on a chair projection", () => {
 });
 
 describe("paging the chair list (#12)", () => {
-  const list = (query: string) =>
-    call(t.public, "GET", `/api/conferences/${s.slug}/submissions?${query}`, {
-      cookie: chairCookie,
-    });
+  const list = (query: string, cookie = chairCookie) =>
+    call(t.public, "GET", `/api/conferences/${s.slug}/submissions?${query}`, { cookie });
   const ids = (res: { json: { items: { id: string }[] } }) => res.json.items.map((i) => i.id);
-  const idOf = (cursor: string) => cursor.slice(cursor.indexOf(".") + 1);
 
   // What can happen to the last item shown before "Show more": it leaves the filter
   // (withdrawn), or it leaves what the chair can see (returned to draft by its owner).
@@ -461,8 +460,7 @@ describe("paging the chair list (#12)", () => {
       const page1 = await list("status=submitted&limit=100");
       expect(ids(page1)).toEqual(everything.slice(0, 100));
       const cursor = page1.json.nextCursor as string;
-      const boundary = idOf(cursor);
-      expect(boundary).toBe(everything[99]);
+      const boundary = everything[99] as string;
       await t.db.update(submissions).set({ status }).where(eq(submissions.id, boundary));
       try {
         const page2 = await list(`status=submitted&limit=100&cursor=${cursor}`);
@@ -486,9 +484,18 @@ describe("paging the chair list (#12)", () => {
     });
   }
 
-  it("refuses a cursor that is not a position from a previous page", async () => {
-    const malformed = ["page-2", ownSubmittedId, `x.${ownSubmittedId}`, "123.not-an-id"];
-    for (const cursor of malformed) {
+  it("refuses a cursor the server did not seal", async () => {
+    const real = (await list("status=submitted&limit=1")).json.nextCursor as string;
+    const flipped = `${real.slice(0, 30)}${real[30] === "A" ? "B" : "A"}${real.slice(31)}`;
+    const otherKey = cursorsFor("x".repeat(64)).seal([Date.now(), ownSubmittedId]);
+    const refused = [
+      "page-2",
+      ownSubmittedId,
+      `1794193867170.${ownSubmittedId}`,
+      flipped,
+      otherKey,
+    ];
+    for (const cursor of refused) {
       const res = await list(`status=submitted&limit=100&cursor=${cursor}`);
       expect(res.status).toBe(400);
       expect(res.json).toEqual({
@@ -502,27 +509,24 @@ describe("paging the chair list (#12)", () => {
     );
   });
 
-  it("treats a cursor as a position, so it reveals nothing about submissions", async () => {
-    const page1 = await list("status=submitted&limit=1");
-    const real = page1.json.nextCursor as string;
-    const [ms] = real.split(".");
-    // A position nobody holds is compared like any other: just before the real item at the same
-    // millisecond, so that item comes first, then the same items as after the real cursor.
-    const madeUp = `${ms}.00000000-0000-4000-8000-000000000000`;
-    const afterMadeUp = ids(await list(`status=submitted&limit=5&cursor=${madeUp}`));
-    const afterReal = ids(await list(`status=submitted&limit=5&cursor=${real}`));
-    expect(afterMadeUp).toEqual([idOf(real), ...afterReal.slice(0, 4)]);
-    // A signed-in stranger sees none of the proposals while the conference is in review: every
-    // cursor, real or not, gives the same empty answer.
+  it("shows nothing in a cursor that the viewer's projection leaves out", async () => {
+    const page = await list("status=submitted&limit=1");
+    const cursor = page.json.nextCursor as string;
+    const [row] = await t.db
+      .select({ createdAt: submissions.createdAt })
+      .from(submissions)
+      .where(eq(submissions.id, page.json.items[0].id));
+    const ms = String(row?.createdAt.getTime());
+    expect(cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(cursor).not.toContain(ms);
+    expect(Buffer.from(cursor, "base64url").toString("latin1")).not.toContain(ms);
+    expect(cursor).not.toContain(page.json.items[0].id);
+    // A signed-in stranger sees none of the proposals while the conference is in review: a real
+    // cursor gives the same empty page as the start, and a forged one is refused like garbage.
     const stranger = await signIn(t, "cursor-stranger@example.org");
-    const asStranger = (cursor: string) =>
-      call(t.public, "GET", `/api/conferences/${s.slug}/submissions?cursor=${cursor}`, {
-        cookie: stranger,
-      });
-    const a = await asStranger(real);
-    const b = await asStranger(madeUp);
-    expect(a.status).toBe(200);
-    expect(a.json).toEqual(b.json);
-    expect(a.json.items).toEqual([]);
+    const real = await list(`cursor=${cursor}`, stranger);
+    expect(real.status).toBe(200);
+    expect(real.json.items).toEqual([]);
+    expect(real.json.nextCursor).toBeNull();
   });
 });

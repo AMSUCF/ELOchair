@@ -114,7 +114,25 @@ describe("MCP for chairs' agents", () => {
       `/api/conferences/${s.slug}/submissions?type=talk&limit=20`,
       { token: tokenM },
     );
-    expect(viaMcp).toEqual(viaRest.json);
+    // Cursors are sealed afresh on every call, so they differ; the pages they lead to do not.
+    const { nextCursor: mcpCursor, ...mcpPage } = viaMcp;
+    const { nextCursor: restCursor, ...restPage } = viaRest.json;
+    expect(mcpPage).toEqual(restPage);
+    expect(typeof mcpCursor).toBe("string");
+    const nextViaMcp = parse(
+      await client.callTool({
+        name: "list_submissions",
+        arguments: { type: "talk", limit: 20, cursor: restCursor },
+      }),
+    );
+    const nextViaRest = await call(
+      t.public,
+      "GET",
+      `/api/conferences/${s.slug}/submissions?type=talk&limit=20&cursor=${mcpCursor}`,
+      { token: tokenM },
+    );
+    expect(nextViaMcp.items).toEqual(nextViaRest.json.items);
+    expect(nextViaMcp.items.length).toBeGreaterThan(0);
     await client.close();
   });
 
@@ -226,8 +244,9 @@ describe("MCP for chairs' agents", () => {
       [{ type: `k${"_".repeat(61)}` }, ["type"]],
       [{ track: `k${"x".repeat(63)}` }, ["track"]],
       [{ q: "   " }, ["q"]],
-      // A well-formed ID that is not a submission of the conference.
+      // A bare submission ID, and a cursor shaped like a sealed one that this server never sealed.
       [{ cursor: "00000000-0000-4000-8000-000000000000" }, ["cursor"]],
+      [{ cursor: "A".repeat(104) }, ["cursor"]],
     ];
     for (const [args, invalid] of cases) {
       const before = (await toolRows()).length;

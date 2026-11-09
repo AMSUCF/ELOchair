@@ -725,7 +725,8 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   const cards = page.locator("ul.cards > li");
   const more = page.getByRole("button", { name: "Show more" });
 
-  // A cursor the server no longer knows: the list stays, and the page says it has changed.
+  // A cursor the server refuses (sealed under a key it no longer has, after SECRET_KEY changed):
+  // the list stays, and the page says it has changed.
   await page.route(isMore, (route) =>
     route.fulfill({
       status: 400,

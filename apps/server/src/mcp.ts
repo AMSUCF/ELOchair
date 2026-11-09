@@ -7,6 +7,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { audit } from "./audit";
 import type { AppEnv, Deps } from "./context";
+import { cursorsFor } from "./cursor";
 import { conferences } from "./db/schema";
 import { type ConferenceRow, getConference, loadSubmission, loadSubmissionRecords } from "./repo";
 import { capReportFor, chairsOf, conferenceOverview } from "./services/reports";
@@ -46,8 +47,8 @@ const ListQuery = SubmissionQuery;
 const QUERY_KEYS = new Set(Object.keys(ListQuery.shape));
 /** The longest language tag BCP 47 (RFC 5646, 4.4.1) asks implementations to support. */
 const LANGUAGE_TAG_MAX = 35;
-/** A cursor ("<ms>.<uuid>", at most 52 characters), with room for a badly shaped value. */
-const CURSOR_MAX = 64;
+/** A sealed cursor (about 104 characters), with room for a badly shaped value. */
+const CURSOR_MAX = 200;
 
 /** The argument names (never their values) a failed parse complains about. */
 const invalidArgs = (error: z.ZodError) => [
@@ -77,6 +78,7 @@ async function tokenConference(deps: Deps, agent: AgentViewer): Promise<Conferen
 }
 
 function buildServer(deps: Deps, agent: AgentViewer): McpServer {
+  const cursors = cursorsFor(deps.env.SECRET_KEY);
   const server = new McpServer({ name: "elochair", version: "0.2.0" });
   const record = (tool: string, args: Record<string, unknown>) =>
     audit(deps.db, agent, {
@@ -169,15 +171,17 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
         audited,
         async (k) => {
           try {
-            return await querySubmissions(deps.db, agent, k, query);
+            return await querySubmissions(deps.db, agent, k, query, { cursors });
           } catch (err) {
             if (err instanceof QueryNotAllowed) return { error: "q_not_allowed" };
             throw err;
           }
         },
         async (k) => {
-          // The cursor's shape was checked by ListQuery; as a position it needs no lookup.
-          return unknownKeys(k, query).sort();
+          const refused = unknownKeys(k, query);
+          // A cursor this server did not seal is refused like any malformed argument.
+          if (query.cursor && !cursors.open(query.cursor)) refused.push("cursor");
+          return refused.sort();
         },
       );
     },
