@@ -55,55 +55,87 @@ const STATUSES: SubmissionStatus[] = [
 ];
 const PAGE_SIZE = 100;
 
+/** The "Showing X of Y" line; it takes focus when "Show more" brought nothing new to focus. */
+const SHOWING_ID = "manage-showing";
+
 /** The list for one filter, a page at a time ("Show more" follows the server's cursor). */
 function useListing(slug: string, query: string) {
-  const [listing, setListing] = useState<(Page & { query: string }) | null>(null);
+  const url = `/api/conferences/${slug}/submissions?${query}&limit=${PAGE_SIZE}`;
+  const [listing, setListing] = useState<Page | null>(null);
   const [failed, setFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  /** "Show more" failed: the list so far stays, with a message by the button. */
-  const [moreFailed, setMoreFailed] = useState(false);
-  /** After "Show more", the first new proposal takes focus so keyboard users continue there. */
-  const focusRow = useRef<string | null>(null);
-  const url = `/api/conferences/${slug}/submissions?${query}&limit=${PAGE_SIZE}`;
+  /**
+   * "Show more" failed: the list so far stays, with a message by the button. "changed": the
+   * server no longer knows where the list ended (400 at path "cursor").
+   */
+  const [moreFailed, setMoreFailed] = useState<"error" | "changed" | null>(null);
+  /** Counts filter changes: a page that arrives for an earlier list is dropped. */
+  const generation = useRef(0);
+  /** Repeat taps on "Show more" while a page is on its way do nothing. */
+  const moreInFlight = useRef(false);
+  /**
+   * After "Show more", the first new proposal takes focus so keyboard users continue there.
+   * Set only when a page is added to the list being shown; cleared when the filter changes.
+   */
+  const focusAfterMore = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
+    generation.current += 1;
+    moreInFlight.current = false;
+    focusAfterMore.current = null;
     setListing(null);
     setFailed(false);
-    setMoreFailed(false);
+    setLoadingMore(false);
+    setMoreFailed(null);
     api<Page>(url).then((r) => {
       if (!live) return;
-      if (r.ok) setListing({ ...r.data, query });
+      if (r.ok) setListing(r.data);
       else setFailed(true);
     });
     return () => {
       live = false;
     };
-  }, [url, query]);
+  }, [url]);
 
   useEffect(() => {
-    if (!listing || !focusRow.current) return;
-    document.getElementById(`row-${focusRow.current}`)?.focus();
-    focusRow.current = null;
+    if (!listing || !focusAfterMore.current) return;
+    document.getElementById(focusAfterMore.current)?.focus();
+    focusAfterMore.current = null;
   }, [listing]);
 
   async function more() {
     const cursor = listing?.nextCursor;
-    if (!cursor || loadingMore) return;
+    if (!listing || !cursor || moreInFlight.current) return;
+    const asked = generation.current;
+    moreInFlight.current = true;
     setLoadingMore(true);
-    setMoreFailed(false);
+    setMoreFailed(null);
     const r = await api<Page>(`${url}&cursor=${encodeURIComponent(cursor)}`);
+    // The filter changed while this page was on its way: it belongs to a list no longer shown.
+    if (generation.current !== asked) return;
+    moreInFlight.current = false;
     setLoadingMore(false);
     if (!r.ok) {
-      setMoreFailed(true);
+      setMoreFailed(
+        r.status === 400 && r.issues.some((i) => i.path === "cursor") ? "changed" : "error",
+      );
       return;
     }
-    focusRow.current = r.data.items[0]?.id ?? null;
+    // A proposal is listed once, even if a page repeats one already shown.
+    const listed = new Set(listing.items.map((x) => x.id));
+    const added = r.data.items.filter((x) => !listed.has(x.id));
+    // Focus goes to the first new proposal; with none, to the count if the button goes away.
+    focusAfterMore.current = added[0]
+      ? `row-${added[0].id}`
+      : r.data.nextCursor
+        ? null
+        : SHOWING_ID;
     setListing((current) =>
-      current && current.query === query
+      current
         ? {
             ...current,
-            items: [...current.items, ...r.data.items],
+            items: [...current.items, ...added],
             total: r.data.total,
             excludedCount: r.data.excludedCount,
             nextCursor: r.data.nextCursor,
@@ -150,7 +182,8 @@ export function ManagePage() {
         <Localized text={config.title} fallback={config.defaultLanguage} />
       </p>
       <ul className="facts">
-        <li>{t("manageShown", { n: o.total })}</li>
+        {/* Every proposal sent in (withdrawn ones too), whatever the filter: not what is shown. */}
+        <li>{t("manageReceived", { n: o.total })}</li>
         <li>{t("manageDrafts", { n: o.draftCount })}</li>
         <li>{t("manageIncomplete", { n: o.incomplete })}</li>
         <li>{t("managePending", { n: o.withPendingInvitations })}</li>
@@ -179,7 +212,7 @@ export function ManagePage() {
         <p role="status">{t("loading")}</p>
       ) : (
         <>
-          <p className="meta" role="status">
+          <p className="meta" role="status" id={SHOWING_ID} tabIndex={-1}>
             {t("manageShowing", { shown: listing.items.length, total: listing.total })}
             {listing.excludedCount ? ` · ${t("manageExcluded", { n: listing.excludedCount })}` : ""}
           </p>
@@ -218,12 +251,22 @@ export function ManagePage() {
             ))}
           </ul>
           {listing.nextCursor && (
-            <button type="button" className="secondary" disabled={loadingMore} onClick={more}>
+            // aria-disabled while a page is on its way, so focus stays on the button.
+            <button
+              type="button"
+              className="secondary"
+              aria-disabled={loadingMore ? "true" : undefined}
+              onClick={more}
+            >
               {t("manageShowMore")}
             </button>
           )}
           <p className="status-line" role="status">
-            {moreFailed ? t("errorGeneric") : ""}
+            {moreFailed === "changed"
+              ? t("manageListChanged")
+              : moreFailed
+                ? t("errorGeneric")
+                : ""}
           </p>
         </>
       )}

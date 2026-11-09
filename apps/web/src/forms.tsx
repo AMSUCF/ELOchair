@@ -2,6 +2,28 @@ import { useEffect, useRef } from "react";
 import type { Issue } from "./api";
 import { isMessageKey, useT } from "./i18n";
 
+/**
+ * A typed or pasted name as it is sent. Pasting often brings invisible format characters along
+ * (direction marks, zero-width spaces, soft hyphens, byte-order marks); they are removed, except
+ * the zero-width (non-)joiners some scripts are spelled with. Then outer spaces go. The server
+ * still decides what it accepts; this only spares people a refusal for something they cannot see.
+ */
+export const cleanName = (typed: string) =>
+  typed
+    .replace(/(?![\u200C\u200D])\p{Cf}/gu, "")
+    .replace(/^[\s\u200C\u200D]+|[\s\u200C\u200D]+$/gu, "");
+
+/**
+ * Why the server refused the name in an invitation answer: missing (422, code "required"), or
+ * given but not accepted (400 from input validation: invisible characters, no letter or digit,
+ * too long). Null when the name was not the problem.
+ */
+export function nameRefusal(issues: Issue[]): "required" | "invalid" | null {
+  const issue = issues.find((i) => i.path === "displayName");
+  if (!issue) return null;
+  return issue.code === "required" ? "required" : "invalid";
+}
+
 /** The DOM id of the control for an issue path ("fields.needs" → "field-fields-needs"). */
 export const fieldId = (path: string) => `field-${path.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 

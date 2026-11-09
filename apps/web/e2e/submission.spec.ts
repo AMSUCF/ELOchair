@@ -11,6 +11,10 @@ import {
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const CALL = "elo2027-open";
+/** LEFT-TO-RIGHT MARK: invisible, and often pasted along with a name. */
+const LRM = String.fromCodePoint(0x200e);
+const NAME_INVALID =
+  "Use letters or digits, at most 200 characters, without hidden formatting characters.";
 const words = (n: number) =>
   Array.from(
     { length: n },
@@ -112,8 +116,18 @@ async function openInvitation(browser: Browser, link: string, flaky = false) {
     await expect(page).not.toHaveURL(/token=/);
     await page.unroute("**/api/invitations/info");
     await page.getByRole("button", { name: "Try again" }).click();
+    // The invitation arrives as new content: its heading takes focus (not the page body).
+    await expect(page.getByRole("button", { name: "Decline" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
   }
   return page;
+}
+
+/** The token page's one status line says how the answer went and takes focus. */
+async function expectAnswered(page: Page, text: string) {
+  const status = page.getByRole("status");
+  await expect(status).toContainText(text);
+  await expect(status).toBeFocused();
 }
 
 /** Answer an invitation from the link in the email (or one kept earlier), in a fresh browser. */
@@ -142,10 +156,10 @@ async function answerByLink(
     if (opts.name) await name.fill(opts.name);
     await acceptAgreements(page);
     await page.getByRole("button", { name: "Confirm my participation" }).click();
-    await expect(page.getByText("Thank you: you are confirmed.")).toBeVisible();
+    await expectAnswered(page, "Thank you: you are confirmed.");
   } else {
     await page.getByRole("button", { name: "Decline" }).click();
-    await expect(page.getByText("You declined.")).toBeVisible();
+    await expectAnswered(page, "You declined.");
   }
   await page.context().close();
 }
@@ -211,6 +225,13 @@ test("submit a talk from a phone: word count, self-identification, co-author, ag
   const invitation = await latestMail(request, "e2e-coauthor@example.org");
   expect(invitation.subject).toContain("confirma tu participación");
   expect(invitation.text).not.toContain("Poems that read");
+  // Focus is never dropped: the emptied email field is ready for the next address, and after a
+  // removal the status line says who was removed.
+  await expect(page.getByLabel("Email", { exact: true })).toBeFocused();
+  await invite(page, "e2e-removed@example.org", 3, { name: "Rita Removed" });
+  await page.getByRole("button", { name: "Remove: Rita Removed" }).click();
+  await expect(page.locator(".people > li")).toHaveCount(2);
+  await expect(page.getByText("You removed Rita Removed from this proposal.")).toBeFocused();
 
   // The owner keeps typing while the co-author confirms: the save is stale, the text survives.
   await page.getByLabel("Title").fill("Poems that read their readers");
@@ -375,9 +396,19 @@ test("invitees answer in the app: asked for their own name, one confirms then le
   await co.getByRole("button", { name: "Confirm my participation" }).click();
   await expect(co.locator("#inv-name-error")).toHaveText("Enter your name to confirm.");
   await expect(name).toBeFocused();
-  await name.fill("Cora Coauthor");
+  // A name the server does not accept is not a missing one: the field says what it needs.
+  await name.fill("—");
   await co.getByRole("button", { name: "Confirm my participation" }).click();
-  await expect(co.getByText("You are confirmed. The owner has been told.")).toBeVisible();
+  await expect(co.locator("#inv-name-error")).toHaveText(NAME_INVALID);
+  await expect(name).toBeFocused();
+  await expect(name).toHaveAttribute("maxlength", "200");
+  // An invisible mark pasted along with the name is dropped before sending.
+  await name.fill(`Cora Coauthor${LRM}`);
+  await co.getByRole("button", { name: "Confirm my participation" }).click();
+  const confirmed = co.getByText("You are confirmed. The owner has been told.");
+  await expect(confirmed).toBeVisible();
+  // The Confirm button goes away: focus is on the outcome, not lost.
+  await expect(confirmed).toBeFocused();
 
   co.once("dialog", (dialog) => dialog.accept());
   await co.getByRole("button", { name: "Leave this proposal" }).click();
@@ -432,15 +463,29 @@ test("a new invitee must give their own name to confirm by link, and the owner t
   await expectAccessible(invitee);
   await name.fill("Nora Ownwords");
   await expect(invitee.locator("#inv-name-error")).toHaveCount(0);
-  await invitee.getByRole("button", { name: "Confirm my participation" }).click();
-  await expect(invitee.getByText("Thank you: you are confirmed.")).toBeVisible();
+
+  // A name the server refuses (no letter or digit) is not a dead link: the form and the token
+  // stay, and the field says what it needs.
+  const confirm = invitee.getByRole("button", { name: "Confirm my participation" });
+  await name.fill("—");
+  await confirm.click();
+  await expect(invitee.locator("#inv-name-error")).toHaveText(NAME_INVALID);
+  await expect(name).toBeFocused();
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  await expect(name).toHaveAttribute("maxlength", "200");
+  await expect(invitee.getByText("This invitation link has expired")).toHaveCount(0);
+  await expectAccessible(invitee);
+  // An invisible mark pasted along with the name is dropped before sending.
+  await name.fill(`Nora Ownwords${LRM}`);
+  await confirm.click();
+  await expectAnswered(invitee, "Thank you: you are confirmed.");
   await invitee.context().close();
 
   // The owner sees the name the invitee gave, never the one the owner typed.
   await page.reload();
-  await expect(
-    page.locator(".people > li").filter({ hasText: "Nora Ownwords" }).locator(".badge"),
-  ).toHaveText("Confirmed");
+  const row = page.locator(".people > li").filter({ hasText: "Nora Ownwords" });
+  await expect(row.locator(".badge")).toHaveText("Confirmed");
+  expect(await row.locator("strong").textContent()).toBe("Nora Ownwords");
   await expect(page.getByText("Typed By The Owner")).toHaveCount(0);
 });
 
@@ -487,8 +532,26 @@ test("withdrawn work: a pending invitee can only decline by link, and a co-autho
   await expect(pending.getByLabel(/^Your name/)).toHaveCount(0);
   await expect(pending.getByRole("checkbox")).toHaveCount(0);
   await expectAccessible(pending);
-  await pending.getByRole("button", { name: "Decline" }).click();
-  await expect(pending.getByText("You declined.")).toBeVisible();
+  // While the answer is on its way, Decline keeps focus and refuses repeat presses.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const answers: string[] = [];
+  await pending.route("**/api/invitations/answer", async (route) => {
+    answers.push(route.request().url());
+    await held;
+    await route.continue();
+  });
+  const decline = pending.getByRole("button", { name: "Decline" });
+  await decline.focus();
+  await pending.keyboard.press("Enter");
+  await expect(decline).toHaveAttribute("aria-disabled", "true");
+  await expect(decline).toBeFocused();
+  await pending.keyboard.press("Enter");
+  release();
+  await expectAnswered(pending, "You declined.");
+  expect(answers).toHaveLength(1);
   await pending.context().close();
 
   // The confirmed co-author can still leave the withdrawn proposal from the app.
@@ -643,14 +706,102 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   );
 
   // A long list comes a page at a time.
+  const LIST = "/api/conferences/sandbox/submissions";
+  const isMore = (url: URL) => url.pathname === LIST && url.searchParams.has("cursor");
+  const isSearch = (url: URL) => url.pathname === LIST && url.searchParams.has("q");
+  const firstPage = page.waitForResponse((r) => {
+    const url = new URL(r.url());
+    return url.pathname === LIST && !url.searchParams.has("cursor");
+  });
   await page.goto("/en/c/sandbox/manage");
+  const listed = ((await (await firstPage).json()) as { items: { id: string }[] }).items;
+  // The overview counts what was sent in; only the status line says what is shown.
+  await expect(page.getByText(/^Proposals received: \d+$/)).toBeVisible();
+  await expect(page.getByText(/\d+ shown$/)).toHaveCount(0);
   const status = page.getByText(/^Showing \d+ of \d+/);
   await expect(status).toHaveText(/^Showing 100 of \d+/);
   const total = Number(/of (\d+)/.exec((await status.textContent()) ?? "")?.[1]);
   expect(total).toBeGreaterThan(100);
-  await page.getByRole("button", { name: "Show more" }).click();
+  const cards = page.locator("ul.cards > li");
+  const more = page.getByRole("button", { name: "Show more" });
+
+  // A cursor the server no longer knows: the list stays, and the page says it has changed.
+  await page.route(isMore, (route) =>
+    route.fulfill({
+      status: 400,
+      json: { error: "invalid", issues: [{ path: "cursor", message: "unknown cursor" }] },
+    }),
+  );
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText(
+      "The list has changed since it was loaded. Reload the page to see it as it is now.",
+    ),
+  ).toBeVisible();
+  await expect(cards).toHaveCount(100);
+  await expect(more).toBeFocused();
+  await page.unroute(isMore);
+
+  // A page that repeats proposals already listed adds each proposal once.
+  await page.route(isMore, async (route) => {
+    const response = await route.fetch();
+    const page2 = (await response.json()) as { items: unknown[] };
+    await route.fulfill({
+      response,
+      json: { ...page2, items: [...listed.slice(-3), ...page2.items] },
+    });
+  });
+  await page.keyboard.press("Enter");
   const shown = Math.min(200, total);
   await expect(status).toHaveText(new RegExp(`^Showing ${shown} of ${total}`));
-  await expect(page.locator("ul.cards > li")).toHaveCount(shown);
-  await expect(page.locator("ul.cards > li").nth(100).getByRole("link")).toBeFocused();
+  await expect(cards).toHaveCount(shown);
+  const ids = await page.locator("ul.cards h2 a").evaluateAll((links) => links.map((a) => a.id));
+  expect(new Set(ids).size).toBe(shown);
+  await expect(cards.nth(100).getByRole("link")).toBeFocused();
+  await page.unroute(isMore);
+
+  // While a page is on its way, "Show more" keeps focus. If the filter changes before it
+  // arrives, the page is dropped and focus stays with the chair, not on a row.
+  await page.goto("/en/c/sandbox/manage");
+  await expect(status).toHaveText(/^Showing 100 of \d+/);
+  let releaseMore = () => {};
+  const moreHeld = new Promise<void>((resolve) => {
+    releaseMore = resolve;
+  });
+  let nextTitle = "";
+  await page.route(isMore, async (route) => {
+    const response = await route.fetch();
+    const page2 = (await response.json()) as { items: { title: string }[] };
+    nextTitle = page2.items[0]?.title ?? "";
+    await moreHeld;
+    await route.fulfill({ response, json: page2 });
+  });
+  let releaseSearch = () => {};
+  const searchHeld = new Promise<void>((resolve) => {
+    releaseSearch = resolve;
+  });
+  await page.route(isSearch, async (route) => {
+    await searchHeld;
+    await route.continue();
+  });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(more).toHaveAttribute("aria-disabled", "true");
+  await expect(more).toBeFocused();
+  await expect.poll(() => nextTitle).not.toBe("");
+  await page.getByLabel("Search titles").fill(nextTitle);
+  const apply = page.getByRole("button", { name: "Apply filters" });
+  await apply.click();
+  const stalePage = page.waitForResponse((r) => isMore(new URL(r.url())));
+  releaseMore();
+  await stalePage;
+  releaseSearch();
+  await expect(page.getByRole("link", { name: nextTitle }).first()).toBeVisible();
+  await expect(status).toHaveText(/^Showing \d+ of \d+/);
+  // Give a stray focus move time to happen before checking that none did.
+  await page.waitForTimeout(300);
+  await expect(apply).toBeFocused();
+  await page.unroute(isMore);
+  await page.unroute(isSearch);
 });

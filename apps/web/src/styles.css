@@ -439,6 +439,17 @@ button.danger {
   color: var(--danger-text);
 }
 
+/*
+ * Disclosure toggles ("I already have a code") are touch targets too. They stay list items so
+ * the open/closed marker shows; padding makes up the height around one line of text.
+ */
+summary {
+  display: list-item;
+  min-height: var(--touch);
+  padding-block: 10px;
+  cursor: pointer;
+}
+
 /* Links that stand alone (not inside a sentence) are touch targets too. */
 .block-link,
 .card h2 > a,

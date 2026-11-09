@@ -15,8 +15,20 @@ import { useT } from "./i18n";
  */
 export const FocusPending = createContext<RefObject<boolean> | null>(null);
 
-/** The page's h1: names the document (title) and receives focus after navigation. */
-export function PageHeading({ children, title }: { children: ReactNode; title?: string }) {
+/**
+ * The page's h1: names the document (title) and receives focus after navigation. With
+ * `focusOnMount` it takes focus when it appears even without a navigation (an error page that
+ * replaces a page whose heading already had focus).
+ */
+export function PageHeading({
+  children,
+  title,
+  focusOnMount = false,
+}: {
+  children: ReactNode;
+  title?: string;
+  focusOnMount?: boolean;
+}) {
   const { t } = useT();
   const ref = useRef<HTMLHeadingElement>(null);
   const pending = useContext(FocusPending);
@@ -25,6 +37,10 @@ export function PageHeading({ children, title }: { children: ReactNode; title?: 
   useEffect(() => {
     document.title = name && name !== t("appName") ? `${name} – ${t("appName")}` : t("appName");
   }, [name, t]);
+
+  useEffect(() => {
+    if (focusOnMount) ref.current?.focus();
+  }, [focusOnMount]);
 
   useEffect(() => {
     if (pending?.current && ref.current) {

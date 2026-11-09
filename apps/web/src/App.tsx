@@ -52,12 +52,15 @@ function pathIn(lang: string, pathname: string, search: string): string {
   return `/${lang}${withoutLang(pathname) || "/"}${search}`;
 }
 
-/** In place of a page that failed to render: say so, in the interface language. */
+/**
+ * In place of a page that failed to render: say so, in the interface language. Its heading takes
+ * focus, since whatever had focus (often the failed page's heading) is gone.
+ */
 function Crashed() {
   const { lang, t } = useT();
   return (
     <>
-      <PageHeading>{t("crashTitle")}</PageHeading>
+      <PageHeading focusOnMount>{t("crashTitle")}</PageHeading>
       <p role="alert">{t("crashBody")}</p>
       <p className="actions">
         <button type="button" onClick={() => window.location.reload()}>

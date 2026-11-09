@@ -1,11 +1,18 @@
 import AxeBuilder from "@axe-core/playwright";
-import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
+import { type APIRequestContext, expect, type Locator, type Page, test } from "@playwright/test";
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
 async function expectAccessible(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+}
+
+/** House rule 8: anything people tap is at least 44px tall. */
+async function expectTouchTarget(target: Locator) {
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
 }
 
 async function expectNoHorizontalScroll(page: Page) {
@@ -151,7 +158,11 @@ test("a code from an earlier email still works after reloading the sign-in page"
   const m = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, email)).text);
   await page.reload();
   await page.getByLabel("Email address").fill(email);
-  await page.getByText("I already have a code").click();
+  // The disclosure is a full-size touch target, and keeps its open/closed marker.
+  const haveCode = page.getByText("I already have a code");
+  await expectTouchTarget(haveCode);
+  expect(await haveCode.evaluate((el) => getComputedStyle(el).display)).toBe("list-item");
+  await haveCode.click();
   await page.getByLabel("Code from the email").fill(`${m?.[1]}${m?.[2]}`);
   await page.getByRole("button", { name: "Sign in with code" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
@@ -170,6 +181,10 @@ test("a page that fails to render says so in the interface language, and the res
   await expectAccessible(page);
   await page.getByRole("navigation").getByRole("link", { name: "Tu cuenta" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Tu cuenta" })).toBeVisible();
+  // Back to the failing page by a link: its heading takes focus first, then the crash replaces
+  // it. Focus must land on the error's heading, not on the page body.
+  await page.getByRole("link", { name: "ELOchair", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Algo salió mal" })).toBeFocused();
 });
 
 test("an unknown conference says so, in the heading and the title", async ({ page }) => {

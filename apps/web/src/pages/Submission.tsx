@@ -2,6 +2,7 @@ import type { ConferenceConfig, CustomField, SelfIdKind, SubmissionType } from "
 import {
   countWords,
   effectiveBlindMode,
+  LIMITS,
   localize,
   selfIdentificationWarnings,
 } from "@elochair/schema/pure";
@@ -19,7 +20,7 @@ import {
   type Role,
 } from "../api";
 import { formatDateTime, viewerTimeZone } from "../format";
-import { describedBy, ErrorSummary, FieldError, fieldId } from "../forms";
+import { cleanName, describedBy, ErrorSummary, FieldError, fieldId, nameRefusal } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
@@ -965,6 +966,8 @@ function People({
   const [role, setRole] = useState<Exclude<Role, "lead">>("presenter");
   const [inviteLang, setInviteLang] = useState<"en" | "es" | "pt">(lang);
   const [status, setStatus] = useState("");
+  const emailRef = useRef<HTMLInputElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
   const people = useMemo(
     () => [...sub.contributors].sort((a, b) => a.position - b.position),
     [sub.contributors],
@@ -1022,7 +1025,21 @@ function People({
       setEmail("");
       setName("");
       setAffiliation("");
+      // "Send invitation" is disabled once the field is empty: focus goes back to the field,
+      // ready for the next address, instead of being lost.
+      emailRef.current?.focus();
     }
+  }
+
+  /** The card goes away: focus moves to the status line, which names who was removed. */
+  async function remove(c: Contributor, who: string) {
+    const ok = await act(
+      `/contributors/${c.personId}`,
+      "DELETE",
+      {},
+      t("editRemoved", { name: who }),
+    );
+    if (ok) statusRef.current?.focus();
   }
 
   return (
@@ -1119,9 +1136,7 @@ function People({
                       className="danger"
                       aria-label={named(t("editRemove"))}
                       aria-disabled={lockedAttr}
-                      onClick={() =>
-                        act(`/contributors/${c.personId}`, "DELETE", {}, t("editSaved"))
-                      }
+                      onClick={() => remove(c, who)}
                     >
                       {t("editRemove")}
                     </button>
@@ -1133,7 +1148,7 @@ function People({
           );
         })}
       </ol>
-      <p className="status-line" role="status">
+      <p className="status-line" role="status" tabIndex={-1} ref={statusRef}>
         {status}
       </p>
       {editable && (
@@ -1142,6 +1157,7 @@ function People({
           <label htmlFor={fieldId("email")}>{t("editEmail")}</label>
           <input
             id={fieldId("email")}
+            ref={emailRef}
             type="email"
             inputMode="email"
             autoComplete="off"
@@ -1209,59 +1225,85 @@ function ReadOnly({
   const config = conf.config;
   const [agreed, setAgreed] = useState<Set<string>>(new Set());
   const [name, setName] = useState("");
-  const [nameMissing, setNameMissing] = useState(false);
+  /** Missing, or refused by the server as written. */
+  const [nameError, setNameError] = useState<"required" | "invalid" | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Repeat taps while a request is on its way do nothing (the buttons stay focusable). */
+  const inFlight = useRef(false);
   /** After declining or leaving, the person can no longer see the proposal: a final state. */
   const [done, setDone] = useState<"declined" | "left" | null>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const busyAttr = busy ? ("true" as const) : undefined;
   const type = config.submissionTypes.find((x) => x.key === sub.typeKey);
   const people = [...sub.contributors].sort((a, b) => a.position - b.position);
   const withdrawn = sub.status === "withdrawn";
   // Confirming needs an open call and live work; declining and leaving are always possible.
   const canConfirm = conf.callOpen && !withdrawn;
 
-  function finish(final: "declined" | "left") {
-    setDone(final);
-    setMessage(final === "declined" ? t("invDeclined") : t("invLeft"));
+  /** Say what happened in the status line and move focus there (the buttons may go away). */
+  function announce(text: string) {
+    setMessage(text);
     statusRef.current?.focus();
   }
 
-  async function answer(a: "confirm" | "decline") {
-    if (busy) return;
-    const confirm = a === "confirm";
-    if (confirm && needsName && !name.trim()) {
-      setNameMissing(true);
-      setMessage(t("invNameRequired"));
-      nameRef.current?.focus();
-      return;
-    }
+  function finish(final: "declined" | "left") {
+    setDone(final);
+    announce(final === "declined" ? t("invDeclined") : t("invLeft"));
+  }
+
+  function refuseName(problem: "required" | "invalid") {
+    setNameError(problem);
+    setMessage(
+      problem === "required" ? t("invNameRequired") : t("invNameInvalid", { max: LIMITS.name }),
+    );
+    nameRef.current?.focus();
+  }
+
+  /** One request at a time: a repeat tap while one is on its way does nothing. */
+  async function exclusive<T>(work: () => Promise<T>): Promise<T | null> {
+    if (inFlight.current) return null;
+    inFlight.current = true;
     setBusy(true);
-    const res = await api<{ answer: string }>(`/api/me/invitations/${sub.id}/answer`, {
-      method: "POST",
-      body: {
-        answer: a,
-        acceptedAgreements: confirm
-          ? config.agreements
-              .filter((x) => agreed.has(x.key))
-              .map((x) => ({ key: x.key, version: x.version }))
-          : [],
-        ...(confirm && needsName ? { displayName: name.trim() } : {}),
-      },
-    });
-    setBusy(false);
+    try {
+      return await work();
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function answer(a: "confirm" | "decline") {
+    if (inFlight.current) return;
+    const confirm = a === "confirm";
+    const displayName = cleanName(name);
+    if (confirm && needsName && !displayName) return refuseName("required");
+    const res = await exclusive(() =>
+      api<{ answer: string }>(`/api/me/invitations/${sub.id}/answer`, {
+        method: "POST",
+        body: {
+          answer: a,
+          acceptedAgreements: confirm
+            ? config.agreements
+                .filter((x) => agreed.has(x.key))
+                .map((x) => ({ key: x.key, version: x.version }))
+            : [],
+          ...(confirm && needsName ? { displayName } : {}),
+        },
+      }),
+    );
+    if (!res) return;
     if (res.ok) {
       if (!confirm) return finish("declined");
-      setMessage(t("invConfirmedInApp"));
+      // Confirm and the form go away when the proposal reloads: focus stays with the outcome.
+      announce(t("invConfirmedInApp"));
       onChanged();
       return;
     }
-    if (res.issues.some((i) => i.path === "displayName")) {
-      setNameMissing(true);
-      setMessage(t("invNameRequired"));
-      nameRef.current?.focus();
-    } else if (res.issues.length) setMessage(t("issue_agreements_required"));
+    const nameProblem = nameRefusal(res.issues);
+    if (nameProblem) refuseName(nameProblem);
+    else if (res.issues.length) setMessage(t("issue_agreements_required"));
     else if (res.error === "call_closed")
       setMessage(withdrawn ? t("invWithdrawn") : t("invClosed"));
     else if (res.error === "already_answered") onChanged();
@@ -1270,10 +1312,11 @@ function ReadOnly({
   }
 
   async function leave() {
-    if (busy || !window.confirm(t("editLeaveConfirm"))) return;
-    setBusy(true);
-    const res = await api(`/api/submissions/${sub.id}/leave`, { method: "POST", body: {} });
-    setBusy(false);
+    if (inFlight.current || !window.confirm(t("editLeaveConfirm"))) return;
+    const res = await exclusive(() =>
+      api(`/api/submissions/${sub.id}/leave`, { method: "POST", body: {} }),
+    );
+    if (!res) return;
     if (res.ok) finish("left");
     else setMessage(res.status === 0 ? t("verifyNetwork") : t("errorGeneric"));
   }
@@ -1341,18 +1384,19 @@ function ReadOnly({
                     value={name}
                     onChange={(e) => {
                       setName(e.target.value);
-                      setNameMissing(false);
+                      setNameError(null);
                     }}
                     autoComplete="name"
+                    maxLength={LIMITS.name}
                     aria-required="true"
-                    aria-invalid={nameMissing || undefined}
-                    aria-describedby={
-                      nameMissing ? "inv-name-help inv-name-error" : "inv-name-help"
-                    }
+                    aria-invalid={nameError ? true : undefined}
+                    aria-describedby={nameError ? "inv-name-help inv-name-error" : "inv-name-help"}
                   />
-                  {nameMissing && (
+                  {nameError && (
                     <p className="field-error" id="inv-name-error">
-                      {t("invNameRequired")}
+                      {nameError === "invalid"
+                        ? t("invNameInvalid", { max: LIMITS.name })
+                        : t("invNameRequired")}
                     </p>
                   )}
                 </>
@@ -1391,10 +1435,12 @@ function ReadOnly({
                   ))}
                 </fieldset>
               )}
+              {/* aria-disabled while a request is on its way, so focus stays on the button. */}
               {canConfirm && (
                 <button
                   type="button"
-                  disabled={busy || !config.agreements.every((a) => agreed.has(a.key))}
+                  disabled={!config.agreements.every((a) => agreed.has(a.key))}
+                  aria-disabled={busyAttr}
                   onClick={() => answer("confirm")}
                 >
                   {t("editConfirm")}
@@ -1403,7 +1449,7 @@ function ReadOnly({
               <button
                 type="button"
                 className="secondary"
-                disabled={busy}
+                aria-disabled={busyAttr}
                 onClick={() => answer("decline")}
               >
                 {t("editDecline")}
@@ -1411,7 +1457,7 @@ function ReadOnly({
             </div>
           )}
           {sub.view === "submitter" && (
-            <button type="button" className="secondary" disabled={busy} onClick={leave}>
+            <button type="button" className="secondary" aria-disabled={busyAttr} onClick={leave}>
               {t("editLeave")}
             </button>
           )}
