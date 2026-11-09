@@ -8,11 +8,13 @@
  * characters, combining grapheme joiners, Hangul fillers) or half of a surrogate pair. Any of
  * them can carry hidden text (one selector or tag per byte is the "ASCII smuggling" used to give
  * instructions to AI mail readers), so each is stray unless it is one of these:
- * - a zero-width (non-)joiner between two visible letters, marks, digits or pictographs, how
- *   Persian compound surnames, Indic conjuncts and emoji sequences are spelled (the pictograph
- *   before it may carry a skin tone or one emoji presentation selector, as in the transgender
- *   flag U+1F3F3 U+FE0F U+200D U+26A7 U+FE0F), but never next to a Latin, Greek or Cyrillic
- *   letter or an ASCII digit: no spelling needs one there, so it could only mark letters;
+ * - a zero-width (non-)joiner between two visible characters of a script that is spelled with
+ *   joiners (Arabic, Syriac, Thaana, N'Ko, Mongolian, the Indic scripts, Sinhala, Myanmar,
+ *   Khmer) or between emoji: Persian compound surnames, Indic conjuncts, emoji sequences (the
+ *   pictograph before it may carry a skin tone or one emoji presentation selector, as in the
+ *   transgender flag U+1F3F3 U+FE0F U+200D U+26A7 U+FE0F). Anywhere else (Latin, Greek,
+ *   Cyrillic, Han, kana, Hangul, Hebrew, Thai, Georgian...) no spelling needs one, so it could
+ *   only mark letters;
  * - a joiner right after an Indic virama, wherever it is: legacy text spells the Malayalam
  *   chillus and the Bengali khanda ta that way, at the end of a word (U+0D7B as U+0D30 U+0D4D
  *   U+200D);
@@ -23,12 +25,36 @@
  *   flag U+1F3F4.
  * Ideographic variation selectors (U+E0100 to U+E01EF) are not kept: each could carry a byte
  * after every ideograph, and names are recognizable without them. What remains is at most a
- * bit or two per character in Indic, Arabic-script or emoji text, which cannot spell words.
+ * bit or two per character in text of the joining scripts above or emoji, which cannot spell
+ * words.
  */
 
 const INVISIBLE = /[\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}]/u;
-const JOINS = /[\p{L}\p{M}\p{N}\p{Extended_Pictographic}\p{Emoji_Modifier}]/u;
-const NO_JOINERS = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}0-9]/u;
+/** Characters a joiner may stand between: the scripts spelled with joiners, and emoji. */
+const JOINS = new RegExp(
+  `[${[
+    "Arabic",
+    "Syriac",
+    "Thaana",
+    "Nko",
+    "Mongolian",
+    "Devanagari",
+    "Bengali",
+    "Gurmukhi",
+    "Gujarati",
+    "Oriya",
+    "Tamil",
+    "Telugu",
+    "Kannada",
+    "Malayalam",
+    "Sinhala",
+    "Myanmar",
+    "Khmer",
+  ]
+    .map((script) => `\\p{Script_Extensions=${script}}`)
+    .join("")}\\p{Extended_Pictographic}\\p{Emoji_Modifier}]`,
+  "u",
+);
 /** Viramas of Indic scripts, with the Sinhala al-lakuna and the Myanmar and Khmer stacking signs. */
 const VIRAMA =
   /[\u{094D}\u{09CD}\u{0A4D}\u{0ACD}\u{0B4D}\u{0BCD}\u{0C4D}\u{0CCD}\u{0D4D}\u{0DCA}\u{1039}\u{103A}\u{17D2}]/u;
@@ -46,7 +72,7 @@ const FLAG_TAGS = ["gbeng", "gbsct", "gbwls"].map(
 const FLAG_TAG_LENGTH = 6;
 
 const visible = (c: string | undefined): c is string => c !== undefined && !INVISIBLE.test(c);
-const joinable = (c: string | undefined) => visible(c) && JOINS.test(c) && !NO_JOINERS.test(c);
+const joinable = (c: string | undefined) => visible(c) && JOINS.test(c);
 
 /** Code points of `text`, each marked as kept or stray. */
 function scan(text: string): { chars: string[]; stray: boolean[] } {

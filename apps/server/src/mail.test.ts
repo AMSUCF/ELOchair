@@ -1,4 +1,6 @@
+import { hasStrayInvisible } from "@elochair/schema";
 import { eq } from "drizzle-orm";
+import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openDatabase } from "./db/client";
 import { outbox } from "./db/schema";
@@ -346,5 +348,55 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
       "Ana Pérez",
     );
     expect(sanitizeName("Ana JavaScript:alert(1) Pérez", "?")).toBe("Ana Pérez");
+  });
+});
+
+describe("review fixes, round 6: removals never join, cuts never strand a joiner", () => {
+  it("a removed IP address or link leaves a space, so its neighbours cannot form a domain", () => {
+    expect(sanitizeName("Ana evil.c1.2.3.4om", "?")).not.toMatch(/evil\.com/);
+    expect(sanitizeName("Ana evil.1.2.3.4com", "?")).not.toMatch(/evil\.com/);
+    expect(sanitizeName("Ana evil-phish.c0.0.0.0om now", "?")).not.toMatch(/evil-phish\.com/);
+    expect(sanitizeName("Ana evil.chttps://x.yom", "?")).not.toMatch(/evil\.com/);
+    expect(sanitizeName("Ana evil.ca@b.cdom", "?")).not.toMatch(/evil\.com/);
+  });
+
+  it("sanitizeName is idempotent and leaves nothing stray, whatever it is given", () => {
+    const atoms = [
+      ..."aZ0159 .-/@:#*",
+      "com",
+      "org",
+      "https://",
+      "www.",
+      "\u3002",
+      "\u200B",
+      "\u200C",
+      "\u200D",
+      "\uFE0F",
+      "\u20E3",
+      "\u0D30",
+      "\u0D4D",
+      "\u0646",
+      "\u{1F469}",
+      "\u{1F3F4}",
+      "\u{E0067}",
+    ];
+    fc.assert(
+      fc.property(fc.array(fc.constantFrom(...atoms), { maxLength: 30 }), (parts) => {
+        const once = sanitizeName(parts.join(""), "?");
+        expect(sanitizeName(once, "?")).toBe(once);
+        expect(hasStrayInvisible(once)).toBe(false);
+      }),
+      { numRuns: 30_000 },
+    );
+  });
+
+  it("a cut title never ends in a joiner whose partner was cut off", () => {
+    const persian = "\u0639\u0644\u06CC\u200C\u0631\u0636\u0627";
+    const cut = oneLine(persian, "?", 4);
+    expect(hasStrayInvisible(cut)).toBe(false);
+    expect(cut.endsWith("…")).toBe(true);
+    for (let max = 2; max < 8; max++) {
+      expect(hasStrayInvisible(oneLine(persian.repeat(3), "?", max))).toBe(false);
+    }
   });
 });

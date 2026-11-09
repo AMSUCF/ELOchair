@@ -7,11 +7,11 @@ import { isMessageKey, useT } from "./i18n";
  * A typed or pasted name as it is sent. Pasting often brings invisible format characters along
  * (direction marks, zero-width spaces, soft hyphens, byte-order marks); they are removed, except
  * joiners inside words and emoji and the standard subdivision flags, which the server accepts
- * too (removeStrayInvisible). Then outer spaces and joiners go. The server
+ * too (removeStrayInvisible). Then outer spaces go; a joiner the server keeps (after an Indic
+ * virama, as in legacy Malayalam chillus) stays. The server
  * still decides what it accepts; this only spares people a refusal for something they cannot see.
  */
-export const cleanName = (typed: string) =>
-  removeStrayInvisible(typed).replace(/^[\s\u200C\u200D]+|[\s\u200C\u200D]+$/gu, "");
+export const cleanName = (typed: string) => removeStrayInvisible(typed).trim();
 
 /**
  * Why the server refused the name in an invitation answer: missing (422, code "required"), or

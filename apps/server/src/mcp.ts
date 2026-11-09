@@ -13,6 +13,7 @@ import { type ConferenceRow, getConference, loadSubmission, loadSubmissionRecord
 import { capReportFor, chairsOf, conferenceOverview } from "./services/reports";
 import {
   COUNTED_STATUSES,
+  cursorContext,
   QueryNotAllowed,
   querySubmissions,
   viewerChairs,
@@ -180,7 +181,9 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
         async (k) => {
           const refused = unknownKeys(k, query);
           // A cursor this server did not seal is refused like any malformed argument.
-          if (query.cursor && !cursors.open(query.cursor)) refused.push("cursor");
+          if (query.cursor && !cursors.open(query.cursor, cursorContext(agent, k.id))) {
+            refused.push("cursor");
+          }
           return refused.sort();
         },
       );

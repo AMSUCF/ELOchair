@@ -54,6 +54,12 @@ export function ownCapCount(
 export class QueryNotAllowed extends Error {}
 /** The cursor did not open: forged, damaged, or sealed under another key (400 at "cursor"). */
 export class CursorRefused extends Error {}
+/**
+ * The list a cursor belongs to: its conference and the person looking (an agent pages as its
+ * owner, the public as one viewer). A cursor opens only there.
+ */
+export const cursorContext = (viewer: Viewer, conferenceId: string) =>
+  `${conferenceId}:${actingPerson(viewer)?.personId ?? "public"}`;
 /** Paging order: (createdAt, id), at the millisecond precision a cursor carries. */
 type PagingKey = PagePosition;
 const pagingKey = (r: SubmissionRecord): PagingKey => [
@@ -115,7 +121,8 @@ export async function querySubmissions(
   const projected = all
     .map((r) => projectSubmission(viewer, r))
     .filter((p): p is ProjectedSubmission => p !== null);
-  const after = query.cursor ? cursors.open(query.cursor) : null;
+  const context = cursorContext(viewer, conference.id);
+  const after = query.cursor ? cursors.open(query.cursor, context) : null;
   if (query.cursor && !after) throw new CursorRefused("cursor");
 
   const q = query.q?.toLocaleLowerCase();
@@ -155,7 +162,7 @@ export async function querySubmissions(
     items: page,
     total: matches.length,
     excludedCount: excludedCount(viewer, conference, all),
-    nextCursor: last && page.length < rest.length ? cursors.seal(keyOf(last.id)) : null,
+    nextCursor: last && page.length < rest.length ? cursors.seal(keyOf(last.id), context) : null,
   };
 }
 

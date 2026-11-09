@@ -57,16 +57,17 @@ const IPV4 = /(?<!\p{N})(?:\d\p{M}*){1,3}(?:\.(?:\d\p{M}*){1,3}){3}(?!\p{N})/gu;
 const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
-  // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule. Kept
-  // joiners sit only between letters or pictographs, so they cannot rejoin a removed domain.
+  // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule. Each
+  // removal leaves a space, so what is left on either side can never join into a new link
+  // ("evil.c1.2.3.4om" must not become "evil.com").
   const clean = removeStrayInvisible(name ?? "")
     .replace(/\p{Co}/gu, "")
     .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
-    .replace(/\S*[@＠]\S*/gu, "")
-    .replace(SCHEME_LINK, "")
-    .replace(HOST_WITH_PATH, "")
-    .replace(BARE_HOST, "")
-    .replace(IPV4, "")
+    .replace(/\S*[@＠]\S*/gu, " ")
+    .replace(SCHEME_LINK, " ")
+    .replace(HOST_WITH_PATH, " ")
+    .replace(BARE_HOST, " ")
+    .replace(IPV4, " ")
     .replace(/\s+/g, " ")
     .trim();
   // At most 100 code points, cut between whole characters so no flag or joiner sequence is
@@ -96,10 +97,8 @@ export function oneLine(text: string | null | undefined, fallback: string, max =
   if (!clean) return fallback;
   const chars = Array.from(GRAPHEMES.segment(clean), (g) => g.segment);
   if (chars.length <= max) return clean;
-  const kept = chars
-    .slice(0, max - 1)
-    .join("")
-    .trimEnd();
+  // A cut can leave a joiner whose partner was cut off: clean again before the ellipsis.
+  const kept = removeStrayInvisible(chars.slice(0, max - 1).join("")).trimEnd();
   return `${kept}…`;
 }
 

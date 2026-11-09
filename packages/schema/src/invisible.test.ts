@@ -37,6 +37,15 @@ describe("invisible characters", () => {
     keycap: `Sala ${cp(0x31, 0xfe0f, 0x20e3)}`,
     "eye in speech bubble": cp(0x1f441, 0xfe0f, 0x200d, 0x1f5e8, 0xfe0f),
     "transgender flag": cp(0x1f3f3, 0xfe0f, 0x200d, 0x26a7, 0xfe0f),
+    "rainbow flag": cp(0x1f3f3, 0xfe0f, 0x200d, 0x1f308),
+    "pirate flag": cp(0x1f3f4, 0x200d, 0x2620, 0xfe0f),
+    "heart on fire": cp(0x2764, 0xfe0f, 0x200d, 0x1f525),
+    "family of three": cp(0x1f9d1, 0x200d, 0x1f9d1, 0x200d, 0x1f9d2),
+    "handshake with two skin tones": cp(0x1faf1, 0x1f3fd, 0x200d, 0x1faf2, 0x1f3fb),
+    "person walking facing right": cp(0x1f6b6, 0x200d, 0x27a1, 0xfe0f),
+    "head shaking horizontally": cp(0x1f642, 0x200d, 0x2194, 0xfe0f),
+    "man with red hair": cp(0x1f468, 0x200d, 0x1f9b0),
+    "Urdu name with ZWNJ": `${cp(0x645, 0x62d, 0x645, 0x62f, 0x200c, 0x639, 0x644, 0x6cc)} Khan`,
   };
   for (const [name, text] of Object.entries(kept)) {
     it(`keeps ${name}`, () => {
@@ -79,6 +88,13 @@ describe("invisible characters", () => {
     // No Latin, Greek or Cyrillic spelling needs a joiner: there it could only mark letters.
     "joiners between Latin letters": [`A${cp(0x200c)}na P${cp(0x200d)}érez`, "Ana Pérez"],
     "a joiner between Cyrillic letters": [`Ан${cp(0x200d)}на`, "Анна"],
+    // Nor do Han, kana, Hangul, Hebrew, Thai or Georgian.
+    "joiners in a Chinese name": [`王${cp(0x200d)}小${cp(0x200c)}明`, "王小明"],
+    "a joiner in a Japanese name": [`やま${cp(0x200c)}だ`, "やまだ"],
+    "a joiner in a Korean name": [`김민${cp(0x200d)}준`, "김민준"],
+    "a joiner in a Hebrew name": [`דו${cp(0x200c)}ד`, "דוד"],
+    "a joiner in a Thai name": [`สม${cp(0x200d)}ชาย`, "สมชาย"],
+    "a joiner in a Georgian name": [`გიორ${cp(0x200c)}გი`, "გიორგი"],
     // After a digit, # or *, a presentation selector belongs only in a keycap.
     "a presentation selector after a digit": [`Sala 1${cp(0xfe0f)}2`, "Sala 12"],
     "halves of surrogate pairs": [`Ana${"\uDB40"}${cp(0x200b)}${"\uDC68"} Pérez`, "Ana Pérez"],

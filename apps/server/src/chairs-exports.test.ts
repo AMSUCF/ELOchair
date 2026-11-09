@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contributorsCsv, submissionsCsv } from "./csv";
 import { cursorsFor, internalCursors } from "./cursor";
 import { auditLog, contributions, people, submissions } from "./db/schema";
-import { type SandboxSummary, seedSandbox } from "./fixtures";
+import { type SandboxSummary, seedOpenCall, seedSandbox } from "./fixtures";
 import {
   createApiToken,
   getConference,
@@ -484,16 +484,24 @@ describe("paging the chair list (#12)", () => {
     });
   }
 
-  it("refuses a cursor the server did not seal", async () => {
+  it("refuses a cursor the server did not seal, or sealed for another list", async () => {
     const real = (await list("status=submitted&limit=1")).json.nextCursor as string;
     const flipped = `${real.slice(0, 30)}${real[30] === "A" ? "B" : "A"}${real.slice(31)}`;
-    const otherKey = cursorsFor("x".repeat(64)).seal([Date.now(), ownSubmittedId]);
+    const otherKey = cursorsFor("x".repeat(64)).seal([Date.now(), ownSubmittedId], "x");
+    // The same position, sealed for another person's view of this conference.
+    const k = await getConference(t.db, s.slug);
+    const otherPerson = cursorsFor(t.deps.env.SECRET_KEY).seal(
+      [Date.now(), ownSubmittedId],
+      `${k?.id}:someone-else`,
+    );
     const refused = [
       "page-2",
       ownSubmittedId,
       `1794193867170.${ownSubmittedId}`,
       flipped,
+      `${real}A`,
       otherKey,
+      otherPerson,
     ];
     for (const cursor of refused) {
       const res = await list(`status=submitted&limit=100&cursor=${cursor}`);
@@ -507,26 +515,82 @@ describe("paging the chair list (#12)", () => {
     expect(ids(await list("status=submitted&limit=3&cursor="))).toEqual(
       ids(await list("status=submitted&limit=3")),
     );
+    // Replayed on another conference's list, by the same chair, it does not open either.
+    const other = await seedOpenCall(t.db, {
+      slug: "cursor-other",
+      now: new Date(),
+      chairEmails: ["chair@example.org"],
+    });
+    const replayed = await call(
+      t.public,
+      "GET",
+      `/api/conferences/${other.slug}/submissions?cursor=${real}`,
+      { cookie: chairCookie },
+    );
+    expect(replayed.status).toBe(400);
   });
 
-  it("shows nothing in a cursor that the viewer's projection leaves out", async () => {
-    const page = await list("status=submitted&limit=1");
+  it("gives a reviewer a cursor that shows no creation time", async () => {
+    const reviewer = await signIn(t, s.reviewerEmails[0] as string);
+    // A reviewer may also submit: end the page on the first item seen with a reviewer view.
+    const all = (await list("limit=500", reviewer)).json.items as { id: string; view: string }[];
+    const at = all.findIndex((i) => i.view.startsWith("reviewer"));
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(at).toBeLessThan(all.length - 1);
+    const page = await list(`limit=${at + 1}`, reviewer);
+    expect(page.status).toBe(200);
+    const item = page.json.items[at];
+    expect(item.view).toMatch(/^reviewer/);
+    expect(item).not.toHaveProperty("createdAt");
     const cursor = page.json.nextCursor as string;
+    expect(cursor).toMatch(/^[A-Za-z0-9_-]+$/);
     const [row] = await t.db
       .select({ createdAt: submissions.createdAt })
       .from(submissions)
-      .where(eq(submissions.id, page.json.items[0].id));
+      .where(eq(submissions.id, item.id));
     const ms = String(row?.createdAt.getTime());
-    expect(cursor).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(cursor).not.toContain(ms);
     expect(Buffer.from(cursor, "base64url").toString("latin1")).not.toContain(ms);
-    expect(cursor).not.toContain(page.json.items[0].id);
-    // A signed-in stranger sees none of the proposals while the conference is in review: a real
-    // cursor gives the same empty page as the start, and a forged one is refused like garbage.
-    const stranger = await signIn(t, "cursor-stranger@example.org");
-    const real = await list(`cursor=${cursor}`, stranger);
-    expect(real.status).toBe(200);
-    expect(real.json.items).toEqual([]);
-    expect(real.json.nextCursor).toBeNull();
+    // It continues the reviewer's own list, and only theirs.
+    expect((await list(`limit=1&cursor=${cursor}`, reviewer)).status).toBe(200);
+    expect((await list(`limit=1&cursor=${cursor}`)).status).toBe(400);
+  });
+
+  it("pages in (createdAt, id) order when creation times differ and repeat", async () => {
+    const k = await getConference(t.db, s.slug);
+    const viewer = await loadPersonViewer(t.db, chairId);
+    const base = Date.parse("2027-01-01T00:00:00.000Z");
+    // Sandbox rows share one creation time; give 40 of them distinct and repeated ones, shuffled.
+    const records = (await loadSubmissionRecords(t.db, k!))
+      .filter((r) => r.submission.status === "submitted")
+      .slice(0, 40)
+      .map((r, i) => ({
+        ...r,
+        submission: {
+          ...r.submission,
+          createdAt: new Date(base + ((i * 7919) % 13) * 1000).toISOString(),
+        },
+      }));
+    const expected = [...records]
+      .sort((a, b) => {
+        const d = Date.parse(a.submission.createdAt) - Date.parse(b.submission.createdAt);
+        return d !== 0 ? d : a.submission.id < b.submission.id ? -1 : 1;
+      })
+      .map((r) => r.submission.id);
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let pages = 0; pages < 20; pages++) {
+      const page = await querySubmissions(
+        t.db,
+        viewer!,
+        k!,
+        { status: ["submitted"], cursor, limit: 6 },
+        { cursors: internalCursors, records },
+      );
+      seen.push(...page.items.map((i) => i.id));
+      if (!page.nextCursor) break;
+      cursor = page.nextCursor;
+    }
+    expect(seen).toEqual(expected);
   });
 });
