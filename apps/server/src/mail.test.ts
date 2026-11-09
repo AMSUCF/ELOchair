@@ -360,6 +360,42 @@ describe("review fixes, round 6: removals never join, cuts never strand a joiner
     expect(sanitizeName("Ana evil.ca@b.cdom", "?")).not.toMatch(/evil\.com/);
   });
 
+  it("a joiner after an ideographic full stop does not hide an internationalized domain", () => {
+    expect(
+      sanitizeName("Ana P\u00E9rez verify at elo-signin\u3002\u200D\u0915\u0949\u092E now", "?"),
+    ).toBe("Ana P\u00E9rez verify at now");
+    expect(sanitizeName("Ana paypal\u3002\u200D\u0DBD\u0D82\u0D9A\u0DCF", "?")).toBe("Ana");
+    expect(sanitizeName("Ana \u0628\u0646\u0643\u200D\u3002\u200D\u0645\u0635\u0631", "?")).toBe(
+      "Ana",
+    );
+  });
+
+  it("no host name survives sanitizeName, whatever dots and joiners surround it", () => {
+    const atoms = [
+      "a",
+      "bc",
+      "\u0915\u0949\u092E",
+      "\u0645\u0635\u0631",
+      "\u0DBD\u0D82\u0D9A\u0DCF",
+      ".",
+      "\u3002",
+      "\uFF0E",
+      "\u200C",
+      "\u200D",
+      "\u202F",
+      " ",
+      "-",
+    ];
+    const HOST =
+      /[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}_-]|\u200C|\u200D)*[.\u3002\uFF0E\uFF61](?:\u200C|\u200D)*\p{L}[\p{L}\p{M}]/u;
+    fc.assert(
+      fc.property(fc.array(fc.constantFrom(...atoms), { maxLength: 16 }), (parts) => {
+        expect(sanitizeName(parts.join(""), "?")).not.toMatch(HOST);
+      }),
+      { numRuns: 30_000 },
+    );
+  });
+
   it("sanitizeName is idempotent and leaves nothing stray, whatever it is given", () => {
     const atoms = [
       ..."aZ0159 .-/@:#*",
@@ -379,6 +415,8 @@ describe("review fixes, round 6: removals never join, cuts never strand a joiner
       "\u{1F469}",
       "\u{1F3F4}",
       "\u{E0067}",
+      "\u202F",
+      "\u0915\u0949\u092E",
     ];
     fc.assert(
       fc.property(fc.array(fc.constantFrom(...atoms), { maxLength: 30 }), (parts) => {

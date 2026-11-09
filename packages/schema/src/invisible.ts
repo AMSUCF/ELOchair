@@ -72,7 +72,13 @@ const FLAG_TAGS = ["gbeng", "gbsct", "gbwls"].map(
 const FLAG_TAG_LENGTH = 6;
 
 const visible = (c: string | undefined): c is string => c !== undefined && !INVISIBLE.test(c);
-const joinable = (c: string | undefined) => visible(c) && JOINS.test(c);
+/**
+ * Script_Extensions also covers punctuation and spaces those scripts share (the ideographic full
+ * stop U+3002, the narrow no-break space U+202F): a joiner stands only between letters, marks,
+ * digits or emoji, never next to a dot or a space where it could hide a domain.
+ */
+const LETTERLIKE = /[\p{L}\p{M}\p{N}\p{Extended_Pictographic}\p{Emoji_Modifier}]/u;
+const joinable = (c: string | undefined) => visible(c) && JOINS.test(c) && LETTERLIKE.test(c);
 
 /** Code points of `text`, each marked as kept or stray. */
 function scan(text: string): { chars: string[]; stray: boolean[] } {

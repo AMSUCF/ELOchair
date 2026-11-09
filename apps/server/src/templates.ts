@@ -38,7 +38,7 @@ const SCHEME_LINK =
  * or more letters, like every top-level domain. Initials ("J.R.R.") and "e.g." do not match.
  */
 const BARE_HOST = new RegExp(
-  `${LABEL}(?:${DOT}${LABEL})*${DOT}\\p{L}[\\p{L}\\p{M}\\u200C\\u200D-]+\\S*`,
+  `${LABEL}(?:${DOT}${LABEL})*${DOT}[\\u200C\\u200D]*\\p{L}[\\p{L}\\p{M}\\u200C\\u200D-]+\\S*`,
   "gu",
 );
 /** A dotted name followed by a path, whatever it ends in ("10.0.0.1/x"). */

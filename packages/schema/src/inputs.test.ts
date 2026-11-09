@@ -1,7 +1,9 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Key } from "./config";
 import { LocalizedText } from "./i18n";
 import { AnswerInvitationInput, OneLine, ProfileInput, UpdateSubmissionInput } from "./inputs";
+import { removeStrayInvisible } from "./invisible";
 
 const name = OneLine(200);
 
@@ -194,5 +196,26 @@ describe("machine keys", () => {
       UpdateSubmissionInput.safeParse({ version: 1, fields: { [key]: "x" } }).success;
     expect(fields(`k${"x".repeat(63)}`)).toBe(true);
     expect(fields(`olga_owner_universidad_imaginaria_del_caribe_${"x".repeat(30)}`)).toBe(false);
+  });
+});
+
+describe("what the browser sends, the server accepts", () => {
+  // The web's cleanName(): stray invisible characters removed, then outer spaces trimmed.
+  const cleanName = (typed: string) => removeStrayInvisible(typed).trim();
+  const cp = (...points: number[]) => String.fromCodePoint(...points);
+  const atoms = [
+    ..."Aé ",
+    ...[0x928, 0x94d, 0x92e, 0xd30, 0xd4d, 0x646, 0x6cc, 0x1820, 0x3002, 0x202f].map((c) => cp(c)),
+    ...[0x200c, 0x200d, 0x200b, 0xfe0f, 0x1f469, 0x1f3fd, 0x1f3a8].map((c) => cp(c)),
+  ];
+  it("OneLine accepts any cleaned name that still has a letter or digit", () => {
+    fc.assert(
+      fc.property(fc.array(fc.constantFrom(...atoms), { minLength: 1, maxLength: 20 }), (parts) => {
+        const sent = cleanName(parts.join(""));
+        if (!/[\p{L}\p{N}]/u.test(sent)) return;
+        expect(name.safeParse(sent).success).toBe(true);
+      }),
+      { numRuns: 30_000 },
+    );
   });
 });

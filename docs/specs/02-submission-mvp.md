@@ -100,7 +100,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - The configuration says whether a bio is requested and how long it may be (`rules.bio`).
   - A missing requested bio, and a bio longer than `rules.bio.maxWords` in any language (`longBios`), are warnings, not blocks.
 - **Input hygiene.** Title, abstract, custom-field text and bios accept tabs and line breaks but no other control characters, and no ill-formed Unicode (400 `invalid`). One-line fields (display name, affiliation, pronouns, invited name and affiliation) also refuse invisible characters (format characters and default-ignorable code points: bidi controls, zero-width spaces, soft hyphens, variation selectors, tag characters, combining grapheme joiners, Hangul fillers) and need at least one letter or digit. Any of these could carry hidden text, one character per byte. The exceptions are defined once in `packages/schema/src/invisible.ts`, which mail cleanup and the browser use too:
-  - a zero-width joiner between visible characters of a script spelled with joiners (Arabic, Syriac, Thaana, N'Ko, Mongolian, the Indic scripts, Sinhala, Myanmar, Khmer) or between emoji. Nowhere else (Latin, Greek, Cyrillic, Han, kana, Hangul, Hebrew, Thai, Georgian…) does a spelling need one;
+  - a zero-width joiner between letters, marks or digits of a script spelled with joiners (Arabic, Syriac, Thaana, N'Ko, Mongolian, the Indic scripts, Sinhala, Myanmar, Khmer) or between emoji. Nowhere else (Latin, Greek, Cyrillic, Han, kana, Hangul, Hebrew, Thai, Georgian…) does a spelling need one;
   - a joiner after an Indic virama (legacy Malayalam chillus, Bengali khanda ta);
   - one presentation selector after an emoji, and after a digit, `#` or `*` only in a keycap;
   - the three standard subdivision flags (England, Scotland, Wales).
@@ -258,7 +258,7 @@ axe reports no violations on any new page, in light and dark mode. CI is green.
 
 ## 4. Review before the dry run
 
-On November 8–9, 2026, the built MVP had an adversarial review, followed by five more review rounds on the fixes.
+On November 8–9, 2026, the built MVP had an adversarial review, followed by six more review rounds on the fixes.
 
 | Round | Reviewed | Confirmed | Rejected | Notes |
 |---|---|---|---|---|
@@ -268,6 +268,7 @@ On November 8–9, 2026, the built MVP had an adversarial review, followed by fi
 | 4 | The round 3 fixes | 5 | — | 1 medium: other invisible characters (variation selectors, unassigned tags, grapheme joiners) still carried hidden text; low: paging broke when the boundary item was returned to draft (now a position cursor), invitation mail used its own invisible-character rule, two documentation claims |
 | 5 | The round 4 fixes | 7 | — | 2 medium: a kept joiner could split a domain in invitation mail; the position cursor showed creation times to reviewers and the public (now sealed). Low: surrogate halves, legacy Malayalam names, joiners in Latin text, the name cut, test fixtures and comments |
 | 6 | The round 5 fixes | 6 | — | 1 medium: removing an IP address could join its neighbours into a domain (removals now leave a space). Low: cursors replayable across conferences (now bound to their list) or with an extra character; the web dropping a legacy Malayalam joiner; a title cut leaving a joiner; joiners kept in scripts that never use them (now an allow-list); tests that would have passed without the fix |
+| 7 | The round 6 fixes, for regressions and medium-or-higher issues only | 2 | — | 1 medium regression: the script list also matched punctuation and spaces those scripts share, so a joiner after an ideographic full stop could hide an internationalized domain (joiners now need letters, marks or digits on both sides). 1 low: a joiner next to a narrow no-break space. Cursor binding: none |
 
 How each round worked:
 - Each finding had a concrete scenario, most reproduced against the running app.

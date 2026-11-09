@@ -88,6 +88,12 @@ describe("invisible characters", () => {
     // No Latin, Greek or Cyrillic spelling needs a joiner: there it could only mark letters.
     "joiners between Latin letters": [`A${cp(0x200c)}na P${cp(0x200d)}érez`, "Ana Pérez"],
     "a joiner between Cyrillic letters": [`Ан${cp(0x200d)}на`, "Анна"],
+    // Next to punctuation or a space that a joining script shares, a joiner could hide a domain.
+    "a joiner after an ideographic full stop": [
+      `elo${cp(0x3002, 0x200d)}कॉम`,
+      `elo${cp(0x3002)}कॉम`,
+    ],
+    "a joiner next to a narrow no-break space": [`मीरा${cp(0x200d, 0x202f)}`, `मीरा${cp(0x202f)}`],
     // Nor do Han, kana, Hangul, Hebrew, Thai or Georgian.
     "joiners in a Chinese name": [`王${cp(0x200d)}小${cp(0x200c)}明`, "王小明"],
     "a joiner in a Japanese name": [`やま${cp(0x200c)}だ`, "やまだ"],
