@@ -7,6 +7,7 @@ import {
   countWords,
   type FieldValue,
   findType,
+  isFilledValue,
   type Person,
   type Submission,
   type SubmissionIssue,
@@ -18,7 +19,8 @@ import type { Viewer } from "./viewer";
 /*
  * Projections: the only code that turns records into what a viewer may see.
  * Each output type is an explicit allow-list, so a new database column cannot leak by default.
- * Invitees appear as the owner typed them until they confirm; declined people only to chairs.
+ * Invitees appear as the owner typed them until they confirm, in every view, the chair's too.
+ * Declined people appear only to chairs, and only as typed.
  */
 
 export type PublicContributor = {
@@ -134,7 +136,11 @@ export type ChairContributor = {
   position: number;
   status: ContributionStatus;
   isOwner: boolean;
-  /** From the person's profile (may be empty for people who never signed in). */
+  /**
+   * Confirmed people: from their profile (the name may be empty for people who never set one).
+   * Invited and declined people: what the owner typed, and no profile details at all (null
+   * country, pronouns and ORCID, no bios), so an invitation reveals nothing about an account.
+   */
   displayName: string | null;
   email: string;
   affiliation: string | null;
@@ -260,8 +266,16 @@ export function renderSubmission(
         participationMode: s.participationMode,
         status: s.status,
         abstractWords: countWords(s.abstract, s.language),
-        filledFieldKeys: Object.keys(s.fields).sort(),
-        contributors: ordered(rec.contributions).map((c) => ({
+        // Keys from the configuration only: a key the type does not define is owner-written text.
+        filledFieldKeys: (findType(rec.config, s.typeKey)?.fields ?? [])
+          .filter((f) => isFilledValue(s.fields[f.key]))
+          .map((f) => f.key)
+          .sort(),
+        // The chair's own work: the contributor's view, so declined people are gone (as there).
+        contributors: (access === "metadata_own"
+          ? live(rec.contributions)
+          : ordered(rec.contributions)
+        ).map((c) => ({
           personId: c.personId,
           role: c.role,
           position: c.position,
@@ -328,16 +342,19 @@ export function renderSubmission(
         ...core(s),
         view: "chair",
         contributors: ordered(rec.contributions).map((c) => {
-          const p = person(c.personId);
+          // Chairs too see a profile only once its owner confirms: until then (and after
+          // declining) the person is what the owner typed, and nothing else.
+          const p = c.status === "confirmed" ? person(c.personId) : undefined;
+          const shown = shownIdentity(c, p);
           return {
             personId: c.personId,
             role: c.role,
             position: c.position,
             status: c.status,
             isOwner: c.personId === s.ownerPersonId,
-            displayName: p?.displayName ?? null,
-            email: p?.email ?? c.invitedEmail ?? "",
-            affiliation: p?.affiliation ?? null,
+            displayName: shown.displayName,
+            email: shown.email ?? c.invitedEmail ?? "",
+            affiliation: shown.affiliation,
             country: p?.country ?? null,
             pronouns: p?.pronouns ?? null,
             orcid: p?.orcid ?? null,
@@ -388,6 +405,11 @@ export type SubmissionCheck = {
   presenterCap: { count: number; max: number } | null;
   /** Positions of confirmed contributors without a bio, when the conference asks for bios. */
   missingBios: number[];
+  /**
+   * Positions of confirmed contributors with a bio (in any language) longer than the
+   * conference's rules.bio.maxWords. Empty when the conference sets no bio rules.
+   */
+  longBios: number[];
 };
 
 export function projectCheck(
@@ -400,6 +422,7 @@ export function projectCheck(
   if (access !== "submitter" && access !== "invitee" && access !== "chair") return null;
   const { config, submission, contributions, people } = rec;
   const cap = config.rules.presenterCap;
+  const maxBioWords = config.rules.bio?.maxWords;
   return {
     issues: submissionIssues(config, submission, contributions, people),
     selfIdentification: selfIdFindings(config, submission, contributions, people).map((w) => ({
@@ -413,6 +436,15 @@ export function projectCheck(
     missingBios: config.rules.bio?.requested
       ? confirmed(contributions)
           .filter((c) => Object.values(people.get(c.personId)?.bios ?? {}).every((b) => !b.trim()))
+          .map((c) => c.position)
+      : [],
+    longBios: maxBioWords
+      ? confirmed(contributions)
+          .filter((c) =>
+            Object.entries(people.get(c.personId)?.bios ?? {}).some(
+              ([lang, bio]) => countWords(bio, lang) > maxBioWords,
+            ),
+          )
           .map((c) => c.position)
       : [],
   };

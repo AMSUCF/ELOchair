@@ -24,7 +24,10 @@ export type ShownIdentity = {
   email: string | null;
 };
 
-/** How a contributor appears to people who are not chairs. */
+/**
+ * How a contributor appears in every view, the chair's included: from their profile once they
+ * confirm; until then (and after declining) only as the owner typed them.
+ */
 export function shownIdentity(c: Contribution, person: Person | undefined): ShownIdentity {
   if (c.status === "confirmed") {
     return {

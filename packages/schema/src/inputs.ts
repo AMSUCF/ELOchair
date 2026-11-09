@@ -10,20 +10,45 @@ import { LIMITS } from "./limits";
  * Character caps bound storage even for drafts, which skip word-limit validation.
  */
 
-/** Control characters (newlines, tabs, NUL...), matched by the Unicode Cc category. */
-const CONTROL = /\p{Cc}/u;
+/**
+ * Characters a one-line name must not contain: control characters (newlines, tabs, NUL...),
+ * format characters (bidi overrides, zero-width spaces, byte-order marks, soft hyphens) and the
+ * Unicode line and paragraph separators.
+ */
+const NOT_ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/**
+ * Zero-width (non-)joiners are how some scripts are spelled (Persian compound surnames, Indic
+ * scripts) and how emoji sequences are built, so they are allowed between letters or
+ * pictographs, and nowhere else.
+ */
+const JOINER_IN_WORD =
+  /(?<=[\p{L}\p{M}\p{N}\p{Extended_Pictographic}])[\u200C\u200D](?=[\p{L}\p{M}\p{Extended_Pictographic}])/gu;
+/** A letter or digit that shows on screen (Hangul fillers are letters, but invisible). */
+const VISIBLE_LETTER = /(?!\p{Default_Ignorable_Code_Point})[\p{L}\p{N}]/u;
 
-/** One line of text, trimmed, without control characters. */
+/** One line of text, trimmed, with at least one visible letter or digit and nothing invisible. */
 export const OneLine = (max: number) =>
   z
     .string()
     .trim()
     .min(1)
     .max(max)
-    .refine((s) => !CONTROL.test(s), "one line of text, without control characters");
+    .refine(
+      (s) => !NOT_ONE_LINE.test(s.replace(JOINER_IN_WORD, "")),
+      "one line of text, without control or invisible formatting characters",
+    )
+    .refine((s) => VISIBLE_LETTER.test(s), "at least one letter or digit");
 
-/** Free text up to `max` characters (newlines allowed). */
-const Text = (max: number) => z.string().max(max);
+/** Control characters other than tab, line feed and carriage return (NUL, escape, ...). */
+const hasStrayControl = (s: string) => /\p{Cc}/u.test(s.replace(/[\t\n\r]/g, ""));
+const NO_CONTROL = "text without control characters (other than tabs and line breaks)";
+
+/** Free text up to `max` characters (newlines and tabs allowed; other control characters not). */
+const Text = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .refine((s) => !hasStrayControl(s), NO_CONTROL);
 
 export { LIMITS };
 
@@ -37,6 +62,14 @@ const BoundedFieldValue = FieldValue.refine(
         ? v.length <= LIMITS.fieldItems && v.every((x) => x.length <= LIMITS.fieldText)
         : true,
   `field values are limited to ${LIMITS.fieldText} characters`,
+).refine(
+  (v) =>
+    typeof v === "string"
+      ? !hasStrayControl(v)
+      : Array.isArray(v)
+        ? !v.some(hasStrayControl)
+        : true,
+  NO_CONTROL,
 );
 
 export const CreateSubmissionInput = z
@@ -129,7 +162,7 @@ export const ProfileInput = z
       .regex(/^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/, "an ORCID iD like 0000-0002-1825-0097")
       .nullable(),
     bios: z
-      .record(LanguageCode, z.string().max(LIMITS.bio))
+      .record(LanguageCode, Text(LIMITS.bio))
       .refine((b) => Object.keys(b).length <= 5, "at most five languages"),
   })
   .strict();

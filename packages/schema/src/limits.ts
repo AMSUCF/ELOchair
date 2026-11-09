@@ -8,6 +8,8 @@ export const LIMITS = {
   pronouns: 60,
   bio: 5_000,
   query: 200,
+  /** Machine keys (types, tracks, topics, custom fields...). */
+  key: 64,
   /** Abstract characters allowed per allowed word (checked per type on the server). */
   abstractCharsPerWord: 8,
   abstractCeiling: 40_000,

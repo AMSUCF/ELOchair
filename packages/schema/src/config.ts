@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { LanguageCode, LocalizedText } from "./i18n";
+import { LIMITS } from "./limits";
 
-/** Machine key: lowercase letters, digits, underscores; starts with a letter. */
+/** Machine key: lowercase letters, digits, underscores; starts with a letter; at most 64. */
 export const Key = z
   .string()
+  .max(LIMITS.key)
   .regex(
     /^[a-z][a-z0-9_]*$/,
     "use lowercase letters, digits and underscores, starting with a letter",

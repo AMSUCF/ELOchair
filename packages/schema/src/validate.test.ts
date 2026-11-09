@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { elo2026 } from "./conferences";
 import { ConferenceConfig } from "./config";
-import { validateSubmission } from "./validate";
+import { isFilledValue, validateSubmission } from "./validate";
 
 const config = ConferenceConfig.parse(elo2026);
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
@@ -87,6 +87,37 @@ describe("review fixes: required fields", () => {
     expect(paths({ note: "x" })).toEqual(["fields.consent"]);
     expect(paths({ note: "x", consent: false })).toEqual(["fields.consent"]);
     expect(paths({ note: "x", consent: true })).toEqual([]);
+  });
+
+  it("refuses every key the type does not define: it is owner-written text", () => {
+    const issues = validateSubmission(
+      withConsent,
+      {
+        ...base,
+        fields: { consent: true, note: "x", zeta: "x", maria_rodriguez_unal: "", other: false },
+      },
+      lead,
+    );
+    expect(issues).toEqual([
+      { path: "fields.maria_rodriguez_unal", code: "unknown_field" },
+      { path: "fields.other", code: "unknown_field" },
+      { path: "fields.zeta", code: "unknown_field" },
+    ]);
+    // A key that another type defines ("needs" belongs to workshops) is unknown on a talk.
+    expect(validateSubmission(config, { ...base, fields: { needs: "A projector" } }, lead)).toEqual(
+      [{ path: "fields.needs", code: "unknown_field" }],
+    );
+  });
+
+  it("counts a field as filled only with a value: ticked, non-blank, non-empty", () => {
+    expect([undefined, false, "", "  \n", []].map(isFilledValue)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect([true, "x", ["a"], 0, 3].map(isFilledValue)).toEqual([true, true, true, true, true]);
   });
 
   it("whitespace does not satisfy a required text field", () => {

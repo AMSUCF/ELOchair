@@ -47,6 +47,15 @@ type Built = {
     emails: string[];
     affiliations: string[];
     bios: string[];
+    /** Profile details only chairs see, and only of confirmed people. */
+    pronouns: string[];
+    orcids: string[];
+    /**
+     * Country codes, distinct per person. Two letters can occur inside other text, so these are
+     * checked as whole values anywhere in the output (valuesIn), not as substrings (findLeaks).
+     */
+    countries: string[];
+    unconfirmedCountries: string[];
     /** Profile details of people who have not confirmed (invited or declined). */
     unconfirmedProfile: string[];
     /** What the owner typed for people still invited. */
@@ -56,6 +65,8 @@ type Built = {
     content: string[]; // title, abstract
     identifyingFields: string[];
     otherFields: string[];
+    /** A custom-field key the type does not define (owner-written text) and its value. */
+    unknownField: string[];
   };
 };
 
@@ -66,6 +77,7 @@ type Scenario = {
   statuses: Contribution["status"][];
   status: SubmissionStatus;
   ids: string[];
+  unknownField: boolean;
 };
 
 const scenario: fc.Arbitrary<Scenario> = fc.record({
@@ -78,9 +90,37 @@ const scenario: fc.Arbitrary<Scenario> = fc.record({
   }),
   status: fc.constantFrom(...NOT_PUBLISHED),
   ids: fc.uniqueArray(fc.uuid(), { minLength: 12, maxLength: 12 }),
+  unknownField: fc.boolean(),
 });
 
-function build({ config, typePick, nContrib, statuses, status, ids }: Scenario): Built {
+const COUNTRIES = ["AR", "BR", "CL", "MX", "PE", "UY"];
+
+/**
+ * A valid ORCID iD (ISO 7064 MOD 11-2 check digit), unique to `seed`, whose check digit is X.
+ * Nothing else in a projection (UUIDs are lowercase hex, dates and numbers have no X) can
+ * contain it, so it works as a substring marker. One of any 100 consecutive iDs that share
+ * their first 13 digits ends in X, so the search stays within seed * 100 + [0, 100).
+ */
+function orcidMarker(seed: number): string {
+  for (let n = seed * 100; ; n++) {
+    const base = String(n).padStart(15, "0");
+    let total = 0;
+    for (const d of base) total = (total + Number(d)) * 2;
+    if ((12 - (total % 11)) % 11 === 10) {
+      return `${base.slice(0, 4)}-${base.slice(4, 8)}-${base.slice(8, 12)}-${base.slice(12)}X`;
+    }
+  }
+}
+
+function build({
+  config,
+  typePick,
+  nContrib,
+  statuses,
+  status,
+  ids,
+  unknownField,
+}: Scenario): Built {
   const id = (i: number) => ids[i] as string;
   const [conferenceId, submissionId, reviewerId, chairId] = [id(0), id(1), id(2), id(3)];
   const type = config.submissionTypes[typePick % config.submissionTypes.length]!;
@@ -93,12 +133,17 @@ function build({ config, typePick, nContrib, statuses, status, ids }: Scenario):
     emails: [],
     affiliations: [],
     bios: [],
+    pronouns: [],
+    orcids: [],
+    countries: [],
+    unconfirmedCountries: [],
     unconfirmedProfile: [],
     invitedTyped: [],
     declinedTyped: [],
     content: [],
     identifyingFields: [],
     otherFields: [],
+    unknownField: [],
   };
   for (let i = 0; i < nContrib; i++) {
     const pid = id(4 + i);
@@ -108,20 +153,33 @@ function build({ config, typePick, nContrib, statuses, status, ids }: Scenario):
       id: pid,
       email: `mail${i}x${tag}@example.test`,
       displayName: `NAME${i}x${tag}`,
-      orcid: null,
+      orcid: orcidMarker(Number.parseInt(tag, 16) * 10 + i),
       affiliation: `AFF${i}x${tag}`,
-      country: "CO",
+      country: COUNTRIES[i]!,
       languages: ["es"],
       bios: { es: `BIO${i}x${tag}` },
-      pronouns: null,
+      pronouns: `PRON${i}x${tag}`,
     };
     people.set(pid, p);
-    const profile = [p.displayName!, p.email, p.affiliation!, `BIO${i}x${tag}`];
+    const profile = [
+      p.displayName!,
+      p.email,
+      p.affiliation!,
+      `BIO${i}x${tag}`,
+      p.pronouns!,
+      p.orcid!,
+    ];
     m.names.push(p.displayName!);
     m.emails.push(p.email);
     m.affiliations.push(p.affiliation!);
     m.bios.push(`BIO${i}x${tag}`);
-    if (cstatus !== "confirmed") m.unconfirmedProfile.push(...profile);
+    m.pronouns.push(p.pronouns!);
+    m.orcids.push(p.orcid!);
+    m.countries.push(p.country!);
+    if (cstatus !== "confirmed") {
+      m.unconfirmedProfile.push(...profile);
+      m.unconfirmedCountries.push(p.country!);
+    }
     const typed =
       i === 0
         ? { invitedEmail: null, invitedName: null, invitedAffiliation: null }
@@ -150,6 +208,12 @@ function build({ config, typePick, nContrib, statuses, status, ids }: Scenario):
     const v = f.kind === "url" ? `https://FIELD${f.key}x${tag}.example/` : `FIELD${f.key}x${tag}`;
     fields[f.key] = v;
     (f.identifying ? m.identifyingFields : m.otherFields).push(v);
+  }
+  if (unknownField) {
+    // As if saved before unknown keys were refused: the key itself is the owner's text.
+    const key = `unknownkeyx${tag}`;
+    fields[key] = `UNKNOWNVALx${tag}`;
+    m.unknownField.push(key, `UNKNOWNVALx${tag}`);
   }
   const title = `TITLEx${tag}`;
   const abstract = `ABSTRACTx${tag} words words words`;
@@ -187,6 +251,22 @@ function build({ config, typePick, nContrib, statuses, status, ids }: Scenario):
   };
 }
 
+/** One fixed scenario for examples: an owner, an invitee and someone who declined. */
+const example = (over: Partial<Scenario> = {}): Built =>
+  build({
+    config: CONFIGS[1]!,
+    typePick: 0,
+    nContrib: 3,
+    statuses: ["confirmed", "invited", "declined", "confirmed", "confirmed", "confirmed"],
+    status: "submitted",
+    ids: Array.from(
+      { length: 12 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    ),
+    unknownField: false,
+    ...over,
+  });
+
 const reviewer = (b: Built, scope: string[] = []): PersonViewer => ({
   kind: "person",
   personId: b.reviewerId,
@@ -206,13 +286,45 @@ const agent = (owner: PersonViewer, tier: Tier, conferenceId: string): AgentView
   conferenceId,
   owner,
 });
-const identity = (b: Built) => [...b.m.names, ...b.m.emails, ...b.m.affiliations, ...b.m.bios];
+const identity = (b: Built) => [
+  ...b.m.names,
+  ...b.m.emails,
+  ...b.m.affiliations,
+  ...b.m.bios,
+  ...b.m.pronouns,
+  ...b.m.orcids,
+];
+/** Profile details nobody but chairs sees (of confirmed people only). */
+const chairOnly = (b: Built) => [...b.m.pronouns, ...b.m.orcids];
 /** Everything about people who have not confirmed: their profiles and what the owner typed. */
 const unconfirmed = (b: Built) => [
   ...b.m.unconfirmedProfile,
   ...b.m.invitedTyped,
   ...b.m.declinedTyped,
 ];
+
+/**
+ * Every string anywhere in `out` (values and keys) that is one of `values`. For short markers
+ * such as country codes, where a substring search would find them inside unrelated text.
+ */
+function valuesIn(out: unknown, values: Iterable<string>): string[] {
+  const wanted = new Set(values);
+  const found = new Set<string>();
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") {
+      if (wanted.has(v)) found.add(v);
+    } else if (Array.isArray(v)) {
+      v.forEach(walk);
+    } else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        if (wanted.has(k)) found.add(k);
+        walk(x);
+      }
+    }
+  };
+  walk(JSON.parse(JSON.stringify(out ?? null)));
+  return [...found].sort();
+}
 
 describe("reviewers", () => {
   it("never see what their submission type's blind mode hides, nor anyone unconfirmed", () => {
@@ -226,9 +338,10 @@ describe("reviewers", () => {
           mode === "double"
             ? [...identity(b), ...b.m.identifyingFields, ...unconfirmed(b)]
             : mode === "single"
-              ? [...b.m.emails, ...b.m.bios, ...unconfirmed(b)]
-              : [...b.m.emails, ...unconfirmed(b)];
-        expect(findLeaks(out, forbidden)).toEqual([]);
+              ? [...b.m.emails, ...b.m.bios, ...chairOnly(b), ...unconfirmed(b)]
+              : [...b.m.emails, ...chairOnly(b), ...unconfirmed(b)];
+        expect(findLeaks(out, [...forbidden, ...b.m.unknownField])).toEqual([]);
+        expect(valuesIn(out, b.m.countries)).toEqual([]);
         // ...while still getting what they need to review.
         expect(findLeaks(out, b.m.content)).toEqual(b.m.content);
       }),
@@ -290,14 +403,42 @@ describe("tier M agents (cloud-safe)", () => {
           ...b.m.content,
           ...b.m.identifyingFields,
           ...b.m.otherFields,
+          ...b.m.unknownField,
         ];
         expect(findLeaks(out, forbidden)).toEqual([]);
+        expect(valuesIn(out, b.m.countries)).toEqual([]);
         if (out?.view === "metadata") {
           expect(typeof out.selfIdWarningCount).toBe("number");
           expect(
             out.contributors.every((c) => ["invited", "confirmed", "declined"].includes(c.status)),
           ).toBe(true);
+          // Field keys come from the configuration, never from what was saved.
+          const type = b.rec.config.submissionTypes.find((t) => t.key === b.rec.submission.typeKey);
+          expect(out.filledFieldKeys).toEqual((type?.fields ?? []).map((f) => f.key).sort());
         }
+      }),
+      RUNS,
+    );
+  });
+
+  it("list only configured field keys that hold a value", () => {
+    fc.assert(
+      fc.property(scenario, fc.nat(), (s, pick) => {
+        const b = build(s);
+        const type = b.rec.config.submissionTypes.find((t) => t.key === b.rec.submission.typeKey)!;
+        // Blank out one configured field (if any): blank text, an empty list, an unticked box.
+        const blanked = type.fields[pick % Math.max(type.fields.length, 1)];
+        if (blanked) {
+          b.rec.submission.fields[blanked.key] =
+            blanked.kind === "boolean" ? false : blanked.kind === "multiselect" ? [] : "  ";
+        }
+        const out = projectSubmission(agent(chair(b), "M", b.conferenceId), b.rec);
+        if (out?.view !== "metadata") throw new Error("expected the metadata view");
+        const expected = type.fields
+          .filter((f) => f.key !== blanked?.key)
+          .map((f) => f.key)
+          .sort();
+        expect(out.filledFieldKeys).toEqual(expected);
       }),
       RUNS,
     );
@@ -311,8 +452,16 @@ describe("tier M agents (cloud-safe)", () => {
         const out = projectSubmission(agent(chair(b), "M", b.conferenceId), b.rec);
         expect(out?.view).toBe("public");
         expect(
-          findLeaks(out, [...b.m.emails, ...b.m.bios, ...b.m.otherFields, ...unconfirmed(b)]),
+          findLeaks(out, [
+            ...b.m.emails,
+            ...b.m.bios,
+            ...chairOnly(b),
+            ...b.m.otherFields,
+            ...b.m.unknownField,
+            ...unconfirmed(b),
+          ]),
         ).toEqual([]);
+        expect(valuesIn(out, b.m.countries)).toEqual([]);
       }),
       RUNS,
     );
@@ -355,17 +504,67 @@ describe("contributors and invitations", () => {
     grants,
   });
 
-  it("the owner sees invitees only as typed: never an unconfirmed person's profile", () => {
+  it("the owner and co-authors see invitees only as typed: never an unconfirmed profile", () => {
     fc.assert(
       fc.property(scenario, (s) => {
         const b = build(s);
-        const out = projectSubmission(asPerson(b.ownerId), b.rec);
-        expect(out?.view).toBe("submitter");
-        expect(findLeaks(out, [...b.m.unconfirmedProfile, ...b.m.declinedTyped])).toEqual([]);
-        expect(findLeaks(out, b.m.invitedTyped)).toEqual(b.m.invitedTyped);
+        for (const c of b.rec.contributions.filter((x) => x.status === "confirmed")) {
+          const out = projectSubmission(asPerson(c.personId), b.rec);
+          expect(out?.view).toBe("submitter");
+          expect(
+            findLeaks(out, [...b.m.unconfirmedProfile, ...chairOnly(b), ...b.m.declinedTyped]),
+          ).toEqual([]);
+          expect(valuesIn(out, b.m.countries)).toEqual([]);
+          expect(findLeaks(out, b.m.invitedTyped)).toEqual(b.m.invitedTyped);
+        }
       }),
       RUNS,
     );
+  });
+
+  it("chairs see invited and declined people only as typed, never their profiles", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        const out = projectSubmission(chair(b), b.rec);
+        expect(out?.view).toBe("chair");
+        expect(findLeaks(out, b.m.unconfirmedProfile)).toEqual([]);
+        expect(valuesIn(out, b.m.unconfirmedCountries)).toEqual([]);
+        // ...while confirmed people appear in full, and everyone else as typed.
+        const typed = [...b.m.invitedTyped, ...b.m.declinedTyped];
+        expect(findLeaks(out, typed)).toEqual(typed);
+        const confirmed = (xs: string[]) => xs.filter((x) => !b.m.unconfirmedProfile.includes(x));
+        const shown = confirmed([...identity(b)]);
+        expect(findLeaks(out, shown)).toEqual(shown);
+        const countries = b.m.countries.filter((c) => !b.m.unconfirmedCountries.includes(c));
+        expect(valuesIn(out, countries)).toEqual([...countries].sort());
+      }),
+      RUNS,
+    );
+  });
+
+  it("an invited contributor appears to chairs exactly as the owner typed them", () => {
+    const b = example();
+    const out = projectSubmission(chair(b), b.rec);
+    if (out?.view !== "chair") throw new Error("expected the chair view");
+    const [owner, invited, declined] = out.contributors;
+    expect(owner).toMatchObject({ status: "confirmed", displayName: "NAME0x00000000" });
+    expect(owner?.pronouns).toBe("PRON0x00000000");
+    expect(owner?.country).toBe("AR");
+    for (const [c, i] of [
+      [invited, 1],
+      [declined, 2],
+    ] as const) {
+      expect(c).toMatchObject({
+        displayName: `INVNM${i}x00000000`,
+        email: `invmb${i}x00000000@example.test`,
+        affiliation: `INVORG${i}x00000000`,
+        country: null,
+        pronouns: null,
+        orcid: null,
+        bios: {},
+      });
+    }
   });
 
   it("an invitee sees the submission but nobody's email, and no unconfirmed profile", () => {
@@ -379,9 +578,16 @@ describe("contributors and invitations", () => {
         const typedEmails = b.rec.contributions
           .map((c) => c.invitedEmail)
           .filter((e): e is string => !!e);
-        expect(findLeaks(out, [...b.m.emails, ...typedEmails, ...b.m.unconfirmedProfile])).toEqual(
-          [],
-        );
+        expect(
+          findLeaks(out, [
+            ...b.m.emails,
+            ...typedEmails,
+            ...b.m.unconfirmedProfile,
+            ...chairOnly(b),
+            ...b.m.declinedTyped,
+          ]),
+        ).toEqual([]);
+        expect(valuesIn(out, b.m.countries)).toEqual([]);
       }),
       RUNS,
     );
@@ -424,6 +630,30 @@ describe("contributors and invitations", () => {
     );
   });
 
+  it("a chair-contributor's tier M agent sees no more people than the chair's own view", () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const b = build(s);
+        const own = projectSubmission(chair(b, b.ownerId), b.rec);
+        const out = projectSubmission(agent(chair(b, b.ownerId), "M", b.conferenceId), b.rec);
+        if (own?.view !== "submitter" || out?.view !== "metadata") {
+          throw new Error("expected the submitter and metadata views");
+        }
+        const declined = b.rec.contributions
+          .filter((c) => c.status === "declined")
+          .map((c) => c.personId);
+        expect(findLeaks(out, declined)).toEqual([]);
+        expect(out.contributors.map((c) => c.personId)).toEqual(
+          own.contributors.map((c) => c.personId),
+        );
+        // A chair who is not a contributor still sees everyone, declined people included.
+        const managed = projectSubmission(agent(chair(b), "M", b.conferenceId), b.rec);
+        expect(findLeaks(managed, declined)).toEqual(declined);
+      }),
+      RUNS,
+    );
+  });
+
   it("work never submitted is visible to contributors only, whatever its status", () => {
     fc.assert(
       fc.property(scenario, fc.constantFrom<SubmissionStatus>("draft", "withdrawn"), (s, st) => {
@@ -448,8 +678,16 @@ describe("contributors and invitations", () => {
         const out = projectSubmission({ kind: "public" }, b.rec);
         expect(out?.view).toBe("public");
         expect(
-          findLeaks(out, [...b.m.emails, ...b.m.bios, ...b.m.otherFields, ...unconfirmed(b)]),
+          findLeaks(out, [
+            ...b.m.emails,
+            ...b.m.bios,
+            ...chairOnly(b),
+            ...b.m.otherFields,
+            ...b.m.unknownField,
+            ...unconfirmed(b),
+          ]),
         ).toEqual([]);
+        expect(valuesIn(out, b.m.countries)).toEqual([]);
       }),
       RUNS,
     );
@@ -477,6 +715,35 @@ describe("the submission check", () => {
       }),
       RUNS,
     );
+  });
+
+  it("flags confirmed contributors whose bio is longer than the configured limit", () => {
+    const words = (n: number) => Array.from({ length: n }, (_, i) => `palabra${i}`).join(" ");
+    const b = example({
+      nContrib: 4,
+      statuses: ["confirmed", "confirmed", "invited", "confirmed", "confirmed", "confirmed"],
+    });
+    const max = b.rec.config.rules.bio?.maxWords;
+    expect(max).toBe(300);
+    const [owner, coauthor, invitee, other] = b.rec.contributions.map(
+      (c) => b.rec.people.get(c.personId)!,
+    );
+    // Too long in one language of two; exactly at the limit; too long but not confirmed.
+    owner!.bios = { es: "Corta.", en: words(301) };
+    coauthor!.bios = { es: words(300) };
+    invitee!.bios = { pt: words(400) };
+    other!.bios = { pt: `${words(300)}, ${words(1)}.` };
+    const viewer: PersonViewer = {
+      kind: "person",
+      personId: b.ownerId,
+      siteAdmin: false,
+      grants: [],
+    };
+    expect(projectCheck(viewer, b.rec, 0)?.longBios).toEqual([0, 3]);
+    // Without bio rules, nothing is too long.
+    b.rec.config = CONFIGS[0]!;
+    expect(b.rec.config.rules.bio).toBeUndefined();
+    expect(projectCheck(viewer, b.rec, 0)?.longBios).toEqual([]);
   });
 
   it("is not available to reviewers, strangers or agents", () => {
@@ -510,6 +777,7 @@ describe("track chairs", () => {
         { length: 12 },
         (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
       ),
+      unknownField: false,
     });
     b.rec.submission.trackKey = "narratives_worlds";
     const tc = (scope: string[]): PersonViewer => ({

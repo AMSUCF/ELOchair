@@ -44,6 +44,17 @@ const isUrl = (v: string) => {
   }
 };
 
+/**
+ * Whether a custom-field value counts as filled in: a ticked box, non-blank text, a non-empty
+ * list or a number. An unticked box, blank text and an empty list do not.
+ */
+export function isFilledValue(v: FieldValue | undefined): boolean {
+  if (v === undefined || v === false) return false;
+  if (typeof v === "string") return v.trim() !== "";
+  if (Array.isArray(v)) return v.length > 0;
+  return true;
+}
+
 function checkField(f: CustomField, v: FieldValue | undefined, lang: string): SubmissionIssue[] {
   const path = `fields.${f.key}`;
   // A required checkbox (consent, licence) must be ticked; an unticked optional one is fine.
@@ -136,6 +147,11 @@ export function validateSubmission(
 
   for (const f of type.fields) {
     issues.push(...checkField(f, submission.fields[f.key], submission.language));
+  }
+  // Keys the type does not define are refused, not ignored: they are owner-written text.
+  const defined = new Set(type.fields.map((f) => f.key));
+  for (const key of Object.keys(submission.fields).sort()) {
+    if (!defined.has(key)) issues.push({ path: `fields.${key}`, code: "unknown_field" });
   }
 
   const team = contributions.filter((c) => c.status !== "declined");
