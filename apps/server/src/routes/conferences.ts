@@ -11,31 +11,31 @@ import {
   CreateSubmissionInput,
   findType,
   isCallOpen,
-  isForwardPhaseMove,
   OneLine,
   SubmissionQuery,
   SubmissionStatus,
 } from "@elochair/schema";
-import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { audit } from "../audit";
 import type { AppEnv } from "../context";
 import { contributorsCsv, submissionsCsv } from "../csv";
 import type { Db } from "../db/client";
-import { conferences, contributions, submissions } from "../db/schema";
+import { contributions, submissions } from "../db/schema";
 import {
   type ConferenceRow,
   getConference,
   listConferences,
   loadSubmission,
   loadSubmissionRecords,
+  movePhase,
   saveConference,
 } from "../repo";
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
 import {
   COUNTED_STATUSES,
   QueryNotAllowed,
+  queryAllSubmissions,
   querySubmissions,
   viewerChairs,
 } from "../services/submissions";
@@ -188,31 +188,40 @@ export const conferenceRoutes = new Hono<AppEnv>()
   .get("/:slug/contributors.csv", async (c) => csvExport(c, "contributors"))
   .put("/:slug/phase", async (c) => {
     const viewer = c.get("viewer");
-    const { db } = c.get("deps");
-    const k = await getConference(db, c.req.param("slug"));
+    const deps = c.get("deps");
+    const k = await getConference(deps.db, c.req.param("slug"));
     if (!k || !visible(viewer, k)) throw new Refusal(404, "not_found");
     // Phase changes are human-only and for conference admins.
     if (viewer.kind !== "person" || !isConferenceAdmin(viewer, k.id))
       throw new Refusal(403, "forbidden");
     const input = PhaseInput.parse(await c.req.json());
-    if (!isForwardPhaseMove(k.phase, input.phase) && !(input.force && input.reason)) {
-      throw new Refusal(409, "phase_backwards", { from: k.phase, to: input.phase });
-    }
-    await db
-      .update(conferences)
-      .set({ phase: input.phase, updatedAt: new Date() })
-      .where(eq(conferences.id, k.id));
-    await audit(db, viewer, {
-      action: "conference.phase_changed",
-      conferenceId: k.id,
-      targetType: "conference",
-      targetId: k.id,
-      details: {
-        from: k.phase,
+    const now = deps.now();
+    // Check and move under a row lock, against the phase the conference holds at that moment:
+    // two admins moving it at once cannot combine into a backward move nobody forced.
+    await deps.db.transaction(async (txRaw) => {
+      const tx = txRaw as unknown as Db;
+      const moved = await movePhase(tx, k.id, {
         to: input.phase,
-        forced: Boolean(input.force),
-        ...(input.reason ? { reason: input.reason } : {}),
-      },
+        force: input.force,
+        reason: input.reason,
+        now,
+      });
+      if (!moved.ok) {
+        if (moved.code === "not_found") throw new Refusal(404, "not_found");
+        throw new Refusal(409, moved.code, { from: moved.from, to: input.phase });
+      }
+      await audit(tx, viewer, {
+        action: "conference.phase_changed",
+        conferenceId: k.id,
+        targetType: "conference",
+        targetId: k.id,
+        details: {
+          from: moved.from,
+          to: input.phase,
+          forced: Boolean(input.force),
+          ...(input.reason ? { reason: input.reason } : {}),
+        },
+      });
     });
     return c.json({ slug: k.slug, phase: input.phase });
   })
@@ -250,14 +259,18 @@ async function csvExport(c: Context<AppEnv>, kind: "submissions" | "contributors
   if (!viewerChairs(viewer, k.id)) throw new Refusal(403, "forbidden");
   const person = actingPerson(viewer);
   const records = await loadSubmissionRecords(db, k);
-  const query = SubmissionQuery.parse({ ...c.req.query(), limit: "500" });
-  const result = await querySubmissions(db, viewer, k, query, records);
+  // Every matching row, page by page: a client's cursor or limit never shortens an export.
+  const { cursor: _cursor, limit: _limit, ...filters } = c.req.query();
+  const query = SubmissionQuery.parse(filters);
+  const result = await queryAllSubmissions(db, viewer, k, query, records);
   const rows = result.items.filter((p): p is ChairSubmission => p.view === "chair");
-  const over = new Set(
-    capReportFor(viewer, k, records, COUNTED_STATUSES).over.map((o) => o.personId),
+  // Flag a row only where it counts toward an over-cap person's total: a confirmed, counted role
+  // on a counted type (not a panelist on a panel, a coauthor, or a pending invitee).
+  const overCap = new Set(
+    capReportFor(viewer, k, records, COUNTED_STATUSES).over.flatMap((o) => o.submissionIds),
   );
   const body =
-    kind === "submissions" ? submissionsCsv(k.config, rows, over) : contributorsCsv(rows);
+    kind === "submissions" ? submissionsCsv(k.config, rows, overCap) : contributorsCsv(rows);
   await audit(db, viewer, {
     action: "submissions.exported",
     conferenceId: k.id,
@@ -265,7 +278,7 @@ async function csvExport(c: Context<AppEnv>, kind: "submissions" | "contributors
       kind,
       rows: rows.length,
       omitted: result.excludedCount ?? 0,
-      filters: Object.keys(c.req.query()).sort(),
+      filters: Object.keys(filters).sort(),
       person: person?.personId ?? null,
     },
   });

@@ -1,4 +1,4 @@
-import type { ChairSubmission } from "@elochair/policy";
+import type { ChairContributor, ChairSubmission } from "@elochair/policy";
 import { type ConferenceConfig, findType, localize } from "@elochair/schema";
 
 /*
@@ -51,10 +51,40 @@ function localTime(iso: string | null, timeZone: string): string {
 /** A short, stable reference chairs can read out in email: the first 8 characters of the id. */
 export const reference = (id: string) => id.slice(0, 8).toUpperCase();
 
+/**
+ * Who a contributor row shows. Until someone confirms, only what the owner typed when inviting
+ * (spec 1.2), never their own profile, even if they already have one: an invitee or a person who
+ * declined never agreed to appear on this proposal.
+ */
+function shown(c: ChairContributor) {
+  if (c.status === "confirmed") {
+    return {
+      name: c.displayName ?? c.invitedName ?? "",
+      email: c.email,
+      affiliation: c.affiliation ?? c.invitedAffiliation ?? "",
+      country: c.country ?? "",
+      pronouns: c.pronouns ?? "",
+      hasBio: Object.values(c.bios).some((b) => b.trim()),
+    };
+  }
+  return {
+    name: c.invitedName ?? "",
+    email: c.invitedEmail ?? c.email,
+    affiliation: c.invitedAffiliation ?? "",
+    country: "",
+    pronouns: "",
+    hasBio: false,
+  };
+}
+
+/**
+ * `overCapSubmissionIds`: the submissions that count toward an over-cap person's total
+ * (CapCount.submissionIds), so only rows where the cap actually bites are flagged.
+ */
 export function submissionsCsv(
   config: ConferenceConfig,
   rows: ChairSubmission[],
-  overCap: Set<string>,
+  overCapSubmissionIds: ReadonlySet<string>,
 ): string {
   const fieldColumns = config.submissionTypes.flatMap((t) =>
     t.fields.map((f) => ({ type: t.key, field: f.key })),
@@ -102,12 +132,15 @@ export function submissionsCsv(
       localTime(s.submittedAt, config.timezone),
       localTime(s.updatedAt, config.timezone),
       live
-        .map((c) => `${c.displayName ?? c.invitedName ?? ""} <${c.email}> (${c.role}, ${c.status})`)
+        .map((c) => {
+          const who = shown(c);
+          return `${who.name} <${who.email}> (${c.role}, ${c.status})`;
+        })
         .join("; "),
       live.filter((c) => c.status === "invited").length,
       s.issueCodes,
       s.selfIdWarningCount,
-      live.some((c) => overCap.has(c.personId)) ? "yes" : "",
+      overCapSubmissionIds.has(s.id) ? "yes" : "",
       ...fieldColumns.map((f) => (f.type === s.typeKey ? (s.fields[f.field] ?? "") : "")),
     ];
   });
@@ -131,19 +164,22 @@ export function contributorsCsv(rows: ChairSubmission[]): string {
   const body = rows.flatMap((s) =>
     [...s.contributors]
       .sort((a, b) => a.position - b.position)
-      .map((c) => [
-        reference(s.id),
-        c.position,
-        c.role,
-        c.status,
-        c.isOwner ? "yes" : "",
-        c.displayName ?? c.invitedName ?? "",
-        c.email,
-        c.affiliation ?? c.invitedAffiliation ?? "",
-        c.country ?? "",
-        c.pronouns ?? "",
-        Object.values(c.bios).some((b) => b.trim()) ? "yes" : "",
-      ]),
+      .map((c) => {
+        const who = shown(c);
+        return [
+          reference(s.id),
+          c.position,
+          c.role,
+          c.status,
+          c.isOwner ? "yes" : "",
+          who.name,
+          who.email,
+          who.affiliation,
+          who.country,
+          who.pronouns,
+          who.hasBio ? "yes" : "",
+        ];
+      }),
   );
   return toCsv(header, body);
 }

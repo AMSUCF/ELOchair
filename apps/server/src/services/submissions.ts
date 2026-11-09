@@ -1,9 +1,11 @@
 import {
   actingPerson,
   isConferenceChair,
+  isNeverSubmitted,
   type ProjectedSubmission,
   projectSubmission,
   type SubmissionRecord,
+  submissionAccess,
   type Viewer,
 } from "@elochair/policy";
 import { presenterCapReport, type SubmissionQuery, type SubmissionStatus } from "@elochair/schema";
@@ -53,7 +55,10 @@ export class QueryNotAllowed extends Error {}
 export type QueryResult = {
   items: ProjectedSubmission[];
   total: number;
-  /** Submissions the acting person cannot manage (own or conflicted); chairs only. */
+  /**
+   * Submitted work the acting person cannot manage (own or conflicted), whatever the filters;
+   * chairs and their agents only.
+   */
   excludedCount: number | null;
   nextCursor: string | null;
 };
@@ -120,17 +125,63 @@ export async function querySubmissions(
   const start = query.cursor ? matches.findIndex((p) => p.id === query.cursor) + 1 : 0;
   const page = matches.slice(start, start + query.limit);
   const last = page.at(-1);
-  const chairs = viewerChairs(viewer, conference.id);
-  const manageable = projected.filter((p) => p.view === "chair" || p.view === "metadata").length;
-  const nonDraft = all.filter(
-    (r) => r.submission.status !== "draft" && r.submission.submittedAt,
-  ).length;
   return {
     items: page,
     total: matches.length,
-    excludedCount: chairs ? Math.max(0, nonDraft - manageable) : null,
+    excludedCount: excludedCount(viewer, conference, all),
     nextCursor: last && start + page.length < matches.length ? last.id : null,
   };
+}
+
+/**
+ * How many submitted (never-draft) submissions the acting person cannot manage as a chair: their
+ * own and conflicted work. Decided on the acting person, as capReportFor() does, so a chair and
+ * their agents (either tier) get the same number. Null for viewers who do not chair.
+ */
+function excludedCount(
+  viewer: Viewer,
+  conference: ConferenceRow,
+  records: SubmissionRecord[],
+): number | null {
+  const person = actingPerson(viewer);
+  if (!person || !viewerChairs(viewer, conference.id)) return null;
+  return records.filter(
+    (r) => !isNeverSubmitted(r.submission) && submissionAccess(person, r) !== "chair",
+  ).length;
+}
+
+/** Page size for queryAllSubmissions(); the largest page SubmissionQuery allows. */
+export const ALL_PAGE_SIZE = 500;
+
+/**
+ * Every submission matching `filters`, through querySubmissions() page by page until there is no
+ * next page, so exports never drop rows past one page. Any cursor or limit in `filters` is ignored.
+ */
+export async function queryAllSubmissions(
+  db: Db,
+  viewer: Viewer,
+  conference: ConferenceRow,
+  filters: SubmissionQuery,
+  records?: SubmissionRecord[],
+  pageSize = ALL_PAGE_SIZE,
+): Promise<Omit<QueryResult, "nextCursor">> {
+  const all = records ?? (await loadSubmissionRecords(db, conference));
+  const items: ProjectedSubmission[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await querySubmissions(
+      db,
+      viewer,
+      conference,
+      { ...filters, cursor, limit: pageSize },
+      all,
+    );
+    items.push(...page.items);
+    if (!page.nextCursor || page.items.length === 0) {
+      return { items, total: page.total, excludedCount: page.excludedCount };
+    }
+    cursor = page.nextCursor;
+  }
 }
 
 /** Bump the version (optimistic concurrency) and touch updatedAt. */

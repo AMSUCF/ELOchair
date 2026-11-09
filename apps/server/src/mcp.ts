@@ -1,5 +1,11 @@
 import { type AgentViewer, projectSubmission } from "@elochair/policy";
-import { ParticipationMode, SubmissionQuery, SubmissionStatus } from "@elochair/schema";
+import {
+  Key,
+  LanguageCode,
+  ParticipationMode,
+  SubmissionQuery,
+  SubmissionStatus,
+} from "@elochair/schema";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { eq } from "drizzle-orm";
@@ -27,10 +33,41 @@ import {
 const json = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value) }],
 });
-const failure = (code: string) => ({
+const failure = (code: string, extra: Record<string, unknown> = {}) => ({
   isError: true,
-  content: [{ type: "text" as const, text: JSON.stringify({ error: code }) }],
+  content: [{ type: "text" as const, text: JSON.stringify({ error: code, ...extra }) }],
 });
+
+/**
+ * list_submissions arguments: the REST query, with IDs and machine keys only. Free text cannot
+ * pass as a type, track, language or cursor, so none can reach the audit row. Title search (q)
+ * is the one free-text argument, and it is never audited.
+ */
+const ListQuery = SubmissionQuery.extend({
+  type: Key.max(60).optional(),
+  track: Key.max(60).optional(),
+  cursor: z.uuid().optional(),
+});
+const QUERY_KEYS = new Set(Object.keys(ListQuery.shape));
+
+/** The argument names (never their values) a failed parse complains about. */
+const invalidArgs = (error: z.ZodError) => [
+  ...new Set(
+    error.issues
+      .map((i) => String(i.path[0] ?? ""))
+      .filter((key) => QUERY_KEYS.has(key))
+      .sort(),
+  ),
+];
+
+/** Keys the conference does not define are refused, not audited: an agent could spell a name. */
+function unknownKeys(k: ConferenceRow, query: SubmissionQuery): string[] {
+  const out: string[] = [];
+  if (query.type && !k.config.submissionTypes.some((t) => t.key === query.type)) out.push("type");
+  if (query.track && !k.config.tracks.some((t) => t.key === query.track)) out.push("track");
+  if (query.language && !k.config.languages.includes(query.language)) out.push("language");
+  return out;
+}
 
 async function tokenConference(deps: Deps, agent: AgentViewer): Promise<ConferenceRow | null> {
   const [row] = await deps.db
@@ -49,14 +86,21 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
       details: { tool, args },
     });
 
+  /**
+   * One audit row per call, holding only arguments already validated as enums, keys or IDs.
+   * `invalid` names arguments to refuse once the conference is known (their values not audited).
+   */
   const withConference = async (
     tool: string,
     args: Record<string, unknown>,
     fn: (k: ConferenceRow) => Promise<unknown>,
+    invalid: (k: ConferenceRow) => string[] = () => [],
   ) => {
-    await record(tool, args);
     const k = await tokenConference(deps, agent);
+    const refused = k ? invalid(k) : [];
+    await record(tool, refused.length ? { invalid: refused } : args);
     if (!k || !viewerChairs(agent, k.id)) return failure("forbidden");
+    if (refused.length) return failure("invalid", { args: refused });
     return json(await fn(k));
   };
 
@@ -86,34 +130,48 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
         "Submissions of the token's conference that the token may see, filtered and paged. Tier M (cloud) tokens get metadata only: IDs, statuses, enumerations, counts and dates. Title search (q) is refused for tier M.",
       inputSchema: {
         status: z.array(SubmissionStatus.exclude(["draft"])).optional(),
-        type: z.string().max(60).optional(),
-        track: z.string().max(60).optional(),
-        language: z.string().max(10).optional(),
+        type: Key.max(60).optional(),
+        track: Key.max(60).optional(),
+        language: LanguageCode.optional(),
         participationMode: ParticipationMode.optional(),
         hasSelfIdWarnings: z.boolean().optional(),
         hasPendingInvitations: z.boolean().optional(),
         incomplete: z.boolean().optional(),
         q: z.string().max(200).optional(),
-        cursor: z.string().max(200).optional(),
+        cursor: z.uuid().optional(),
         limit: z.number().int().min(1).max(500).optional(),
       },
       annotations: { readOnlyHint: true },
     },
     async (args) => {
-      const { q, ...rest } = args;
-      return withConference("list_submissions", { ...rest, hasQuery: Boolean(q) }, async (k) => {
-        try {
-          return await querySubmissions(
-            deps.db,
-            agent,
-            k,
-            SubmissionQuery.parse({ ...args, limit: args.limit ?? 100 }),
-          );
-        } catch (err) {
-          if (err instanceof QueryNotAllowed) return { error: "q_not_allowed" };
-          throw err;
-        }
-      });
+      const tool = "list_submissions";
+      // Validate before anything is written: the audit row holds parsed values only.
+      const parsed = ListQuery.safeParse({ ...args, limit: args.limit ?? 100 });
+      if (!parsed.success) {
+        const invalid = invalidArgs(parsed.error);
+        await record(tool, { invalid });
+        return failure("invalid", { args: invalid });
+      }
+      const query = parsed.data;
+      const { q, limit, ...filters } = query;
+      const audited = {
+        ...filters,
+        ...(args.limit === undefined ? {} : { limit }),
+        hasQuery: Boolean(q),
+      };
+      return withConference(
+        tool,
+        audited,
+        async (k) => {
+          try {
+            return await querySubmissions(deps.db, agent, k, query);
+          } catch (err) {
+            if (err instanceof QueryNotAllowed) return { error: "q_not_allowed" };
+            throw err;
+          }
+        },
+        (k) => unknownKeys(k, query),
+      );
     },
   );
 

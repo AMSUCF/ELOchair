@@ -4,6 +4,7 @@ import {
   ConferenceConfig,
   type Conflict,
   type Contribution,
+  isForwardPhaseMove,
   type Person,
   type RoleGrant,
   type Submission,
@@ -69,7 +70,11 @@ export async function createConferenceIfMissing(
   return row ? { id: row.id, slug: row.slug, phase: row.phase, config } : null;
 }
 
-/** Create or replace a conference's configuration (validated first). */
+/**
+ * Create or replace a conference's configuration (validated first). `phase` is written as is,
+ * also over an existing conference's phase, without the forward-only check: only fixtures and
+ * new conferences pass it. To move an existing conference, use movePhase().
+ */
 export async function saveConference(
   db: Db,
   input: unknown,
@@ -86,6 +91,56 @@ export async function saveConference(
     .returning();
   if (!row) throw new Error("failed to save conference");
   return { id: row.id, slug: row.slug, phase: row.phase, config };
+}
+
+/**
+ * Spec 1.3: phases move forward only (draft ⇄ cfp_open aside). Any other move, including one to
+ * the phase the conference already holds, needs force and a non-blank reason.
+ */
+export function phaseMoveAllowed(
+  from: string,
+  to: string,
+  force: boolean | undefined,
+  reason: string | null | undefined,
+): boolean {
+  return isForwardPhaseMove(from, to) || (Boolean(force) && Boolean(reason?.trim()));
+}
+
+export type PhaseMoveResult =
+  | { ok: true; from: string }
+  | { ok: false; code: "not_found" }
+  /** The move is not forward and was not forced with a reason. */
+  | { ok: false; code: "phase_backwards"; from: string }
+  /** The phase changed between the check and the update (only possible outside a transaction). */
+  | { ok: false; code: "stale"; from: string };
+
+/**
+ * Move a conference to another phase. Run it inside a transaction: it locks the conference row,
+ * checks the move against the phase the row holds now (not one read before the lock), and
+ * updates it only while it still holds that phase. The caller audits the move in the same
+ * transaction. Every phase change (API and CLI) goes through here.
+ */
+export async function movePhase(
+  tx: Db,
+  conferenceId: string,
+  move: { to: string; force?: boolean; reason?: string | null; now: Date },
+): Promise<PhaseMoveResult> {
+  const [row] = await tx
+    .select({ phase: conferences.phase })
+    .from(conferences)
+    .where(eq(conferences.id, conferenceId))
+    .for("update");
+  if (!row) return { ok: false, code: "not_found" };
+  const from = row.phase;
+  if (!phaseMoveAllowed(from, move.to, move.force, move.reason)) {
+    return { ok: false, code: "phase_backwards", from };
+  }
+  const updated = await tx
+    .update(conferences)
+    .set({ phase: move.to, updatedAt: move.now })
+    .where(and(eq(conferences.id, conferenceId), eq(conferences.phase, from)))
+    .returning({ id: conferences.id });
+  return updated.length ? { ok: true, from } : { ok: false, code: "stale", from };
 }
 
 type PersonRow = typeof people.$inferSelect;

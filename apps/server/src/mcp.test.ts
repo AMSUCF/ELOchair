@@ -134,6 +134,73 @@ describe("MCP for chairs' agents", () => {
     await client.close();
   });
 
+  it("validates arguments before auditing: free text never reaches the audit log", async () => {
+    const client = await connect(t.public, tokenM);
+    const free = [
+      "Maria Rodriguez Universidad",
+      "Abstract: a poem about",
+      "Someone Named Here",
+      "Portugues words",
+    ];
+    const keyShaped = "maria_rodriguez_universidad";
+    const refused = async (args: Record<string, unknown>) => {
+      try {
+        return await client.callTool({ name: "list_submissions", arguments: args });
+      } catch (err) {
+        return { isError: true, thrown: String(err) };
+      }
+    };
+    for (const args of [
+      { type: free[0], track: free[1] },
+      { cursor: free[2] },
+      { language: free[3] },
+      { status: ["submitted"], type: free[0] },
+    ]) {
+      expect((await refused(args)).isError).toBe(true);
+    }
+    // Shaped like a key, but not one the conference defines: refused, and only the argument's
+    // name is audited.
+    const unknown = await client.callTool({
+      name: "list_submissions",
+      arguments: { type: keyShaped, track: "narratives_worlds" },
+    });
+    expect(unknown.isError).toBe(true);
+    expect(parse(unknown)).toEqual({ error: "invalid", args: ["type"] });
+    const rows = await t.db.select().from(auditLog);
+    expect(findLeaks(rows, [...free, keyShaped])).toEqual([]);
+    const tools = rows.filter((r) => r.action === "agent.mcp_tool");
+    expect(tools.at(-1)?.details).toEqual({
+      tool: "list_submissions",
+      args: { invalid: ["type"] },
+    });
+
+    // Valid arguments are audited as parsed: enums, keys and IDs.
+    const ok = parse(
+      await client.callTool({
+        name: "list_submissions",
+        arguments: { status: ["submitted"], type: "talk", language: "en", limit: 2 },
+      }),
+    );
+    expect(ok.items).toHaveLength(2);
+    const next = await client.callTool({
+      name: "list_submissions",
+      arguments: { type: "talk", cursor: ok.nextCursor, limit: 2 },
+    });
+    expect(next.isError).toBeFalsy();
+    const [, before, last] = (
+      await t.db.select().from(auditLog).where(eq(auditLog.action, "agent.mcp_tool"))
+    ).slice(-3);
+    expect(before?.details).toEqual({
+      tool: "list_submissions",
+      args: { status: ["submitted"], type: "talk", language: "en", limit: 2, hasQuery: false },
+    });
+    expect(last?.details).toEqual({
+      tool: "list_submissions",
+      args: { type: "talk", cursor: ok.nextCursor, limit: 2, hasQuery: false },
+    });
+    await client.close();
+  });
+
   it("refuses tier C on the public listener and serves it on the internal one", async () => {
     await expect(connect(t.public, tokenC)).rejects.toThrow();
     const refused = await t.db
