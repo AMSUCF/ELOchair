@@ -1,10 +1,15 @@
-import type { ConferenceConfig, ContributionStatus, SubmissionStatus } from "@elochair/schema";
+import type {
+  ConferenceConfig,
+  ContributionStatus,
+  SubmissionIssue,
+  SubmissionStatus,
+} from "@elochair/schema";
 import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, type ConferenceDetail } from "../api";
 import { useT } from "../i18n";
-import { statusKey } from "../labels";
+import { type IssueCode, issueLabelKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -24,7 +29,7 @@ type Row = {
   title: string;
   typeKey: string;
   status: SubmissionStatus;
-  issueCodes: string[];
+  issueCodes: SubmissionIssue["code"][];
   selfIdWarningCount: number;
   contributors: {
     displayName: string | null;
@@ -203,8 +208,10 @@ export function ManagePage() {
                     {t("manageIssues")}:{" "}
                     {[
                       ...r.issueCodes,
-                      ...(r.selfIdWarningCount ? ["self_identification"] : []),
-                    ].join(", ")}
+                      ...(r.selfIdWarningCount ? (["self_identification"] as const) : []),
+                    ]
+                      .map((code: IssueCode) => t(issueLabelKey(code)))
+                      .join(", ")}
                   </p>
                 )}
               </li>

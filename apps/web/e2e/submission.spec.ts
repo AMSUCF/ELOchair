@@ -90,32 +90,45 @@ async function acceptAgreements(page: Page) {
   for (const box of await boxes.all()) await box.check();
 }
 
-/** Answer an invitation from the link in the email, in a fresh browser (no account needed). */
-async function answerByLink(
-  browser: Browser,
-  request: APIRequestContext,
-  email: string,
-  answer: "confirm" | "decline",
-  opts: { name?: string; invitedName?: string; flaky?: boolean } = {},
-) {
-  const sent = /https?:\/\/\S+#token=\S+/.exec(
-    (await latestMail(request, email)).text,
-  )?.[0] as string;
+/** The invitation link in the latest email to this address (keep it to open it later). */
+async function invitationLink(request: APIRequestContext, email: string) {
+  const sent = /https?:\/\/\S+#token=\S+/.exec((await latestMail(request, email)).text)?.[0];
+  expect(sent, `an invitation link in the latest email to ${email}`).toBeTruthy();
   // The email may be in Spanish or Portuguese; open the same invitation in English for the test.
-  const link = sent.replace(/\/(es|pt)\/invitation#/, "/en/invitation#");
+  return (sent as string).replace(/\/(es|pt)\/invitation#/, "/en/invitation#");
+}
+
+/** Open an invitation link in a fresh browser (no account needed). */
+async function openInvitation(browser: Browser, link: string, flaky = false) {
   const page = await newPhone(browser);
   // A dropped connection is not a dead link: the page keeps the token and offers to try again.
-  if (opts.flaky) await page.route("**/api/invitations/info", (route) => route.abort());
+  if (flaky) await page.route("**/api/invitations/info", (route) => route.abort());
   await page.goto(link);
   await expect(
     page.getByRole("heading", { level: 1, name: "Invitation to a proposal" }),
   ).toBeVisible();
-  if (opts.flaky) {
+  if (flaky) {
     await expect(page.getByText("We could not reach the server.")).toBeVisible();
     await expect(page).not.toHaveURL(/token=/);
     await page.unroute("**/api/invitations/info");
     await page.getByRole("button", { name: "Try again" }).click();
   }
+  return page;
+}
+
+/** Answer an invitation from the link in the email (or one kept earlier), in a fresh browser. */
+async function answerByLink(
+  browser: Browser,
+  request: APIRequestContext,
+  email: string,
+  answer: "confirm" | "decline",
+  opts: { name?: string; invitedName?: string; flaky?: boolean; link?: string } = {},
+) {
+  const page = await openInvitation(
+    browser,
+    opts.link ?? (await invitationLink(request, email)),
+    opts.flaky,
+  );
   if (answer === "confirm") {
     const name = page.getByLabel(/^Your name/);
     // Never prefilled with what the owner typed; shown only as context.
@@ -135,6 +148,26 @@ async function answerByLink(
     await expect(page.getByText("You declined.")).toBeVisible();
   }
   await page.context().close();
+}
+
+/** The owner saves the form as a draft. */
+async function saveDraft(page: Page) {
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+}
+
+/** The owner invites someone, then waits until `listed` people are on the proposal. */
+async function invite(
+  page: Page,
+  email: string,
+  listed: number,
+  opts: { name?: string; role?: string } = {},
+) {
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  if (opts.name) await page.getByLabel("Name (optional)").fill(opts.name);
+  if (opts.role) await page.getByLabel("Role", { exact: true }).selectOption(opts.role);
+  await page.getByRole("button", { name: "Send invitation", exact: true }).click();
+  await expect(page.locator(".people > li")).toHaveCount(listed);
 }
 
 test("submit a talk from a phone: word count, self-identification, co-author, agreements, receipt", async ({
@@ -368,6 +401,186 @@ test("invitees answer in the app: asked for their own name, one confirms then le
   await no.context().close();
 });
 
+test("a new invitee must give their own name to confirm by link, and the owner then sees it", async ({
+  page,
+  request,
+  browser,
+}) => {
+  await signIn(page, request, "e2e-names-owner@example.org");
+  await setName(page, "Nadia Names Owner");
+  await start(page, "Individual talk");
+  await page.getByLabel("Title").fill("Names in their own words");
+  await saveDraft(page);
+  await invite(page, "e2e-nameless@example.org", 2, { name: "Typed By The Owner" });
+
+  const invitee = await openInvitation(
+    browser,
+    await invitationLink(request, "e2e-nameless@example.org"),
+  );
+  // The server says this person has no name yet (nameNeeded): the field is required and empty.
+  const name = invitee.getByLabel("Your name *", { exact: true });
+  await expect(name).toHaveValue("");
+  await expect(name).toHaveAttribute("aria-required", "true");
+  await expect(
+    invitee.getByText("The proposal's owner wrote your name as “Typed By The Owner”."),
+  ).toBeVisible();
+  await acceptAgreements(invitee);
+  await invitee.getByRole("button", { name: "Confirm my participation" }).click();
+  await expect(invitee.locator("#inv-name-error")).toHaveText("Enter your name to confirm.");
+  await expect(name).toBeFocused();
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  await expectAccessible(invitee);
+  await name.fill("Nora Ownwords");
+  await expect(invitee.locator("#inv-name-error")).toHaveCount(0);
+  await invitee.getByRole("button", { name: "Confirm my participation" }).click();
+  await expect(invitee.getByText("Thank you: you are confirmed.")).toBeVisible();
+  await invitee.context().close();
+
+  // The owner sees the name the invitee gave, never the one the owner typed.
+  await page.reload();
+  await expect(
+    page.locator(".people > li").filter({ hasText: "Nora Ownwords" }).locator(".badge"),
+  ).toHaveText("Confirmed");
+  await expect(page.getByText("Typed By The Owner")).toHaveCount(0);
+});
+
+test("withdrawn work: a pending invitee can only decline by link, and a co-author can leave", async ({
+  page,
+  request,
+  browser,
+}) => {
+  const title = "Withdrawn with company";
+  await signIn(page, request, "e2e-withdraw-owner@example.org");
+  await setName(page, "Wendy Withdraw Owner");
+  await start(page, "Individual talk");
+  const editor = page.url();
+  await page.getByLabel("Title").fill(title);
+  await page.getByLabel("Abstract (anonymized)").fill(words(260));
+  await saveDraft(page);
+  await invite(page, "e2e-withdraw-pending@example.org", 2, { name: "Pat Pending" });
+  // Kept for later: once the work is withdrawn, the latest email is the withdrawal notice.
+  const pendingLink = await invitationLink(request, "e2e-withdraw-pending@example.org");
+  await invite(page, "e2e-withdraw-co@example.org", 3, { name: "Typed Coauthor" });
+  await answerByLink(browser, request, "e2e-withdraw-co@example.org", "confirm", {
+    name: "Carla Confirmed",
+  });
+
+  await page.reload();
+  await acceptAgreements(page);
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+  await expect(page.getByText("Submitted. A receipt is on its way")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Withdraw", exact: true }).click();
+  await expect(page.locator(".badge.status-withdrawn")).toHaveText("Withdrawn");
+  await expect(page.getByRole("button", { name: "Withdraw", exact: true })).toHaveCount(0);
+
+  // The pending invitee is told without the title; their link now offers only Decline.
+  const notice = await latestMail(request, "e2e-withdraw-pending@example.org");
+  expect(notice.subject).toContain("was withdrawn");
+  expect(notice.text).not.toContain(title);
+  const pending = await openInvitation(browser, pendingLink);
+  await expect(
+    pending.getByText("This proposal was withdrawn. You can still decline the invitation."),
+  ).toBeVisible();
+  await expect(pending.getByRole("button", { name: "Decline" })).toBeVisible();
+  await expect(pending.getByRole("button", { name: "Confirm my participation" })).toHaveCount(0);
+  await expect(pending.getByLabel(/^Your name/)).toHaveCount(0);
+  await expect(pending.getByRole("checkbox")).toHaveCount(0);
+  await expectAccessible(pending);
+  await pending.getByRole("button", { name: "Decline" }).click();
+  await expect(pending.getByText("You declined.")).toBeVisible();
+  await pending.context().close();
+
+  // The confirmed co-author can still leave the withdrawn proposal from the app.
+  const co = await newPhone(browser);
+  await signIn(co, request, "e2e-withdraw-co@example.org");
+  await co.goto(editor);
+  await expect(co.getByRole("heading", { level: 1, name: title })).toBeVisible();
+  await expect(co.locator(".badge.status-withdrawn")).toHaveText("Withdrawn");
+  await expect(co.getByRole("button", { name: "Decline" })).toHaveCount(0);
+  await expectAccessible(co);
+  co.once("dialog", (dialog) => dialog.accept());
+  await co.getByRole("button", { name: "Leave this proposal" }).click();
+  await expect(co.getByText("You left this proposal. The owner has been told.")).toBeVisible();
+  await co.context().close();
+});
+
+test("reordering around a declined panelist: Move down changes the order, which a reload keeps", async ({
+  page,
+  request,
+  browser,
+}) => {
+  await signIn(page, request, "e2e-order-owner@example.org");
+  await setName(page, "Oscar Order Owner");
+  await start(page, "Panel or roundtable");
+  await page.getByLabel("Title").fill("Panel in a new order");
+  // The owner's name in the abstract leaves a self-identification warning for the chairs.
+  await page
+    .getByLabel("Session abstract (anonymized)")
+    .fill(`${words(380)} as Oscar Order Owner argued`);
+  await saveDraft(page);
+  await invite(page, "e2e-order-a@example.org", 2, { name: "Ada Declines", role: "panelist" });
+  await answerByLink(browser, request, "e2e-order-a@example.org", "decline");
+
+  // The declined row keeps its slot on the server; the owner's list shows only live people.
+  await page.reload();
+  await expect(page.locator(".people > li")).toHaveCount(1);
+  await invite(page, "e2e-order-b@example.org", 2, { name: "Bea Second", role: "panelist" });
+  await invite(page, "e2e-order-c@example.org", 3, { name: "Cy Third", role: "panelist" });
+  const order = page.locator(".people > li strong");
+  await expect(order).toHaveText(["Oscar Order Owner", "Bea Second", "Cy Third"]);
+  await page.getByRole("button", { name: "Move down: Bea Second" }).click();
+  await expect(order).toHaveText(["Oscar Order Owner", "Cy Third", "Bea Second"]);
+  await page.reload();
+  await expect(order).toHaveText(["Oscar Order Owner", "Cy Third", "Bea Second"]);
+
+  // Submitted with three people; one then declines, which leaves the panel short (see Manage).
+  const thirdLink = await invitationLink(request, "e2e-order-c@example.org");
+  await acceptAgreements(page);
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+  await expect(page.getByText("Submitted. A receipt is on its way")).toBeVisible();
+  await answerByLink(browser, request, "e2e-order-c@example.org", "decline", { link: thirdLink });
+});
+
+test("a co-author's bio longer than the call's limit gets a note in the owner's editor", async ({
+  page,
+  request,
+  browser,
+}) => {
+  // elo2027-open keeps ELO 2027's rules.bio.maxWords (300).
+  await signIn(page, request, "e2e-bio-owner@example.org");
+  await setName(page, "Bianca Bio Owner");
+  await start(page, "Individual talk");
+  await page.getByLabel("Title").fill("Bios at length");
+  await saveDraft(page);
+  await invite(page, "e2e-bio-co@example.org", 2, { name: "Typed Bio Person" });
+  await answerByLink(browser, request, "e2e-bio-co@example.org", "confirm", {
+    name: "Leo Longbio",
+  });
+
+  const longNote = page.getByText(/^Some bios are longer than 300 words\./);
+  await page.reload();
+  await expect(
+    page.locator(".people > li").filter({ hasText: "Leo Longbio" }).locator(".badge"),
+  ).toHaveText("Confirmed");
+  // The check has loaded (nobody has a bio yet), and no bio is too long.
+  await expect(page.getByText("Some people have not added a bio yet")).toBeVisible();
+  await expect(longNote).toHaveCount(0);
+
+  const co = await newPhone(browser);
+  await signIn(co, request, "e2e-bio-co@example.org");
+  await co.getByLabel("Bio in English").fill(words(320));
+  await co.getByRole("button", { name: "Save profile" }).click();
+  await expect(co.getByText("Profile saved.")).toBeVisible();
+  await co.context().close();
+
+  await page.reload();
+  await expect(longNote).toHaveText(
+    "Some bios are longer than 300 words. Each person can shorten their own in Your account.",
+  );
+  await expectAccessible(page);
+});
+
 test("a chair finds the submissions, opens one and downloads both CSV files", async ({
   page,
   request,
@@ -387,6 +600,13 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
     "A garden of forking links",
   ];
   for (const title of titles) await expect(page.getByRole("link", { name: title })).toBeVisible();
+  // Problems are named in the interface language, never as codes (the panel is a person short).
+  const card = (title: string) =>
+    page.locator("ul.cards > li").filter({ has: page.getByRole("link", { name: title }) });
+  await expect(card("Panel in a new order").locator(".notice")).toHaveText(
+    "Problems: Wrong number of people, Self-identification warning",
+  );
+  await expect(page.locator("ul.cards .notice").filter({ hasText: /_/ })).toHaveCount(0);
   await expectTouchTarget(page.getByRole("link", { name: "Panel on platforms" }));
   await page.getByRole("link", { name: "Panel on platforms" }).click();
   await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
@@ -415,7 +635,12 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
 
   // Format names follow the interface language.
   await page.goto(`/es/c/${CALL}/manage`);
-  await expect(page.getByText(/^Panel o mesa redonda · Enviada/)).toBeVisible();
+  await expect(
+    card("Panel on platforms").getByText(/^Panel o mesa redonda · Enviada/),
+  ).toBeVisible();
+  await expect(card("Panel in a new order").locator(".notice")).toHaveText(
+    "Problemas: Número de personas incorrecto, Aviso de autoidentificación",
+  );
 
   // A long list comes a page at a time.
   await page.goto("/en/c/sandbox/manage");
