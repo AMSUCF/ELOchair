@@ -73,9 +73,11 @@ describe("canActOnSubmission", () => {
     expect(allowed(person("lead"), "rejected")).toEqual(["leave"]);
   });
 
-  it("withdrawn work is closed to everyone", () => {
-    for (const who of ["owner", "lead", "inv"])
-      expect(allowed(person(who), "withdrawn")).toEqual([]);
+  it("withdrawn work is closed to its owner, but invitees can still decline and co-authors leave", () => {
+    expect(allowed(person("owner"), "withdrawn")).toEqual([]);
+    expect(allowed(person("lead"), "withdrawn")).toEqual(["leave"]);
+    expect(allowed(person("inv"), "withdrawn")).toEqual(["answer_invitation"]);
+    expect(allowed(person("gone"), "withdrawn")).toEqual([]);
   });
 
   it("chairs, strangers and agents (even the owner's) cannot change someone's submission", () => {

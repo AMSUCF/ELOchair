@@ -154,6 +154,17 @@ describe("review fixes: rate limits", () => {
     expect(limiter.size).toBeLessThanOrEqual(1_000);
     expect(performance.now() - start).toBeLessThan(2_000);
   });
+
+  it("the limiter marks the first refusal of each window, so it can be audited once", async () => {
+    const { RateLimiter } = await import("./ratelimit");
+    let now = 0;
+    const limiter = new RateLimiter(2, 60_000, () => now);
+    const outcomes = [1, 2, 3, 4, 5].map(() => limiter.attempt("k"));
+    expect(outcomes).toEqual(["allowed", "allowed", "refused_first", "refused", "refused"]);
+    now = 60_000;
+    expect(limiter.attempt("k")).toBe("allowed");
+    expect([limiter.hit("k"), limiter.hit("k")]).toEqual([true, false]);
+  });
 });
 
 describe("review fixes: sign-in codes and link info", () => {

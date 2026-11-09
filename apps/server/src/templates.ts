@@ -18,16 +18,51 @@ export function mailLang(preferences: readonly string[], fallback: string): Mail
   return "en";
 }
 
-/** One line, no links, no control characters, at most 100 characters. */
+/** Dots that mail clients and IDNA treat as a domain separator. */
+const DOT = "[.\\u3002\\uFF0E\\uFF61]";
+const LABEL = "[\\p{L}\\p{M}\\p{N}_-]+";
+/** Links with a scheme: "https://...", "ftp://...", "mailto:...", "tel:...". */
+const SCHEME_LINK = /\b(?:[a-z][a-z0-9+.-]*:\/\/|(?:mailto|tel|sms|callto|javascript|data):)\S*/giu;
+/**
+ * Bare host names ("evil-phish.com", "www.x.org/path"): a dotted name whose last label has two
+ * or more letters, like every top-level domain. Initials ("J.R.R.") and "e.g." do not match.
+ */
+const BARE_HOST = new RegExp(`${LABEL}(?:${DOT}${LABEL})*${DOT}\\p{L}[\\p{L}\\p{M}-]+\\S*`, "gu");
+/** A dotted name followed by a path, whatever it ends in ("10.0.0.1/x"). */
+const HOST_WITH_PATH = new RegExp(`${LABEL}(?:${DOT}${LABEL})+[/?#]\\S*`, "gu");
+const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/gu;
+
+/**
+ * Owner-written text for ELO-signed mail: one line, at most 100 characters, without links. It
+ * removes anything a mail client might turn into a link (URLs, bare domains, email addresses)
+ * and invisible format characters (bidi overrides, zero-width), which could otherwise hide or
+ * reorder text. Ordinary names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil") pass.
+ */
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
   const clean = (name ?? "")
-    .replace(/\p{Cc}/gu, " ")
-    .replace(/\b(?:https?:\/\/|www\.)\S+/giu, "")
-    .replace(/\b[\w-]+(?:\.[\w-]+)+\/\S*/gu, "")
+    // Format characters go first, so "evil​.com" cannot slip past the domain rule.
+    .replace(/[\p{Cf}\p{Co}]/gu, "")
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
+    .replace(/\S*[@＠]\S*/gu, "")
+    .replace(SCHEME_LINK, "")
+    .replace(HOST_WITH_PATH, "")
+    .replace(BARE_HOST, "")
+    .replace(IPV4, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 100);
-  return clean || fallback;
+    .trim();
+  return Array.from(clean).slice(0, 100).join("").trim() || fallback;
+}
+
+const DATE_LOCALE: Record<MailLang, string> = { en: "en", es: "es-CO", pt: "pt-BR" };
+
+/** A deadline for mail: in the reader's language, in the conference's time zone (named). */
+export function formatDeadline(iso: string, timeZone: string, lang: MailLang): string {
+  const when = new Intl.DateTimeFormat(DATE_LOCALE[lang], {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(iso));
+  return `${when} (${timeZone})`;
 }
 
 const ROLE: Record<MailLang, Record<ContributionRole, string>> = {
@@ -120,6 +155,30 @@ export function withdrawnMessage(
       en: `The proposal "${title}" (${v.format}) for ${v.conference} has been withdrawn by its owner.`,
       es: `La propuesta «${title}» (${v.format}) para ${v.conference} ha sido retirada por quien la creó.`,
       pt: `A proposta «${title}» (${v.format}) para ${v.conference} foi retirada por quem a criou.`,
+    }[lang],
+  };
+}
+
+/**
+ * Withdrawal notice for people still invited: they never agreed to anything, so it carries no
+ * title or other owner-written text (like the invitation itself).
+ */
+export function invitationWithdrawnMessage(
+  lang: MailLang,
+  to: string,
+  v: { conference: string },
+): MailMessage {
+  return {
+    to,
+    subject: {
+      en: `${v.conference}: a proposal you were invited to was withdrawn`,
+      es: `${v.conference}: se retiró una propuesta a la que te invitaron`,
+      pt: `${v.conference}: foi retirada uma proposta para a qual foi convidado/a`,
+    }[lang],
+    text: {
+      en: `A proposal for ${v.conference} that listed you was withdrawn by its owner. It can no longer be confirmed, and there is nothing you need to do.`,
+      es: `Quien creó una propuesta para ${v.conference} en la que figurabas la ha retirado. Ya no se puede confirmar y no tienes que hacer nada.`,
+      pt: `Foi retirada por quem a criou uma proposta para ${v.conference} em que constava. Já não pode ser confirmada e não precisa de fazer nada.`,
     }[lang],
   };
 }

@@ -11,6 +11,7 @@ import {
   MemoryTransport,
   magicLinkMessage,
 } from "./mail";
+import { invitationMessage, sanitizeName } from "./templates";
 
 const db0 = openDatabase({});
 const db = db0.db;
@@ -113,5 +114,93 @@ describe("review fixes, round 2: delivery passes", () => {
     await firstPass;
     expect(mail.latestTo("first@example.org")).toBeDefined();
     expect(mail.latestTo("second@example.org")).toBeDefined();
+  });
+});
+
+describe("review fixes, round 3: secrets and owner-written text in mail", () => {
+  const invitation = (to: string, token: string) =>
+    invitationMessage("en", to, {
+      ownerName: "Olga Owner",
+      conference: "ELO 2027",
+      format: "Talk",
+      role: "coauthor",
+      link: `https://x.example/en/invitation#token=${token}`,
+    });
+
+  it("removes the invitation link token from the stored copy once sent (#13 #22)", async () => {
+    const mail = new MemoryTransport();
+    await enqueueMail(db, "invitation", invitation("inv-sent@example.org", "inv_SENTsecret"), at);
+    await deliverPending(db, mail, { now });
+    expect(mail.latestTo("inv-sent@example.org")?.text).toContain("#token=inv_SENTsecret");
+    const [row] = await db.select().from(outbox).where(eq(outbox.toEmail, "inv-sent@example.org"));
+    expect(row?.sentAt).not.toBeNull();
+    expect(row?.bodyText).not.toContain("inv_SENTsecret");
+    expect(row?.bodyText).toContain("#token=[redacted]");
+    // The rest of the stored copy stays readable (nothing else looks like a secret).
+    expect(row?.bodyText).toContain("Olga Owner has listed you as co-author");
+  });
+
+  it("removes link tokens and codes when delivery gives up (#13 #22)", async () => {
+    const failing: MailTransport = { send: async () => Promise.reject(new Error("smtp down")) };
+    await enqueueMail(db, "invitation", invitation("inv-fail@example.org", "inv_FAILsecret"), at);
+    const link = magicLinkMessage(
+      "en",
+      "link-fail@example.org",
+      "https://x.example/en/auth/verify#token=LINKfail",
+      "24681357",
+    );
+    await enqueueMail(db, "magic_link", link, at);
+    const stored = async (to: string) =>
+      (await db.select().from(outbox).where(eq(outbox.toEmail, to)))[0];
+    // Retry until the last attempt, waiting out each backoff (sign-in mail expires on the way).
+    let clock = at.getTime();
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await deliverOnce(db, failing, () => new Date(clock));
+      if (i === MAX_ATTEMPTS - 2) {
+        expect((await stored("inv-fail@example.org"))?.bodyText).toContain("inv_FAILsecret");
+      }
+      clock += 5 * 60 * 60 * 1000;
+    }
+    const row = await stored("inv-fail@example.org");
+    expect(row?.attempts).toBe(MAX_ATTEMPTS);
+    expect(row?.sentAt).toBeNull();
+    expect(row?.bodyText).not.toContain("inv_FAILsecret");
+    const signIn = await stored("link-fail@example.org");
+    expect(signIn?.bodyText).not.toContain("LINKfail");
+    expect(signIn?.bodyText).not.toContain("2468 1357");
+  });
+
+  it("sanitizeName keeps names and removes anything a mail client could turn into a link (#23 #59)", () => {
+    const kept = [
+      "Ana María Pérez-Gómez",
+      "J. R. R. Tolkien",
+      "J.R.R. Tolkien",
+      "O'Neil",
+      "Dr. Ngũgĩ wa Thiong'o Jr.",
+      "李小龍",
+      "ELO 2.0: Poetry",
+    ];
+    for (const name of kept) expect(sanitizeName(name, "?")).toBe(name);
+    const cases: [string, string][] = [
+      ["Visit evil-phish.com now", "Visit now"],
+      [
+        "Ana Pérez — verify your account at elo-signin.com today",
+        "Ana Pérez — verify your account at today",
+      ],
+      ["ELO support: help@evil.com", "ELO support:"],
+      ["Write to x＠evil.com", "Write to"],
+      ["https://evil.example/login Bob", "Bob"],
+      ["www.evil.org", "?"],
+      ["EVIL-PHISH.COM/login?x=1", "?"],
+      ["evil-phish。com Ana", "Ana"],
+      ["evil​.com Ana", "Ana"],
+      ["Ana ‮moc.live‬", "Ana"],
+      ["​⁦⁩", "?"],
+      ["mailto:a tel:5550100 Ana", "Ana"],
+      ["10.0.0.1 Ana", "Ana"],
+      ["Line\nbreak here", "Line break here"],
+    ];
+    for (const [input, out] of cases) expect(sanitizeName(input, "?")).toBe(out);
+    expect([...sanitizeName("ü".repeat(150), "?")]).toHaveLength(100);
   });
 });

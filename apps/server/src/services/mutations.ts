@@ -15,12 +15,13 @@ import {
   type SubmissionIssue,
 } from "@elochair/schema";
 import { eq } from "drizzle-orm";
+import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { Db } from "../db/client";
 import { submissions } from "../db/schema";
 import { deliverPending, enqueueMail, type MailMessage } from "../mail";
 import { type ConferenceRow, loadSubmission } from "../repo";
-import { Refusal } from "../routes/common";
+import { RateLimited, Refusal } from "../routes/common";
 import { type MailLang, mailLang } from "../templates";
 
 export type MutationContext = {
@@ -46,35 +47,42 @@ export async function mutateSubmission<T>(
   fn: (ctx: MutationContext) => Promise<T>,
 ): Promise<T> {
   const now = deps.now();
-  const result = await deps.db.transaction(async (txRaw) => {
-    const tx = txRaw as unknown as Db;
-    await tx
-      .select({ id: submissions.id })
-      .from(submissions)
-      .where(eq(submissions.id, submissionId))
-      .for("update");
-    const loaded = await loadSubmission(tx, submissionId);
-    if (!loaded || submissionAccess(viewer, loaded.rec) === "none") {
-      throw new Refusal(404, "not_found");
-    }
-    const { conference, rec } = loaded;
-    if (!canActOnSubmission(viewer, rec, action)) throw new Refusal(403, "forbidden");
-    const timing = ACTION_TIMING[action];
-    if (timing === "open_call" && !isCallOpen(conference.config, conference.phase, now)) {
-      throw new Refusal(409, "call_closed");
-    }
-    if (timing === "withdraw_phases" && !WITHDRAW_PHASES.has(conference.phase)) {
-      throw new Refusal(409, "call_closed");
-    }
-    return fn({
-      tx,
-      viewer,
-      conference,
-      rec,
-      now,
-      mail: (kind, msg) => enqueueMail(tx, kind, msg, now),
+  const result = await deps.db
+    .transaction(async (txRaw) => {
+      const tx = txRaw as unknown as Db;
+      await tx
+        .select({ id: submissions.id })
+        .from(submissions)
+        .where(eq(submissions.id, submissionId))
+        .for("update");
+      const loaded = await loadSubmission(tx, submissionId);
+      if (!loaded || submissionAccess(viewer, loaded.rec) === "none") {
+        throw new Refusal(404, "not_found");
+      }
+      const { conference, rec } = loaded;
+      if (!canActOnSubmission(viewer, rec, action)) throw new Refusal(403, "forbidden");
+      const timing = ACTION_TIMING[action];
+      if (timing === "open_call" && !isCallOpen(conference.config, conference.phase, now)) {
+        throw new Refusal(409, "call_closed");
+      }
+      if (timing === "withdraw_phases" && !WITHDRAW_PHASES.has(conference.phase)) {
+        throw new Refusal(409, "call_closed");
+      }
+      return fn({
+        tx,
+        viewer,
+        conference,
+        rec,
+        now,
+        mail: (kind, msg) => enqueueMail(tx, kind, msg, now),
+      });
+    })
+    .catch(async (err: unknown) => {
+      // A refusal over a limit is audited, but the transaction it was thrown in has rolled
+      // back (audit row included): record it now, outside.
+      if (err instanceof RateLimited) await audit(deps.db, viewer, err.entry);
+      throw err;
     });
-  });
   deliverPending(deps.db, deps.mail, { now: deps.now }).catch((err) =>
     console.error("mail delivery failed", err),
   );

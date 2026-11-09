@@ -75,10 +75,24 @@ const MAGIC_LINK_TTL_MS = 20 * 60 * 1000;
 
 /** Remove sign-in secrets from a stored message body once it no longer needs them. */
 export function redactSecrets(body: string): string {
-  return body
-    .replace(/#token=[A-Za-z0-9_-]+/g, "#token=[redacted]")
-    .replace(/\b\d{4} \d{4}\b/g, "[redacted]");
+  return redactTokens(body).replace(/\b\d{4} \d{4}\b/g, "[redacted]");
 }
+
+/** Remove link tokens (`#token=...`) from a stored message body. */
+export function redactTokens(body: string): string {
+  return body.replace(/#token=[A-Za-z0-9_-]+/g, "#token=[redacted]");
+}
+
+/**
+ * Kinds of mail whose body carries a secret, and how to remove it from the stored copy once the
+ * message has been sent or given up on: the secret then exists only in the recipient's inbox,
+ * not in the database or its backups.
+ */
+const REDACT: Record<string, (body: string) => string> = {
+  magic_link: redactSecrets,
+  invitation: redactTokens,
+};
+const redactStored = (kind: string, body: string) => REDACT[kind]?.(body) ?? body;
 
 const inFlight = new WeakMap<Db, Promise<number>>();
 const queued = new WeakMap<Db, Promise<number>>();
@@ -177,14 +191,15 @@ async function deliverPass(
           claimedAt: null,
           attempts: m.attempts + 1,
           lastError: null,
-          // The token and code now exist only in the recipient's inbox.
-          ...(isSignIn ? { bodyText: redactSecrets(m.bodyText) } : {}),
+          // Tokens and codes now exist only in the recipient's inbox.
+          bodyText: redactStored(m.kind, m.bodyText),
         })
         .where(eq(outbox.id, m.id));
       sent++;
     } catch (err) {
       const attempts = m.attempts + 1;
       const wait = BACKOFF_MINUTES[Math.min(attempts - 1, BACKOFF_MINUTES.length - 1)] ?? 240;
+      const gaveUp = attempts >= MAX_ATTEMPTS;
       await db
         .update(outbox)
         .set({
@@ -192,9 +207,11 @@ async function deliverPass(
           attempts,
           lastError: String(err).slice(0, 500),
           nextAttemptAt: new Date(now().getTime() + wait * 60_000),
+          // Never sent, never will be: nobody needs its secrets any more.
+          ...(gaveUp ? { bodyText: redactStored(m.kind, m.bodyText) } : {}),
         })
         .where(eq(outbox.id, m.id));
-      if (attempts >= MAX_ATTEMPTS) {
+      if (gaveUp) {
         console.error(
           `mail ${m.id} (${m.kind}) gave up after ${attempts} attempts: ${String(err)}`,
         );

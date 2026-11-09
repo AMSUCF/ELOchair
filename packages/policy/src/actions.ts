@@ -16,9 +16,13 @@ export type SubmissionAction =
   | "unsubmit"
   | "withdraw"
   | "delete_draft"
-  /** Confirm or decline one's own pending invitation. */
+  /**
+   * Confirm or decline one's own pending invitation. Declining is possible whatever the status
+   * (withdrawn work included); confirming also needs an open call and live work, which the route
+   * checks.
+   */
   | "answer_invitation"
-  /** A confirmed co-author (not the owner) takes themselves off. */
+  /** A confirmed co-author (not the owner) takes themselves off, whatever the status. */
   | "leave";
 
 /**
@@ -65,9 +69,10 @@ export function canActOnSubmission(
     case "unsubmit":
     case "withdraw":
       return isOwner && status === "submitted";
+    // A person must always be able to refuse authorship: no status or phase check here.
     case "answer_invitation":
-      return mine?.status === "invited" && status !== "withdrawn";
+      return mine?.status === "invited";
     case "leave":
-      return !isOwner && mine?.status === "confirmed" && status !== "withdrawn";
+      return !isOwner && mine?.status === "confirmed";
   }
 }

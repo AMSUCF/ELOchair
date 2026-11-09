@@ -303,6 +303,34 @@ export const agreementAcks = pgTable(
   (t) => [primaryKey({ columns: [t.personId, t.conferenceId, t.key, t.version] })],
 );
 
+/**
+ * Every invitation email sent (first invitations and resends), for the daily abuse limits.
+ * Server-internal and never projected. It holds IDs only, and nothing deletes from it:
+ * removing an invitee or deleting a draft must not hand back the sender's or the recipient's
+ * budget, so `submission_id` deliberately has no foreign key.
+ */
+export const invitationSends = pgTable(
+  "invitation_sends",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerPersonId: uuid("owner_person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    /** One person row per normalized address, so this is the recipient address too. */
+    recipientPersonId: uuid("recipient_person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    submissionId: uuid("submission_id"),
+    kind: text("kind").notNull(),
+    sentAt: ts("sent_at").notNull(),
+  },
+  (t) => [
+    check("invitation_sends_kind_check", sql`${t.kind} in ('invite','resend')`),
+    index("invitation_sends_owner_idx").on(t.ownerPersonId, t.sentAt),
+    index("invitation_sends_recipient_idx").on(t.recipientPersonId, t.sentAt),
+  ],
+);
+
 /** Single-use links in invitation emails (stored as hashes, like sign-in tokens). */
 export const invitationTokens = pgTable(
   "invitation_tokens",

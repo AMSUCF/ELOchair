@@ -43,6 +43,13 @@
       "when": 1794177859691,
       "tag": "0005_drop_single_bio",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794182540654,
+      "tag": "0006_invitation_sends",
+      "breakpoints": true
     }
   ]
 }
