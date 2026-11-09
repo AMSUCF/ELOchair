@@ -52,6 +52,7 @@ export const en = {
   confSubmitNotYet: "Submissions open {date}.",
   confSubmitOpen: "Submissions are open until {date}.",
   confSubmitClosed: "Submissions are closed.",
+  confSubmitNotOpen: "Submissions are not open now. The call runs from {open} to {close}.",
   signInTitle: "Sign in",
   signInIntro: "We will email you a link that signs you in. No password needed.",
   signInEmail: "Email address",
@@ -92,6 +93,9 @@ export const en = {
   verifyRetry: "Try again",
   signInHaveCode: "I already have a code",
   footer: "ELOchair is made for the Electronic Literature Organization.",
+  crashTitle: "Something went wrong",
+  crashBody: "This page could not be shown. Reload it, or go back to the list of conferences.",
+  crashReload: "Reload the page",
 } as const;
 
 export type MessageKey = keyof typeof en;

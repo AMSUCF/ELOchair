@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router";
-import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, useT } from "./i18n";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, translate, useT } from "./i18n";
 import { ConferencePage } from "./pages/Conference";
 import { HomePage } from "./pages/Home";
 import { InvitationPage } from "./pages/Invitation";
@@ -11,7 +12,7 @@ import { SignInPage } from "./pages/SignIn";
 import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
-import { FocusPending } from "./ui";
+import { FocusPending, PageHeading } from "./ui";
 
 export function App() {
   return (
@@ -44,10 +45,47 @@ function Layout() {
   );
 }
 
+const withoutLang = (pathname: string) => pathname.replace(/^\/[a-z]{2}(?=\/|$)/, "");
+
 /** The same page in another language: swap the leading /xx segment, keep the rest. */
 function pathIn(lang: string, pathname: string, search: string): string {
-  const rest = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, "");
-  return `/${lang}${rest || "/"}${search}`;
+  return `/${lang}${withoutLang(pathname) || "/"}${search}`;
+}
+
+/** In place of a page that failed to render: say so, in the interface language. */
+function Crashed() {
+  const { lang, t } = useT();
+  return (
+    <>
+      <PageHeading>{t("crashTitle")}</PageHeading>
+      <p role="alert">{t("crashBody")}</p>
+      <p className="actions">
+        <button type="button" onClick={() => window.location.reload()}>
+          {t("crashReload")}
+        </button>
+        <a className="button secondary" href={`/${lang}/`}>
+          {t("navConferences")}
+        </a>
+      </p>
+    </>
+  );
+}
+
+/** The router's last resort, for a failure outside any page (the shell itself). */
+export function RootError() {
+  const first = window.location.pathname.split("/")[1];
+  const lang = isLang(first) ? first : detectLang();
+  return (
+    <main id="main" lang={lang}>
+      <h1>{translate(lang, "crashTitle")}</h1>
+      <p role="alert">{translate(lang, "crashBody")}</p>
+      <p>
+        <a className="button" href={`/${lang}/`}>
+          {translate(lang, "navConferences")}
+        </a>
+      </p>
+    </main>
+  );
 }
 
 function Shell() {
@@ -98,7 +136,10 @@ function Shell() {
           </nav>
         </header>
         <main id="main">
-          <Outlet />
+          {/* A new page (not a language switch) gets a fresh boundary. */}
+          <ErrorBoundary key={withoutLang(location.pathname)} fallback={<Crashed />}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
         <footer className="site-footer">
           <p>{t("footer")}</p>

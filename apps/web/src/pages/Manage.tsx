@@ -1,9 +1,10 @@
-import type { ConferenceConfig } from "@elochair/schema";
+import type { ConferenceConfig, ContributionStatus, SubmissionStatus } from "@elochair/schema";
 import { localize } from "@elochair/schema/pure";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import type { ConferenceDetail } from "../api";
-import { type MessageKey, useT } from "../i18n";
+import { api, type ConferenceDetail } from "../api";
+import { useT } from "../i18n";
+import { statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -22,10 +23,14 @@ type Row = {
   id: string;
   title: string;
   typeKey: string;
-  status: string;
+  status: SubmissionStatus;
   issueCodes: string[];
   selfIdWarningCount: number;
-  contributors: { displayName: string | null; invitedName: string | null; status: string }[];
+  contributors: {
+    displayName: string | null;
+    invitedName: string | null;
+    status: ContributionStatus;
+  }[];
 };
 type Page = {
   items: Row[];
@@ -34,7 +39,7 @@ type Page = {
   nextCursor: string | null;
 };
 
-const STATUSES = [
+const STATUSES: SubmissionStatus[] = [
   "submitted",
   "withdrawn",
   "accepted",
@@ -43,18 +48,79 @@ const STATUSES = [
   "confirmed",
   "published",
 ];
+const PAGE_SIZE = 100;
+
+/** The list for one filter, a page at a time ("Show more" follows the server's cursor). */
+function useListing(slug: string, query: string) {
+  const [listing, setListing] = useState<(Page & { query: string }) | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** "Show more" failed: the list so far stays, with a message by the button. */
+  const [moreFailed, setMoreFailed] = useState(false);
+  /** After "Show more", the first new proposal takes focus so keyboard users continue there. */
+  const focusRow = useRef<string | null>(null);
+  const url = `/api/conferences/${slug}/submissions?${query}&limit=${PAGE_SIZE}`;
+
+  useEffect(() => {
+    let live = true;
+    setListing(null);
+    setFailed(false);
+    setMoreFailed(false);
+    api<Page>(url).then((r) => {
+      if (!live) return;
+      if (r.ok) setListing({ ...r.data, query });
+      else setFailed(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [url, query]);
+
+  useEffect(() => {
+    if (!listing || !focusRow.current) return;
+    document.getElementById(`row-${focusRow.current}`)?.focus();
+    focusRow.current = null;
+  }, [listing]);
+
+  async function more() {
+    const cursor = listing?.nextCursor;
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    setMoreFailed(false);
+    const r = await api<Page>(`${url}&cursor=${encodeURIComponent(cursor)}`);
+    setLoadingMore(false);
+    if (!r.ok) {
+      setMoreFailed(true);
+      return;
+    }
+    focusRow.current = r.data.items[0]?.id ?? null;
+    setListing((current) =>
+      current && current.query === query
+        ? {
+            ...current,
+            items: [...current.items, ...r.data.items],
+            total: r.data.total,
+            excludedCount: r.data.excludedCount,
+            nextCursor: r.data.nextCursor,
+          }
+        : current,
+    );
+  }
+
+  return { listing, failed, loadingMore, moreFailed, more };
+}
 
 /** The chair's live view of a call: counts, filters, the list and CSV exports. */
 export function ManagePage() {
   const { slug = "" } = useParams();
-  const { t } = useT();
+  const { lang, t } = useT();
   const conf = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
   const overview = useApi<Overview>(`/api/conferences/${slug}/overview`);
   const cap = useApi<{ over: { personId: string }[] }>(
     `/api/conferences/${slug}/cap-report?statuses=submitted,accepted,confirmed,published`,
   );
   const [query, setQuery] = useState("status=submitted");
-  const list = useApi<Page>(`/api/conferences/${slug}/submissions?${query}&limit=200`);
+  const { listing, failed, loadingMore, moreFailed, more } = useListing(slug, query);
 
   if (!conf || !overview) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) return <PageHeading>{t("confNotFound")}</PageHeading>;
@@ -68,6 +134,10 @@ export function ManagePage() {
   }
   const config = conf.data.config;
   const o = overview.data;
+  const formatName = (typeKey: string) => {
+    const type = config.submissionTypes.find((x) => x.key === typeKey);
+    return type ? localize(type.name, lang, config.defaultLanguage) : typeKey;
+  };
   return (
     <>
       <PageHeading title={t("manageTitle")}>{t("manageTitle")}</PageHeading>
@@ -98,33 +168,26 @@ export function ManagePage() {
         </a>
       </p>
       <Filters config={config} onApply={setQuery} />
-      {!list ? (
+      {failed ? (
+        <p role="alert">{t("errorGeneric")}</p>
+      ) : !listing ? (
         <p role="status">{t("loading")}</p>
-      ) : list.ok ? (
+      ) : (
         <>
           <p className="meta" role="status">
-            {t("manageShown", { n: list.data.total })}
-            {list.data.excludedCount
-              ? ` · ${t("manageExcluded", { n: list.data.excludedCount })}`
-              : ""}
+            {t("manageShowing", { shown: listing.items.length, total: listing.total })}
+            {listing.excludedCount ? ` · ${t("manageExcluded", { n: listing.excludedCount })}` : ""}
           </p>
           <ul className="cards">
-            {list.data.items.map((r) => (
+            {listing.items.map((r) => (
               <li key={r.id} className="card">
                 <h2>
-                  <Link to={`../s/${r.id}`} relative="path">
+                  <Link id={`row-${r.id}`} to={`/${lang}/s/${r.id}`}>
                     {r.title || t("editUntitled")}
                   </Link>
                 </h2>
                 <p className="meta">
-                  {localize(
-                    config.submissionTypes.find((x) => x.key === r.typeKey)?.name ?? {
-                      en: r.typeKey,
-                    },
-                    "en",
-                    config.defaultLanguage,
-                  )}{" "}
-                  · {t(`status_${r.status}` as MessageKey)}
+                  {formatName(r.typeKey)} · {t(statusKey(r.status))}
                 </p>
                 <p className="meta">
                   {r.contributors
@@ -147,9 +210,15 @@ export function ManagePage() {
               </li>
             ))}
           </ul>
+          {listing.nextCursor && (
+            <button type="button" className="secondary" disabled={loadingMore} onClick={more}>
+              {t("manageShowMore")}
+            </button>
+          )}
+          <p className="status-line" role="status">
+            {moreFailed ? t("errorGeneric") : ""}
+          </p>
         </>
-      ) : (
-        <p role="alert">{t("errorGeneric")}</p>
       )}
     </>
   );
@@ -176,7 +245,7 @@ function Filters({ config, onApply }: { config: ConferenceConfig; onApply: (q: s
           <option value="">{t("manageAll")}</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {t(`status_${s}` as MessageKey)}
+              {t(statusKey(s))}
             </option>
           ))}
         </select>

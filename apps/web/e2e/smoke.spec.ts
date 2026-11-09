@@ -157,6 +157,21 @@ test("a code from an earlier email still works after reloading the sign-in page"
   await expect(page).toHaveURL(/\/en\/me$/);
 });
 
+test("a page that fails to render says so in the interface language, and the rest still works", async ({
+  page,
+}) => {
+  // Data the page cannot render (as from a newer server) must not leave an empty screen.
+  await page.route("**/api/conferences", (route) =>
+    route.fulfill({ json: { conferences: [{ slug: "broken" }] } }),
+  );
+  await page.goto("/es/");
+  await expect(page.getByRole("heading", { level: 1, name: "Algo salió mal" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(/No se pudo mostrar esta página/);
+  await expectAccessible(page);
+  await page.getByRole("navigation").getByRole("link", { name: "Tu cuenta" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Tu cuenta" })).toBeVisible();
+});
+
 test("an unknown conference says so, in the heading and the title", async ({ page }) => {
   await page.goto("/en/c/no-such-conference");
   await expect(

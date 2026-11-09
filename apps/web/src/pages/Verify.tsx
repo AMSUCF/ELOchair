@@ -97,7 +97,9 @@ export function VerifyPage() {
         <>
           <p role="alert">{state.step === "missing" ? t("verifyMissing") : t("verifyFailed")}</p>
           <p>
-            <Link to={`/${lang}/sign-in`}>{t("verifyAgain")}</Link>
+            <Link className="block-link" to={`/${lang}/sign-in`}>
+              {t("verifyAgain")}
+            </Link>
           </p>
         </>
       )}

@@ -1,4 +1,12 @@
-import type { ConferenceConfig, LocalizedText } from "@elochair/schema";
+import type {
+  ConferenceConfig,
+  ConferencePhase,
+  ContributionRole,
+  ContributionStatus,
+  LocalizedText,
+  SelfIdKind,
+  SubmissionStatus,
+} from "@elochair/schema";
 
 export type Issue = { path: string; code: string; params?: Record<string, string | number> };
 
@@ -41,7 +49,7 @@ export async function api<T>(
 
 export type ConferenceSummary = {
   slug: string;
-  phase: string;
+  phase: ConferencePhase;
   year: number;
   title: LocalizedText;
   location: LocalizedText;
@@ -52,7 +60,7 @@ export type ConferenceSummary = {
 
 export type ConferenceDetail = {
   slug: string;
-  phase: string;
+  phase: ConferencePhase;
   config: ConferenceConfig;
   /** Decided by the server clock. */
   callOpen: boolean;
@@ -71,13 +79,13 @@ export type Me =
     }
   | { kind: "agent"; tier: "M" | "C"; conference: string | null };
 
-export type Role = "lead" | "presenter" | "coauthor" | "panelist" | "moderator";
+export type Role = ContributionRole;
 
 export type Contributor = {
   personId: string;
   role: Role;
   position: number;
-  status: "invited" | "confirmed" | "declined";
+  status: ContributionStatus;
   isOwner: boolean;
   displayName: string | null;
   affiliation: string | null;
@@ -99,7 +107,7 @@ export type MySubmission = {
   abstract: string;
   fields: Record<string, string | string[] | boolean | number>;
   participationMode: "in_person" | "online" | "undecided" | null;
-  status: string;
+  status: SubmissionStatus;
   createdAt: string;
   updatedAt: string;
   submittedAt: string | null;
@@ -108,9 +116,11 @@ export type MySubmission = {
 
 export type Check = {
   issues: Issue[];
-  selfIdentification: { path: string; kind: string }[];
+  selfIdentification: { path: string; kind: SelfIdKind }[];
   presenterCap: { count: number; max: number } | null;
   missingBios: number[];
+  /** Confirmed contributors whose bio (in any language) is over the conference's word limit. */
+  longBios?: number[];
 };
 
 /** Your own profile (the "self" projection). */

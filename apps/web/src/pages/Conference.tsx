@@ -1,9 +1,10 @@
 import type { ConferenceConfig } from "@elochair/schema";
-import { effectiveBlindMode, isCallOpen, localize } from "@elochair/schema/pure";
+import { effectiveBlindMode, localize } from "@elochair/schema/pure";
 import { Link, useParams } from "react-router";
 import type { ConferenceDetail, Me } from "../api";
 import { formatDateRange, formatDateTime, viewerTimeZone } from "../format";
-import { type MessageKey, useT } from "../i18n";
+import { useT } from "../i18n";
+import { deadlineKey, modalityKey, reviewKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -25,7 +26,9 @@ export function ConferencePage() {
       <>
         <PageHeading>{res.status === 404 ? t("confNotFound") : t("errorGeneric")}</PageHeading>
         <p>
-          <Link to={`/${lang}/`}>{t("navConferences")}</Link>
+          <Link className="block-link" to={`/${lang}/`}>
+            {t("navConferences")}
+          </Link>
         </p>
       </>
     );
@@ -47,12 +50,11 @@ export function ConferencePage() {
         <Localized text={c.theme} fallback={fb} />
       </p>
       <p className="meta">
-        <Localized text={c.location} fallback={fb} /> · {t(`modality_${c.modality}` as MessageKey)}{" "}
-        · {c.host}
+        <Localized text={c.location} fallback={fb} /> · {t(modalityKey(c.modality))} · {c.host}
       </p>
 
-      <SubmissionStatus config={c} />
-      <CallActions slug={res.data.slug} phase={res.data.phase} config={c} />
+      <SubmissionStatus config={c} phase={res.data.phase} open={res.data.callOpen} />
+      <CallActions slug={res.data.slug} open={res.data.callOpen} />
 
       <section aria-labelledby="dates">
         <h2 id="dates">{t("confDates")}</h2>
@@ -85,7 +87,7 @@ export function ConferencePage() {
                       ? t("confPeopleOne", { n: type.team.min })
                       : t("confPeopleExact", { n: type.team.min })}
                 </li>
-                <li>{t(`review_${effectiveBlindMode(c, type.key)}` as MessageKey)}</li>
+                <li>{t(reviewKey(effectiveBlindMode(c, type.key)))}</li>
               </ul>
               {type.fields.length > 0 && (
                 <>
@@ -134,18 +136,28 @@ export function ConferencePage() {
   );
 }
 
-function SubmissionStatus({ config: c }: { config: ConferenceConfig }) {
+/** Whether the call is open is the server's answer (`open`); the device clock decides nothing. */
+function SubmissionStatus({
+  config: c,
+  phase,
+  open,
+}: {
+  config: ConferenceConfig;
+  phase: ConferenceDetail["phase"];
+  open: boolean;
+}) {
   const { lang, t } = useT();
-  const now = Date.now();
-  const open = Date.parse(c.deadlines.submissionsOpen);
-  const close = Date.parse(c.deadlines.submissionsClose);
   // Always say which clock a deadline is on.
   const at = (iso: string) => `${formatDateTime(iso, lang, c.timezone)} (${c.timezone})`;
-  const text =
-    now < open
+  const text = open
+    ? t("confSubmitOpen", { date: at(c.deadlines.submissionsClose) })
+    : phase === "draft"
       ? t("confSubmitNotYet", { date: at(c.deadlines.submissionsOpen) })
-      : now < close
-        ? t("confSubmitOpen", { date: at(c.deadlines.submissionsClose) })
+      : phase === "cfp_open"
+        ? t("confSubmitNotOpen", {
+            open: at(c.deadlines.submissionsOpen),
+            close: at(c.deadlines.submissionsClose),
+          })
         : t("confSubmitClosed");
   return <p className="status-line">{text}</p>;
 }
@@ -162,7 +174,7 @@ function Deadlines({ config: c }: { config: ConferenceConfig }) {
           const ours = formatDateTime(c.deadlines[key], lang, mine);
           return (
             <div key={key}>
-              <dt>{t(`deadline_${key}` as MessageKey)}</dt>
+              <dt>{t(deadlineKey(key))}</dt>
               <dd>
                 <span>{theirs}</span>
                 <span className="tz">{t("confConferenceTime", { tz: c.timezone })}</span>
@@ -182,15 +194,7 @@ function Deadlines({ config: c }: { config: ConferenceConfig }) {
 }
 
 /** "Submit a proposal" while the call is open; "Manage submissions" for the conference's chairs. */
-function CallActions({
-  slug,
-  phase,
-  config,
-}: {
-  slug: string;
-  phase: string;
-  config: ConferenceConfig;
-}) {
+function CallActions({ slug, open }: { slug: string; open: boolean }) {
   const { lang, t } = useT();
   const me = useApi<Me>("/api/me");
   const chairs =
@@ -198,7 +202,6 @@ function CallActions({
     me.data.kind === "person" &&
     (me.data.siteAdmin ||
       me.data.roles.some((r) => r.conference === slug && r.role !== "reviewer"));
-  const open = isCallOpen(config, phase, new Date());
   if (!open && !chairs) return null;
   return (
     <p className="actions">

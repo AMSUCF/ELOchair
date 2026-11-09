@@ -28,6 +28,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   contrib_moderator: "Moderación",
   contrib_status_invited: "Invitación pendiente",
   contrib_status_confirmed: "Confirmada",
+  contrib_status_declined: "Rechazada",
 
   status_draft: "Borrador: aún no enviado",
   status_submitted: "Enviada",
@@ -39,6 +40,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   status_published: "Publicada",
 
   editUntitled: "Propuesta sin título",
+  editNotFound: "No encontramos esa propuesta, o no puedes verla.",
   editTitleLabel: "Título",
   editWords: "{count} palabras (entre {min} y {max})",
   editWordsUnder: "{count} palabras: se necesitan al menos {min}",
@@ -71,8 +73,18 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   editWithdrawConfirm: "¿Retirar esta propuesta? No se puede deshacer.",
   editDelete: "Eliminar borrador",
   editDeleteConfirm: "¿Eliminar este borrador? Se cancelarán las invitaciones pendientes.",
-  editStale: "Esta propuesta cambió en otro lugar. Recarga para ver la versión más reciente.",
-  editReload: "Recargar",
+  editStale:
+    "Esta propuesta cambió en otro lugar, por ejemplo cuando alguien respondió a una invitación. Carga la versión más reciente para continuar.",
+  editStaleDirty:
+    "Tus cambios sin guardar siguen en el formulario. Puedes conservarlos sobre la versión más reciente o descartarlos.",
+  editStaleKeep: "Cargar la versión más reciente y conservar mis cambios",
+  editStaleDiscard: "Descartar mis cambios y cargar la versión más reciente",
+  editReload: "Cargar la versión más reciente",
+  editReloaded: "Se cargó la versión más reciente.",
+  editReloadedKept:
+    "Se cargó la versión más reciente y se conservaron tus cambios. Revísalos y guarda.",
+  editLeaveUnsaved: "Tienes cambios sin guardar. ¿Salir de esta página y perderlos?",
+  editActionFor: "{action}: {name}",
   editClosed: "La convocatoria cerró: esta propuesta ya no se puede editar.",
   editUnsaved: "Tienes cambios sin guardar.",
   editAgreements: "Antes de enviar, lee y acepta:",
@@ -106,7 +118,13 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
     "Tienes {count} de un máximo de {max} roles de autoría principal o presentación en propuestas enviadas.",
   capOver:
     "Tienes {count} roles de autoría principal o presentación; como máximo {max} pueden estar en el programa. Si se aceptan más, la coordinación te pedirá que elijas.",
+  capNoteDraft:
+    "Si envías esta propuesta, tendrás {count} de un máximo de {max} roles de autoría principal o presentación en propuestas enviadas.",
+  capOverDraft:
+    "Si envías esta propuesta, tendrás {count} roles de autoría principal o presentación; como máximo {max} pueden estar en el programa. Si se aceptan más, la coordinación te pedirá que elijas.",
   missingBios: "Algunas personas aún no han añadido su biografía (ver Tu cuenta).",
+  longBios:
+    "Algunas biografías superan las {max} palabras. Cada persona puede acortar la suya en Tu cuenta.",
 
   issue_too_few_words: "Se necesitan al menos {min} palabras (ahora {count}).",
   issue_too_many_words: "Se permiten como máximo {max} palabras (ahora {count}).",
@@ -116,7 +134,8 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   issue_no_lead: "Alguien debe tener la autoría principal.",
   issue_multiple_leads: "Solo una persona puede tener la autoría principal.",
   issue_lead_unconfirmed: "La persona con la autoría principal debe haber confirmado.",
-  issue_contributor_name_missing: "Cada persona necesita un nombre: añade el tuyo en Tu cuenta.",
+  issue_contributor_name_missing:
+    "Cada persona necesita un nombre. Quien aún no lo haya añadido debe hacerlo en Tu cuenta.",
   issue_unknown_language: "Elige uno de los idiomas del congreso.",
   issue_too_long: "Demasiado largo (como máximo {max} caracteres).",
   issue_locked: "El formato solo puede cambiar mientras sea un borrador.",
@@ -152,6 +171,12 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
     "Este rol cuenta para el límite de {max} roles de autoría principal o presentación. Si confirmas, tendrías {count}.",
   invCapNot: "Este rol no cuenta para el límite de roles de presentación.",
   invYourName: "Tu nombre",
+  invNameHelp: "Tu propio nombre, tal como debe aparecer en el programa.",
+  invNameOwnerTyped: "Quien creó la propuesta escribió tu nombre como «{name}».",
+  invNameRequired: "Escribe tu nombre para confirmar.",
+  invConfirmedInApp: "Tu participación está confirmada. Se avisó a quien creó la propuesta.",
+  invLeft: "Dejaste esta propuesta. Se avisó a quien la creó.",
+  invWithdrawn: "Esta propuesta fue retirada. Aún puedes rechazar la invitación.",
   invConfirmed:
     "Gracias: tu participación está confirmada. Entra cuando quieras para completar tu perfil.",
   invDeclined: "Rechazaste. No figurarás en esta propuesta.",
@@ -169,6 +194,8 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   manageAll: "Todos",
   manageSearch: "Buscar en títulos",
   manageShown: "{n} mostradas",
+  manageShowing: "Se muestran {shown} de {total}",
+  manageShowMore: "Mostrar más",
   manageExcluded: "{n} que no puedes gestionar (propias o en conflicto)",
   manageDrafts: "{n} borradores en curso",
   manageIncomplete: "{n} incompletas",

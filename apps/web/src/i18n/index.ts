@@ -11,12 +11,18 @@ const catalogs: Record<Lang, Messages> = { en, es, pt };
 
 export const isLang = (x: string | undefined): x is Lang => LANGS.includes(x as Lang);
 
+/** For keys built from server data at run time (issue codes): check before translating. */
+export const isMessageKey = (x: string): x is MessageKey => Object.hasOwn(en, x);
+
 export function translate(
   lang: Lang,
   key: MessageKey,
   vars: Record<string, string | number> = {},
 ): string {
-  return catalogs[lang][key].replace(/\{(\w+)\}/g, (_, name: string) =>
+  // The typecheck guarantees every key; the fallbacks only keep a page alive if data from a newer
+  // server slips through untyped.
+  const text: string | undefined = catalogs[lang][key] ?? en[key];
+  return (text ?? key).replace(/\{(\w+)\}/g, (_, name: string) =>
     String(vars[name] ?? `{${name}}`),
   );
 }

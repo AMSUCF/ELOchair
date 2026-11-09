@@ -28,6 +28,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   contrib_moderator: "Moderação",
   contrib_status_invited: "Convite pendente",
   contrib_status_confirmed: "Confirmada",
+  contrib_status_declined: "Recusada",
 
   status_draft: "Rascunho: ainda não submetido",
   status_submitted: "Submetida",
@@ -39,6 +40,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   status_published: "Publicada",
 
   editUntitled: "Proposta sem título",
+  editNotFound: "Não encontrámos essa proposta, ou não a pode ver.",
   editTitleLabel: "Título",
   editWords: "{count} palavras (entre {min} e {max})",
   editWordsUnder: "{count} palavras: são necessárias pelo menos {min}",
@@ -71,8 +73,18 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   editWithdrawConfirm: "Retirar esta proposta? Não pode ser desfeito.",
   editDelete: "Eliminar rascunho",
   editDeleteConfirm: "Eliminar este rascunho? Os convites pendentes serão cancelados.",
-  editStale: "Esta proposta foi alterada noutro lugar. Recarregue para ver a versão mais recente.",
-  editReload: "Recarregar",
+  editStale:
+    "Esta proposta foi alterada noutro lugar, por exemplo quando alguém respondeu a um convite. Carregue a versão mais recente para continuar.",
+  editStaleDirty:
+    "As suas alterações por guardar continuam no formulário. Pode mantê-las sobre a versão mais recente ou descartá-las.",
+  editStaleKeep: "Carregar a versão mais recente e manter as minhas alterações",
+  editStaleDiscard: "Descartar as minhas alterações e carregar a versão mais recente",
+  editReload: "Carregar a versão mais recente",
+  editReloaded: "A versão mais recente foi carregada.",
+  editReloadedKept:
+    "A versão mais recente foi carregada e as suas alterações foram mantidas. Reveja-as e guarde.",
+  editLeaveUnsaved: "Tem alterações por guardar. Sair desta página e perdê-las?",
+  editActionFor: "{action}: {name}",
   editClosed: "A chamada encerrou: esta proposta já não pode ser editada.",
   editUnsaved: "Tem alterações por guardar.",
   editAgreements: "Antes de submeter, leia e aceite:",
@@ -106,7 +118,13 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
     "Tem {count} de um máximo de {max} papéis de autoria principal ou apresentação em propostas submetidas.",
   capOver:
     "Tem {count} papéis de autoria principal ou apresentação; no máximo {max} podem estar no programa. Se forem aceites mais, a coordenação vai pedir-lhe que escolha.",
+  capNoteDraft:
+    "Se submeter esta proposta, ficará com {count} de um máximo de {max} papéis de autoria principal ou apresentação em propostas submetidas.",
+  capOverDraft:
+    "Se submeter esta proposta, ficará com {count} papéis de autoria principal ou apresentação; no máximo {max} podem estar no programa. Se forem aceites mais, a coordenação vai pedir-lhe que escolha.",
   missingBios: "Algumas pessoas ainda não acrescentaram a biografia (ver A sua conta).",
+  longBios:
+    "Algumas biografias têm mais de {max} palavras. Cada pessoa pode encurtar a sua em A sua conta.",
 
   issue_too_few_words: "São necessárias pelo menos {min} palavras (agora {count}).",
   issue_too_many_words: "No máximo {max} palavras (agora {count}).",
@@ -117,7 +135,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issue_multiple_leads: "Só uma pessoa pode ter a autoria principal.",
   issue_lead_unconfirmed: "A pessoa com a autoria principal tem de ter confirmado.",
   issue_contributor_name_missing:
-    "Cada pessoa precisa de um nome: acrescente o seu em A sua conta.",
+    "Cada pessoa precisa de um nome. Quem ainda não o acrescentou tem de o fazer em A sua conta.",
   issue_unknown_language: "Escolha um dos idiomas do congresso.",
   issue_too_long: "Demasiado longo (no máximo {max} caracteres).",
   issue_locked: "O formato só pode mudar enquanto for um rascunho.",
@@ -153,6 +171,12 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
     "Este papel conta para o limite de {max} papéis de autoria principal ou apresentação. Se confirmar, ficaria com {count}.",
   invCapNot: "Este papel não conta para o limite de papéis de apresentação.",
   invYourName: "O seu nome",
+  invNameHelp: "O seu próprio nome, tal como deve aparecer no programa.",
+  invNameOwnerTyped: "Quem criou a proposta escreveu o seu nome como «{name}».",
+  invNameRequired: "Escreva o seu nome para confirmar.",
+  invConfirmedInApp: "A sua participação está confirmada. Quem criou a proposta foi avisado/a.",
+  invLeft: "Saiu desta proposta. Quem a criou foi avisado/a.",
+  invWithdrawn: "Esta proposta foi retirada. Ainda pode recusar o convite.",
   invConfirmed:
     "Obrigado: a sua participação está confirmada. Entre quando quiser para completar o seu perfil.",
   invDeclined: "Recusou. Não constará desta proposta.",
@@ -170,6 +194,8 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   manageAll: "Todos",
   manageSearch: "Pesquisar títulos",
   manageShown: "{n} mostradas",
+  manageShowing: "A mostrar {shown} de {total}",
+  manageShowMore: "Mostrar mais",
   manageExcluded: "{n} que não pode gerir (próprias ou em conflito)",
   manageDrafts: "{n} rascunhos em curso",
   manageIncomplete: "{n} incompletas",

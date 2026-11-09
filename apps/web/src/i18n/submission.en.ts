@@ -25,6 +25,7 @@ export const submissionEn = {
   contrib_moderator: "Moderator",
   contrib_status_invited: "Invited",
   contrib_status_confirmed: "Confirmed",
+  contrib_status_declined: "Declined",
 
   status_draft: "Draft: not submitted yet",
   status_submitted: "Submitted",
@@ -36,6 +37,7 @@ export const submissionEn = {
   status_published: "Published",
 
   editUntitled: "Untitled proposal",
+  editNotFound: "We could not find that proposal, or you cannot see it.",
   editTitleLabel: "Title",
   editWords: "{count} words (between {min} and {max})",
   editWordsUnder: "{count} words: at least {min} needed",
@@ -68,8 +70,17 @@ export const submissionEn = {
   editWithdrawConfirm: "Withdraw this proposal? This cannot be undone.",
   editDelete: "Delete draft",
   editDeleteConfirm: "Delete this draft? Pending invitations will be cancelled.",
-  editStale: "This proposal was changed elsewhere. Reload to see the latest version.",
-  editReload: "Reload",
+  editStale:
+    "This proposal was changed elsewhere, for example when someone answered an invitation. Load the latest version to continue.",
+  editStaleDirty:
+    "Your unsaved changes are still in the form. You can keep them on top of the latest version, or discard them.",
+  editStaleKeep: "Load the latest version and keep my changes",
+  editStaleDiscard: "Discard my changes and load the latest version",
+  editReload: "Load the latest version",
+  editReloaded: "Loaded the latest version.",
+  editReloadedKept: "Loaded the latest version and kept your changes. Review them, then save.",
+  editLeaveUnsaved: "You have unsaved changes. Leave this page and lose them?",
+  editActionFor: "{action}: {name}",
   editClosed: "The call is closed: this proposal can no longer be edited.",
   editUnsaved: "You have unsaved changes.",
   editAgreements: "Before submitting, please read and accept:",
@@ -102,7 +113,13 @@ export const submissionEn = {
   capNote: "You hold {count} of at most {max} lead or presenting roles in submitted proposals.",
   capOver:
     "You hold {count} lead or presenting roles; at most {max} can be on the program. If more are accepted, the chairs will ask you to choose.",
+  capNoteDraft:
+    "If you submit this, you will hold {count} of at most {max} lead or presenting roles in submitted proposals.",
+  capOverDraft:
+    "If you submit this, you will hold {count} lead or presenting roles; at most {max} can be on the program. If more are accepted, the chairs will ask you to choose.",
   missingBios: "Some people have not added a bio yet (see Your account).",
+  longBios:
+    "Some bios are longer than {max} words. Each person can shorten their own in Your account.",
 
   issue_too_few_words: "At least {min} words needed ({count} now).",
   issue_too_many_words: "At most {max} words allowed ({count} now).",
@@ -112,7 +129,8 @@ export const submissionEn = {
   issue_no_lead: "Someone must be the lead author.",
   issue_multiple_leads: "Only one person can be the lead author.",
   issue_lead_unconfirmed: "The lead author must have confirmed.",
-  issue_contributor_name_missing: "Every person needs a name: add yours in Your account.",
+  issue_contributor_name_missing:
+    "Every person needs a name. A co-author who has not added one must add it in Your account.",
   issue_unknown_language: "Choose one of the conference's languages.",
   issue_too_long: "Too long (at most {max} characters).",
   issue_locked: "The format can only change while this is a draft.",
@@ -148,6 +166,12 @@ export const submissionEn = {
     "This role counts toward the limit of {max} lead or presenting roles. Confirming would make it {count} for you.",
   invCapNot: "This role does not count toward the limit of presenting roles.",
   invYourName: "Your name",
+  invNameHelp: "Your own name, as it should appear on the program.",
+  invNameOwnerTyped: "The proposal's owner wrote your name as “{name}”.",
+  invNameRequired: "Enter your name to confirm.",
+  invConfirmedInApp: "You are confirmed. The owner has been told.",
+  invLeft: "You left this proposal. The owner has been told.",
+  invWithdrawn: "This proposal was withdrawn. You can still decline the invitation.",
   invConfirmed: "Thank you: you are confirmed. Sign in any time to complete your profile.",
   invDeclined: "You declined. You will not be listed on this proposal.",
   invClosed: "The call has closed. You can still decline.",
@@ -164,6 +188,8 @@ export const submissionEn = {
   manageAll: "All",
   manageSearch: "Search titles",
   manageShown: "{n} shown",
+  manageShowing: "Showing {shown} of {total}",
+  manageShowMore: "Show more",
   manageExcluded: "{n} you cannot manage (your own or conflicted)",
   manageDrafts: "{n} drafts in progress",
   manageIncomplete: "{n} incomplete",

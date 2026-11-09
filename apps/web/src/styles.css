@@ -12,6 +12,7 @@
   --notice-text: #5c4400;
   --focus: #0b6bcb;
   --danger: #b3261e;
+  --danger-text: #ffffff;
   --radius: 12px;
   --gutter: 16px;
   --touch: 44px;
@@ -31,6 +32,7 @@
     --notice-text: #fbe7a6;
     --focus: #7cc4ff;
     --danger: #ffb4ab;
+    --danger-text: #14132a;
   }
 }
 
@@ -303,7 +305,7 @@ input {
 
 select {
   padding: 4px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--muted);
   background: var(--surface);
   color: var(--text);
 }
@@ -322,7 +324,8 @@ button,
   cursor: pointer;
 }
 
-button:disabled {
+button:disabled,
+[aria-disabled="true"] {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -433,7 +436,16 @@ button.secondary,
 
 button.danger {
   background: var(--danger);
-  color: #ffffff;
+  color: var(--danger-text);
+}
+
+/* Links that stand alone (not inside a sentence) are touch targets too. */
+.block-link,
+.card h2 > a,
+.card h3 > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
 }
 
 .people {

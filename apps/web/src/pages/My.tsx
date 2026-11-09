@@ -2,7 +2,8 @@ import type { LocalizedText } from "@elochair/schema";
 import { Link } from "react-router";
 import type { MySubmission } from "../api";
 import { formatDateTime } from "../format";
-import { type MessageKey, useT } from "../i18n";
+import { useT } from "../i18n";
+import { statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -91,7 +92,7 @@ function Row({ item }: { item: Item }) {
         <Localized text={k.title} />
       </p>
       <p>
-        <span className={`badge status-${s.status}`}>{t(`status_${s.status}` as MessageKey)}</span>
+        <span className={`badge status-${s.status}`}>{t(statusKey(s.status))}</span>
       </p>
       {k.callOpen && s.status === "draft" && (
         <p className="meta">

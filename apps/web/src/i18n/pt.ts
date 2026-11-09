@@ -53,6 +53,8 @@ export const pt: Messages = {
   confSubmitNotYet: "As submissões abrem a {date}.",
   confSubmitOpen: "As submissões estão abertas até {date}.",
   confSubmitClosed: "As submissões estão encerradas.",
+  confSubmitNotOpen:
+    "As submissões não estão abertas agora. A chamada decorre de {open} a {close}.",
   signInTitle: "Entrar",
   signInIntro: "Enviamos-lhe por email um link para entrar. Não precisa de palavra-passe.",
   signInEmail: "Endereço de email",
@@ -93,4 +95,7 @@ export const pt: Messages = {
   verifyRetry: "Tentar novamente",
   signInHaveCode: "Já tenho um código",
   footer: "O ELOchair é feito para a Electronic Literature Organization.",
+  crashTitle: "Algo correu mal",
+  crashBody: "Não foi possível mostrar esta página. Recarregue-a ou volte à lista de congressos.",
+  crashReload: "Recarregar a página",
 };

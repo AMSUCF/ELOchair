@@ -2,7 +2,8 @@ import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Issue, type Me, type Profile } from "../api";
 import { describedBy, ErrorSummary, FieldError, fieldId } from "../forms";
-import { LANG_NAMES, type MessageKey, useT } from "../i18n";
+import { LANG_NAMES, useT } from "../i18n";
+import { conferenceRoleKey } from "../labels";
 import { PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -11,6 +12,8 @@ export function MePage() {
   const navigate = useNavigate();
   const res = useApi<Me>("/api/me");
   const [signOutFailed, setSignOutFailed] = useState(false);
+  /** The profile as the last save returned it (newer than the page load). */
+  const [saved, setSaved] = useState<Profile | null>(null);
 
   if (!res) return <p role="status">{t("loading")}</p>;
   if (!res.ok || res.data.kind !== "person") {
@@ -27,6 +30,7 @@ export function MePage() {
     );
   }
   const me = res.data;
+  const person = saved ?? me.person;
   async function signOut() {
     const out = await api("/api/auth/logout", { method: "POST", body: {} });
     if (out.ok) navigate(`/${lang}/`);
@@ -38,11 +42,11 @@ export function MePage() {
       <dl className="details">
         <div>
           <dt>{t("meEmail")}</dt>
-          <dd>{me.person?.email}</dd>
+          <dd>{person?.email}</dd>
         </div>
         <div>
           <dt>{t("meName")}</dt>
-          <dd>{me.person?.displayName ?? t("meNotSet")}</dd>
+          <dd>{person?.displayName || t("meNotSet")}</dd>
         </div>
       </dl>
       <h2>{t("meRoles")}</h2>
@@ -52,15 +56,17 @@ export function MePage() {
         <ul>
           {me.roles.map((r) => (
             <li key={`${r.conference}-${r.role}`}>
-              {r.conference}: {t(`role_${r.role}` as MessageKey)}
+              {r.conference}: {t(conferenceRoleKey(r.role))}
               {r.scope.length > 0 && ` (${r.scope.join(", ")})`}
             </li>
           ))}
         </ul>
       )}
-      <ProfileForm initial={me.person} />
+      <ProfileForm initial={me.person} onSaved={setSaved} />
       <p>
-        <Link to={`/${lang}/my`}>{t("navMySubmissions")}</Link>
+        <Link className="block-link" to={`/${lang}/my`}>
+          {t("navMySubmissions")}
+        </Link>
       </p>
       <button type="button" onClick={signOut}>
         {t("meSignOut")}
@@ -72,7 +78,13 @@ export function MePage() {
   );
 }
 
-function ProfileForm({ initial }: { initial: Profile | null }) {
+function ProfileForm({
+  initial,
+  onSaved,
+}: {
+  initial: Profile | null;
+  onSaved: (p: Profile) => void;
+}) {
   const { t } = useT();
   const [form, setForm] = useState({
     displayName: initial?.displayName ?? "",
@@ -105,6 +117,7 @@ function ProfileForm({ initial }: { initial: Profile | null }) {
       },
     });
     if (res.ok) {
+      if (res.data) onSaved(res.data);
       setIssues([]);
       setMessage(t("profileSaved"));
     } else {

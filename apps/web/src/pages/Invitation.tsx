@@ -1,9 +1,10 @@
 import type { Agreement, LocalizedText } from "@elochair/schema";
 import { localize } from "@elochair/schema/pure";
-import { useEffect, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type Role } from "../api";
-import { type MessageKey, useT } from "../i18n";
+import { useT } from "../i18n";
+import { roleKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 
 type Info = {
@@ -19,10 +20,23 @@ type Info = {
   title: string;
   ownerName: string | null;
   role: Role;
+  /** The name as the owner typed it: context for the invitee, never their name. */
   invitedName: string | null;
+  /** The invitee's profile has no name: confirming needs one (absent from older servers). */
+  nameNeeded?: boolean;
   presenterCap: { max: number; roleCounts: boolean; countIfConfirmed: number | null } | null;
   agreements: Agreement[];
 };
+
+type State =
+  | { step: "loading" }
+  | { step: "ready"; info: Info }
+  /** No token, expired, or already answered. */
+  | { step: "invalid" }
+  /** The server could not be reached or failed; the token is kept, so "Try again" works. */
+  | { step: "network" }
+  | { step: "rate-limited" }
+  | { step: "done"; answer: "confirmed" | "declined" };
 
 /** Read the token once, then remove it from the address bar and history. */
 function takeToken(): string | null {
@@ -31,87 +45,169 @@ function takeToken(): string | null {
   return token;
 }
 
+/** What a failed request means for the link: dead, or worth another try. */
+const failure = (status: number): State =>
+  status === 429
+    ? { step: "rate-limited" }
+    : status === 0 || status >= 500
+      ? { step: "network" }
+      : { step: "invalid" };
+
 /** The page an invitation email links to. Declining needs no account; confirming needs consent. */
 export function InvitationPage() {
   const { lang, t } = useT();
   const [token] = useState(takeToken);
-  const [info, setInfo] = useState<Info | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [done, setDone] = useState<"confirmed" | "declined" | null>(null);
+  const [state, setState] = useState<State>({ step: "loading" });
   const [name, setName] = useState("");
+  const [nameMissing, setNameMissing] = useState(false);
   const [agreed, setAgreed] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!token) {
-      setFailed(true);
+      setState({ step: "invalid" });
       return;
     }
-    api<Info>("/api/invitations/info", { method: "POST", body: { token } }).then((r) => {
-      if (r.ok) {
-        setInfo(r.data);
-        setName(r.data.invitedName ?? "");
-      } else setFailed(true);
-    });
+    setState({ step: "loading" });
+    const r = await api<Info>("/api/invitations/info", { method: "POST", body: { token } });
+    setState(r.ok ? { step: "ready", info: r.data } : failure(r.status));
   }, [token]);
 
-  async function answer(a: "confirm" | "decline") {
-    if (!info || !token) return;
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function answer(info: Info, a: "confirm" | "decline") {
+    if (busy || !token) return;
+    const confirm = a === "confirm";
+    if (confirm && info.nameNeeded === true && !name.trim()) {
+      setNameMissing(true);
+      setMessage(t("invNameRequired"));
+      nameRef.current?.focus();
+      return;
+    }
+    setBusy(true);
+    setMessage("");
     const res = await api<{ answer: "confirmed" | "declined" }>("/api/invitations/answer", {
       method: "POST",
       body: {
         token,
         answer: a,
-        acceptedAgreements: info.agreements
-          .filter((x) => agreed.has(x.key))
-          .map((x) => ({ key: x.key, version: x.version })),
-        ...(a === "confirm" && name.trim() ? { displayName: name.trim() } : {}),
+        acceptedAgreements: confirm
+          ? info.agreements
+              .filter((x) => agreed.has(x.key))
+              .map((x) => ({ key: x.key, version: x.version }))
+          : [],
+        ...(confirm && info.nameNeeded !== false && name.trim()
+          ? { displayName: name.trim() }
+          : {}),
       },
     });
-    if (res.ok) setDone(res.data.answer);
-    else
-      setMessage(
-        res.error === "call_closed"
-          ? t("invClosed")
-          : res.issues.length
-            ? t("issue_agreements_required")
-            : t("invInvalid"),
-      );
+    setBusy(false);
+    if (res.ok) setState({ step: "done", answer: res.data.answer });
+    else if (res.status === 400 || res.error === "already_answered") setState({ step: "invalid" });
+    else if (res.error === "call_closed") {
+      setMessage(t("invClosed"));
+      setState({
+        step: "ready",
+        info: { ...info, conference: { ...info.conference, callOpen: false } },
+      });
+    } else if (res.issues.some((i) => i.path === "displayName")) {
+      setNameMissing(true);
+      setMessage(t("invNameRequired"));
+      nameRef.current?.focus();
+    } else if (res.issues.length) setMessage(t("issue_agreements_required"));
+    else if (res.status === 429) setMessage(t("signInRateLimited"));
+    // The link still works: say what happened and let them tap again.
+    else setMessage(res.status === 0 ? t("verifyNetwork") : t("errorGeneric"));
   }
 
-  if (failed) {
-    return (
-      <>
-        <PageHeading>{t("invTitle")}</PageHeading>
-        <p role="alert">{t("invInvalid")}</p>
-      </>
-    );
-  }
-  if (!info) return <p role="status">{t("loading")}</p>;
-  if (done) {
-    return (
-      <>
-        <PageHeading>{t("invTitle")}</PageHeading>
-        <p role="status">{done === "confirmed" ? t("invConfirmed") : t("invDeclined")}</p>
-        {done === "confirmed" && (
-          <p>
-            <Link className="button" to={`/${lang}/sign-in`}>
-              {t("navSignIn")}
-            </Link>
-          </p>
-        )}
-      </>
-    );
-  }
-  const cap = info.presenterCap;
-  const allAgreed = info.agreements.every((a) => agreed.has(a.key));
   return (
     <>
       <PageHeading>{t("invTitle")}</PageHeading>
+      {state.step === "loading" && <p role="status">{t("loading")}</p>}
+      {state.step === "invalid" && <p role="alert">{t("invInvalid")}</p>}
+      {(state.step === "network" || state.step === "rate-limited") && (
+        <div className="stack">
+          <p role="alert">
+            {state.step === "network" ? t("verifyNetwork") : t("signInRateLimited")}
+          </p>
+          <button type="button" onClick={load}>
+            {t("verifyRetry")}
+          </button>
+        </div>
+      )}
+      {state.step === "done" && (
+        <>
+          <p role="status">{state.answer === "confirmed" ? t("invConfirmed") : t("invDeclined")}</p>
+          {state.answer === "confirmed" && (
+            <p>
+              <Link className="button" to={`/${lang}/sign-in`}>
+                {t("navSignIn")}
+              </Link>
+            </p>
+          )}
+        </>
+      )}
+      {state.step === "ready" && (
+        <Answer
+          info={state.info}
+          name={name}
+          nameMissing={nameMissing}
+          nameRef={nameRef}
+          onName={(v) => {
+            setName(v);
+            setNameMissing(false);
+          }}
+          agreed={agreed}
+          onAgreed={setAgreed}
+          busy={busy}
+          message={message}
+          onAnswer={(a) => answer(state.info, a)}
+        />
+      )}
+    </>
+  );
+}
+
+function Answer({
+  info,
+  name,
+  nameMissing,
+  nameRef,
+  onName,
+  agreed,
+  onAgreed,
+  busy,
+  message,
+  onAnswer,
+}: {
+  info: Info;
+  name: string;
+  nameMissing: boolean;
+  nameRef: RefObject<HTMLInputElement | null>;
+  onName: (v: string) => void;
+  agreed: Set<string>;
+  onAgreed: (update: (prev: Set<string>) => Set<string>) => void;
+  busy: boolean;
+  message: string;
+  onAnswer: (a: "confirm" | "decline") => void;
+}) {
+  const { lang, t } = useT();
+  const cap = info.presenterCap;
+  const allAgreed = info.agreements.every((a) => agreed.has(a.key));
+  // Asked only while the person has no name of their own; required then (older servers: optional).
+  const askName = info.nameNeeded !== false;
+  const nameRequired = info.nameNeeded === true;
+  const nameHelp = ["inv-name-help", nameMissing ? "inv-name-error" : ""].filter(Boolean).join(" ");
+  return (
+    <>
       <p>
         {t("invIntro", {
           owner: info.ownerName ?? "—",
-          role: t(`contrib_${info.role}` as MessageKey),
+          role: t(roleKey(info.role)),
           conference: localize(info.conference.title, lang),
         })}
       </p>
@@ -136,13 +232,35 @@ export function InvitationPage() {
       <div className="stack wide">
         {info.conference.callOpen && (
           <>
-            <label htmlFor="inv-name">{t("invYourName")}</label>
-            <input
-              id="inv-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-            />
+            {askName && (
+              <>
+                <label htmlFor="inv-name">
+                  {nameRequired ? `${t("invYourName")} *` : t("invYourName")}
+                </label>
+                <div id="inv-name-help">
+                  <p className="meta">{t("invNameHelp")}</p>
+                  {info.invitedName && (
+                    <p className="meta">{t("invNameOwnerTyped", { name: info.invitedName })}</p>
+                  )}
+                </div>
+                {/* Starts empty: the owner's typing is never written into the invitee's profile. */}
+                <input
+                  id="inv-name"
+                  ref={nameRef}
+                  value={name}
+                  onChange={(e) => onName(e.target.value)}
+                  autoComplete="name"
+                  aria-required={nameRequired || undefined}
+                  aria-invalid={nameMissing || undefined}
+                  aria-describedby={nameHelp}
+                />
+                {nameMissing && (
+                  <p className="field-error" id="inv-name-error">
+                    {t("invNameRequired")}
+                  </p>
+                )}
+              </>
+            )}
             {info.agreements.length > 0 && (
               <fieldset>
                 <legend>{t("editAgreements")}</legend>
@@ -154,7 +272,7 @@ export function InvitationPage() {
                         checked={agreed.has(a.key)}
                         onChange={(e) => {
                           const checked = e.target.checked;
-                          setAgreed((prev) => {
+                          onAgreed((prev) => {
                             const next = new Set(prev);
                             if (checked) next.add(a.key);
                             else next.delete(a.key);
@@ -170,7 +288,7 @@ export function InvitationPage() {
                       </p>
                     )}
                     {a.url && (
-                      <a href={a.url} target="_blank" rel="noreferrer">
+                      <a className="block-link" href={a.url} target="_blank" rel="noreferrer">
                         {t("editRead")}
                       </a>
                     )}
@@ -178,12 +296,17 @@ export function InvitationPage() {
                 ))}
               </fieldset>
             )}
-            <button type="button" disabled={!allAgreed} onClick={() => answer("confirm")}>
+            <button type="button" disabled={busy || !allAgreed} onClick={() => onAnswer("confirm")}>
               {t("editConfirm")}
             </button>
           </>
         )}
-        <button type="button" className="secondary" onClick={() => answer("decline")}>
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={() => onAnswer("decline")}
+        >
           {t("editDecline")}
         </button>
         <p className="status-line" role="status">

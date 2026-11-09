@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Issue } from "./api";
-import { type MessageKey, useT } from "./i18n";
+import { isMessageKey, useT } from "./i18n";
 
 /** The DOM id of the control for an issue path ("fields.needs" → "field-fields-needs"). */
 export const fieldId = (path: string) => `field-${path.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
@@ -9,13 +9,8 @@ export const fieldId = (path: string) => `field-${path.replace(/[^a-zA-Z0-9_-]+/
 export function useIssueText() {
   const { t } = useT();
   return (issue: Issue) => {
-    const key = `issue_${issue.code}` as MessageKey;
-    try {
-      const text = t(key, issue.params);
-      return text === key ? t("issue_generic") : text;
-    } catch {
-      return t("issue_generic");
-    }
+    const key = `issue_${issue.code}`;
+    return isMessageKey(key) ? t(key, issue.params) : t("issue_generic");
   };
 }
 

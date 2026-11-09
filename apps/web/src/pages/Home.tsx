@@ -1,7 +1,8 @@
 import { Link } from "react-router";
 import type { ConferenceSummary } from "../api";
 import { formatDateRange } from "../format";
-import { type MessageKey, useT } from "../i18n";
+import { useT } from "../i18n";
+import { modalityKey, phaseKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -26,11 +27,11 @@ export function HomePage() {
                 </Link>
               </h2>
               <p className="meta">
-                <Localized text={k.location} /> · {t(`modality_${k.modality}` as MessageKey)}
+                <Localized text={k.location} /> · {t(modalityKey(k.modality))}
               </p>
               <p className="meta">{formatDateRange(k.dates.start, k.dates.end, lang)}</p>
               <p>
-                <span className="badge">{t(`phase_${k.phase}` as MessageKey)}</span>
+                <span className="badge">{t(phaseKey(k.phase))}</span>
               </p>
             </li>
           ))}

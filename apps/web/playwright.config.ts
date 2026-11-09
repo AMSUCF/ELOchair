@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 8090;
+/** Override with E2E_PORT when several checkouts run the tests at once (the next port is used too). */
+const PORT = Number(process.env.E2E_PORT ?? 8090);
 
 /**
  * End-to-end smoke tests at phone size against the real server, which serves the built web app

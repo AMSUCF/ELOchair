@@ -1,10 +1,11 @@
 import type { ConferenceConfig } from "@elochair/schema";
-import { isCallOpen, localize } from "@elochair/schema/pure";
+import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, type ConferenceDetail, type Me, type MySubmission, type Role } from "../api";
 import { ErrorSummary } from "../forms";
-import { LANG_NAMES, type MessageKey, useT } from "../i18n";
+import { LANG_NAMES, useT } from "../i18n";
+import { modeKey, roleKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -22,7 +23,8 @@ export function StartPage() {
     return <PageHeading>{t("confNotFound")}</PageHeading>;
   }
   const c = conf.data.config;
-  const open = isCallOpen(c, conf.data.phase, new Date());
+  // The server's clock decides; a phone with a wrong clock must not hide or show the form.
+  const open = conf.data.callOpen;
   return (
     <>
       <PageHeading title={t("startTitle")}>{t("startTitle")}</PageHeading>
@@ -51,6 +53,8 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
   const [ownRole, setOwnRole] = useState<Role>("lead");
   const [busy, setBusy] = useState(false);
   const [issues, setIssues] = useState<{ path: string; code: string }[]>([]);
+  const [error, setError] = useState("");
+  const [closed, setClosed] = useState(false);
   const hybrid = c.modality === "hybrid";
   const cap = c.rules.presenterCap;
   const type = c.submissionTypes.find((x) => x.key === typeKey);
@@ -61,16 +65,21 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
       setIssues([{ path: "participationMode", code: "required" }]);
       return;
     }
+    if (busy) return;
     setBusy(true);
+    setError("");
     const res = await api<MySubmission>(`/api/conferences/${slug}/submissions`, {
       method: "POST",
       body: { typeKey, language, ownRole, ...(mode ? { participationMode: mode } : {}) },
     });
     setBusy(false);
     if (res.ok) navigate(`/${lang}/s/${res.data.id}`);
-    else setIssues(res.issues.length ? res.issues : [{ path: "typeKey", code: "generic" }]);
+    else if (res.issues.length) setIssues(res.issues);
+    else if (res.error === "call_closed") setClosed(true);
+    else setError(res.status === 0 ? t("verifyNetwork") : t("errorGeneric"));
   }
 
+  if (closed) return <p role="alert">{t("startClosed")}</p>;
   return (
     <form onSubmit={start} className="stack wide" noValidate>
       <p>{t("startIntro")}</p>
@@ -125,7 +134,7 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
                 checked={mode === m}
                 onChange={() => setMode(m)}
               />
-              <span>{t(`mode_${m}` as MessageKey)}</span>
+              <span>{t(modeKey(m))}</span>
             </label>
           ))}
         </fieldset>
@@ -139,7 +148,7 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
       >
         {ROLES.map((r) => (
           <option key={r} value={r}>
-            {t(`contrib_${r}` as MessageKey)}
+            {t(roleKey(r))}
           </option>
         ))}
       </select>
@@ -151,6 +160,9 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
       <button type="submit" disabled={busy}>
         {t("startButton", { format: type ? localize(type.name, lang, c.defaultLanguage) : "" })}
       </button>
+      <p className="status-line" role="status">
+        {error}
+      </p>
     </form>
   );
 }
