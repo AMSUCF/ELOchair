@@ -218,6 +218,32 @@ describe("CLI import-config --phase", () => {
   });
 });
 
+describe("CLI import-config over a stored config that no longer parses (#5)", () => {
+  it("replaces it, with or without --phase", async () => {
+    await saveConference(t.db, { ...configs.elo2027, slug: "legacy" }, "cfp_open");
+    // Stored under an older schema: a type key longer than today's limit of 64 characters.
+    const legacy = structuredClone({ ...configs.elo2027, slug: "legacy" });
+    legacy.submissionTypes[0]!.key = "t".repeat(70);
+    await t.db.update(conferences).set({ config: legacy }).where(eq(conferences.slug, "legacy"));
+    await expect(getConference(t.db, "legacy")).rejects.toThrow();
+
+    const fixed = join(dir, "legacy-fixed.json");
+    await writeFile(fixed, JSON.stringify({ ...configs.elo2027, slug: "legacy" }));
+    expect(await cli(["import-config", fixed])).toBe(0);
+    const repaired = await getConference(t.db, "legacy");
+    expect(repaired?.config.submissionTypes[0]?.key).toBe(configs.elo2027.submissionTypes[0]?.key);
+    expect(repaired?.phase).toBe("cfp_open");
+
+    // And with a phase move, which is checked against the stored phase as usual.
+    await t.db.update(conferences).set({ config: legacy }).where(eq(conferences.slug, "legacy"));
+    expect(await cli(["import-config", fixed, "--phase", "reviewing"])).toBe(0);
+    expect((await getConference(t.db, "legacy"))?.phase).toBe("reviewing");
+    await t.db.update(conferences).set({ config: legacy }).where(eq(conferences.slug, "legacy"));
+    expect(await cli(["import-config", fixed, "--phase", "cfp_open"])).toBe(1);
+    expect(lines.at(-1)).toMatch(/needs --force and --reason/);
+  });
+});
+
 describe("CLI seed --force", () => {
   it("is refused in production, where it would overwrite live conferences", async () => {
     await saveConference(t.db, configs.elo2027, "draft");
@@ -243,5 +269,18 @@ describe("CLI seed --force", () => {
     expect(await cli(["set-phase", "elo2027", "cfp_open"])).toBe(0);
     expect(await cli(["seed"])).toBe(0);
     expect(await phaseOf("elo2027")).toBe("cfp_open");
+  });
+
+  it("leaves alone, or with --force replaces, a stored config that no longer parses (#5)", async () => {
+    const legacy = structuredClone(configs.elo2027);
+    legacy.submissionTypes[0]!.key = "t".repeat(70);
+    await t.db.update(conferences).set({ config: legacy }).where(eq(conferences.slug, "elo2027"));
+    expect(await cli(["seed"])).toBe(0);
+    const [kept] = await t.db.select().from(conferences).where(eq(conferences.slug, "elo2027"));
+    expect(kept?.config).toEqual(legacy);
+    expect(await cli(["seed", "--force"])).toBe(0);
+    const replaced = await getConference(t.db, "elo2027");
+    expect(replaced?.config.submissionTypes[0]?.key).toBe(configs.elo2027.submissionTypes[0]?.key);
+    expect(replaced?.phase).toBe("draft");
   });
 });

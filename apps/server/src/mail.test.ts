@@ -11,7 +11,14 @@ import {
   MemoryTransport,
   magicLinkMessage,
 } from "./mail";
-import { invitationMessage, sanitizeName } from "./templates";
+import {
+  answeredMessage,
+  invitationMessage,
+  oneLine,
+  receivedMessage,
+  sanitizeName,
+  withdrawnMessage,
+} from "./templates";
 
 const db0 = openDatabase({});
 const db = db0.db;
@@ -202,5 +209,110 @@ describe("review fixes, round 3: secrets and owner-written text in mail", () => 
     ];
     for (const [input, out] of cases) expect(sanitizeName(input, "?")).toBe(out);
     expect([...sanitizeName("ü".repeat(150), "?")]).toHaveLength(100);
+  });
+});
+
+describe("review fixes, round 4: titles and names in mail to the people on a proposal", () => {
+  const titles = [
+    "three.js",
+    "Poems with p5.js",
+    "Bitsy.org and small games",
+    "Big Data: The Poetics of Databases",
+    "Netprov @ ELO 2027",
+    "Data: a love story",
+    "Tel: Aviv, in verse",
+    "Reading Taroko Gorge (nickm.com)",
+    "Poetry.exe",
+    "St.Louis, 10.0.0.1 and https://example.org/work",
+  ];
+  const ctx = {
+    conference: "ELO 2027",
+    format: "Talk",
+    link: "https://elo.example/en/s/0d5c8f1e-6a2b-4c3d-9e8f-1a2b3c4d5e6f",
+  };
+
+  it("receipts and withdrawal notices show the title as written (#2)", () => {
+    for (const title of titles) {
+      for (const lang of ["en", "es", "pt"] as const) {
+        const received = receivedMessage(lang, "a@example.org", {
+          ...ctx,
+          title,
+          deadline: "3 March 2027",
+        });
+        expect(received.text).toContain(title);
+        expect(received.text).toContain(ctx.link);
+        const withdrawn = withdrawnMessage(lang, "chairs@example.org", { ...ctx, title });
+        expect(withdrawn.text).toContain(title);
+      }
+    }
+  });
+
+  it("withdrawal notices carry the proposal's link in every language (#2)", () => {
+    for (const lang of ["en", "es", "pt"] as const) {
+      const text = withdrawnMessage(lang, "chairs@example.org", { ...ctx, title: "T" }).text;
+      expect(text.split("\n").at(-1)).toBe(ctx.link);
+    }
+  });
+
+  it("the title is put on one line, without invisible characters, and never cut silently (#2)", () => {
+    expect(oneLine("A title\nin\ttwo\r\n lines\u2028here", "—")).toBe("A title in two lines here");
+    // Bidi overrides and zero-width spaces go; joiners inside words and emoji stay.
+    expect(oneLine("Ana \u202Emoc.live\u202C Pérez\u200B", "—")).toBe("Ana moc.live Pérez");
+    expect(oneLine("می\u200Cخواهم", "—")).toBe("می\u200Cخواهم");
+    const artist = "\u{1F469}\u{1F3FD}\u200D\u{1F3A8}";
+    const scotland = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
+    expect(oneLine(`Poems ${artist} ${scotland}`, "—")).toBe(`Poems ${artist} ${scotland}`);
+    expect(oneLine(" \u200B\n ", "—")).toBe("—");
+    expect(oneLine(null, "—")).toBe("—");
+    // A generous cap, ending in an ellipsis, never splitting a character.
+    const long = `${"word ".repeat(80)}end`;
+    const cut = oneLine(long, "—");
+    expect(cut.endsWith("…")).toBe(true);
+    expect(Array.from(cut)).toHaveLength(300);
+    expect(oneLine("x".repeat(300), "—")).toBe("x".repeat(300));
+    const emoji = oneLine(artist.repeat(301), "—");
+    expect(emoji).toBe(`${artist.repeat(299)}…`);
+  });
+
+  it("the owner learns who answered from what they typed, the address included (#1)", () => {
+    for (const lang of ["en", "es", "pt"] as const) {
+      const msg = answeredMessage(lang, "owner@example.org", {
+        conference: "ELO 2027",
+        who: "bruno@example.net",
+        answer: "declined",
+        link: ctx.link,
+      });
+      expect(msg.subject).toContain("bruno@example.net");
+      expect(msg.text).toContain("bruno@example.net");
+    }
+    const named = answeredMessage("en", "owner@example.org", {
+      conference: "ELO 2027",
+      who: "Nina\nNuñez",
+      answer: "confirmed",
+      link: ctx.link,
+    });
+    expect(named.subject).toBe("ELO 2027: Nina Nuñez confirmed your proposal");
+  });
+
+  it("invitations still strip links and addresses from the owner's name (#2)", () => {
+    const text = (ownerName: string) =>
+      invitationMessage("en", "x@example.org", {
+        ownerName,
+        conference: "ELO 2027",
+        format: "Talk",
+        role: "coauthor",
+        link: "https://elo.example/en/invitation#token=inv_x",
+      }).text;
+    const phish = text("Ana Pérez verify at elo-signin.com or help@evil.example now");
+    expect(phish).toMatch(/^Ana Pérez verify at or now has listed you/);
+    expect(phish).not.toMatch(/elo-signin|evil\.example|help@/);
+    // A scheme needs a target: "Data:" and "Tel:" followed by a space are words, not links.
+    expect(sanitizeName("Big Data: The Poetics", "?")).toBe("Big Data: The Poetics");
+    expect(sanitizeName("Tel: Aviv", "?")).toBe("Tel: Aviv");
+    expect(sanitizeName("Data:", "?")).toBe("Data:");
+    expect(sanitizeName("Ana tel:+15550100 sms:5550100 data:text/html,x Pérez", "?")).toBe(
+      "Ana Pérez",
+    );
+    expect(sanitizeName("Ana JavaScript:alert(1) Pérez", "?")).toBe("Ana Pérez");
   });
 });

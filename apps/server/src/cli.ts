@@ -7,7 +7,7 @@ import { ConferenceConfig, ConferencePhase, ConferenceRole, conferences } from "
 import { eq } from "drizzle-orm";
 import { audit } from "./audit";
 import { type Db, openDatabase } from "./db/client";
-import { apiTokens, people } from "./db/schema";
+import { apiTokens, conferences as conferenceTable, people } from "./db/schema";
 import { type Env, loadEnv } from "./env";
 import { seedSandbox } from "./fixtures";
 import {
@@ -69,6 +69,19 @@ function phaseArg(value: string): ConferencePhase {
   if (!parsed.success)
     fail(`unknown phase "${value}"; phases: ${ConferencePhase.options.join(", ")}`);
   return parsed.data;
+}
+
+/**
+ * The id and phase of a stored conference, without parsing its config. For commands that
+ * replace the config: one stored under an older schema, which no longer parses, can still be
+ * replaced.
+ */
+async function storedPhase(db: Db, slug: string): Promise<{ id: string; phase: string } | null> {
+  const [row] = await db
+    .select({ id: conferenceTable.id, phase: conferenceTable.phase })
+    .from(conferenceTable)
+    .where(eq(conferenceTable.slug, slug));
+  return row ?? null;
 }
 
 /** Why a phase move was refused, in words. */
@@ -163,7 +176,7 @@ async function runCommand(
           [conferences.elo2026, "archived"],
           [conferences.elo2027, "draft"],
         ] as const) {
-          const existing = await getConference(db, config.slug);
+          const existing = await storedPhase(db, config.slug);
           if (existing && !values.force) {
             out.log(`${config.slug} already exists; left unchanged (use --force to replace it)`);
             continue;
@@ -245,7 +258,7 @@ async function runCommand(
         const phase = values.phase === undefined ? undefined : phaseArg(values.phase);
         const saved = await db.transaction(async (txRaw) => {
           const tx = txRaw as unknown as Db;
-          const existing = await getConference(tx, config.slug);
+          const existing = await storedPhase(tx, config.slug);
           // A new conference starts in the phase given. An existing one moves like set-phase:
           // forward only unless forced with a reason, checked and audited before the import.
           let moved: { from: string; to: string } | null = null;

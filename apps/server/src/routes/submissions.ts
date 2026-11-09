@@ -790,11 +790,18 @@ export const submissionRoutes = new Hono<AppEnv>()
         if (owner) {
           const lang = personLang(owner, conference);
           const ctx = mailContext(conference, rec, lang, origin);
+          const mine = rec.contributions.find((x) => x.personId === viewer.personId);
           await mail(
             "invitation_answered",
             answeredMessage(lang, owner.email, {
               conference: ctx.conference,
-              who: rec.people.get(viewer.personId)?.displayName ?? "—",
+              // As in the confirm and decline notices: the name the owner typed, else the
+              // address they invited.
+              who:
+                mine?.invitedName ??
+                mine?.invitedEmail ??
+                rec.people.get(viewer.personId)?.displayName ??
+                "—",
               answer: "left",
               link: ctx.link,
             }),

@@ -141,7 +141,8 @@ export async function answerInvitation(
         "invitation_answered",
         answeredMessage(lang, owner.email, {
           conference: ctx.conference,
-          // The name as the owner typed it (or their email): nothing the owner has not seen.
+          // The name as the owner typed it, else the address they invited: nothing the owner
+          // has not seen, so answeredMessage() shows it as typed (on one line).
           who: mine.invitedName ?? mine.invitedEmail ?? "—",
           answer: confirm ? "confirmed" : "declined",
           link: ctx.link,

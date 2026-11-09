@@ -34,6 +34,7 @@ import {
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
 import {
   COUNTED_STATUSES,
+  CursorNotFound,
   QueryNotAllowed,
   queryAllSubmissions,
   querySubmissions,
@@ -181,6 +182,12 @@ export const conferenceRoutes = new Hono<AppEnv>()
       return c.json(await querySubmissions(db, viewer, k, query));
     } catch (err) {
       if (err instanceof QueryNotAllowed) throw new Refusal(400, "q_not_allowed");
+      if (err instanceof CursorNotFound) {
+        // Shaped like any other malformed input (a ZodError): the paging has to start again.
+        throw new Refusal(400, "invalid", {
+          issues: [{ path: "cursor", message: "not a submission of this conference" }],
+        });
+      }
       throw err;
     }
   })

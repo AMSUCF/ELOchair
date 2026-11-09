@@ -441,3 +441,53 @@ describe("csv.ts on a chair projection", () => {
     expect(text).not.toContain("Declined Typed");
   });
 });
+
+describe("paging the chair list (#12)", () => {
+  const list = (query: string) =>
+    call(t.public, "GET", `/api/conferences/${s.slug}/submissions?${query}`, {
+      cookie: chairCookie,
+    });
+  const ids = (res: { json: { items: { id: string }[] } }) => res.json.items.map((i) => i.id);
+
+  it("continues after the last item shown, even when it has since left the filter", async () => {
+    const everything = ids(await list("status=submitted&limit=500"));
+    const page1 = await list("status=submitted&limit=100");
+    expect(ids(page1)).toEqual(everything.slice(0, 100));
+    const boundary = page1.json.nextCursor as string;
+    expect(boundary).toBe(everything[99]);
+    // The boundary proposal is withdrawn before "Show more": it no longer matches.
+    await t.db.update(submissions).set({ status: "withdrawn" }).where(eq(submissions.id, boundary));
+    try {
+      const page2 = await list(`status=submitted&limit=100&cursor=${boundary}`);
+      expect(page2.status).toBe(200);
+      expect(ids(page2)).toEqual(everything.slice(100, 200));
+      expect(page2.json.total).toBe(page1.json.total - 1);
+      // A cursor that never matched the filter is placed in the same order.
+      const other = page1.json.items[99].typeKey === "panel" ? "talk" : "panel";
+      const ofOtherType = ids(await list(`type=${other}&status=submitted&limit=500`));
+      expect(ofOtherType).not.toContain(boundary);
+      const position = everything.indexOf(boundary);
+      const expected = ofOtherType.filter((id) => everything.indexOf(id) > position).slice(0, 5);
+      expect(expected).toHaveLength(5);
+      const next = await list(`type=${other}&status=submitted&limit=5&cursor=${boundary}`);
+      expect(ids(next)).toEqual(expected);
+    } finally {
+      await t.db
+        .update(submissions)
+        .set({ status: "submitted" })
+        .where(eq(submissions.id, boundary));
+    }
+  });
+
+  it("refuses a cursor that is not a submission of the conference, instead of starting over", async () => {
+    const madeUp = ["00000000-0000-4000-8000-000000000000", "page-2", ownSubmittedId.slice(1)];
+    for (const cursor of madeUp) {
+      const res = await list(`status=submitted&limit=100&cursor=${cursor}`);
+      expect(res.status).toBe(400);
+      expect(res.json).toEqual({
+        error: "invalid",
+        issues: [{ path: "cursor", message: expect.any(String) }],
+      });
+    }
+  });
+});

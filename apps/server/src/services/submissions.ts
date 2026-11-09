@@ -51,6 +51,8 @@ export function ownCapCount(
 }
 
 export class QueryNotAllowed extends Error {}
+/** The cursor is not a submission of the conference (400 invalid at path "cursor"). */
+export class CursorNotFound extends Error {}
 
 export type QueryResult = {
   items: ProjectedSubmission[];
@@ -77,6 +79,13 @@ export function viewerChairs(viewer: Viewer, conferenceId: string): boolean {
 /**
  * The one query behind the REST list, the CSV exports and the MCP tools. It projects first and
  * filters only on projected fields, so a filter can never reveal what the projection hides.
+ *
+ * Paging is by key: the cursor is the ID of the last item of the previous page, and the next
+ * page holds the matching items after that submission in the conference's order (createdAt,
+ * id). The cursor is placed in that order among all of the conference's submissions, so a page
+ * continues where the last one ended even if that last item has since stopped matching the
+ * filters (withdrawn, say) or become invisible. A cursor that is not a submission of the
+ * conference throws CursorNotFound; it never silently restarts at the first page.
  */
 export async function querySubmissions(
   db: Db,
@@ -88,7 +97,11 @@ export async function querySubmissions(
   if (query.q && viewer.kind === "agent" && viewer.tier === "M") {
     throw new QueryNotAllowed("q_not_allowed");
   }
+  // In the conference's order: loadSubmissionRecords() sorts by (createdAt, id).
   const all = records ?? (await loadSubmissionRecords(db, conference));
+  const position = new Map(all.map((r, i) => [r.submission.id, i]));
+  const after = query.cursor ? position.get(query.cursor) : -1;
+  if (after === undefined) throw new CursorNotFound("cursor");
   const projected = all
     .map((r) => projectSubmission(viewer, r))
     .filter((p): p is ProjectedSubmission => p !== null);
@@ -122,14 +135,15 @@ export async function querySubmissions(
     return true;
   });
 
-  const start = query.cursor ? matches.findIndex((p) => p.id === query.cursor) + 1 : 0;
-  const page = matches.slice(start, start + query.limit);
+  // Matches keep the conference's order, so the rest starts at the first one past the cursor.
+  const rest = matches.filter((p) => (position.get(p.id) ?? -1) > after);
+  const page = rest.slice(0, query.limit);
   const last = page.at(-1);
   return {
     items: page,
     total: matches.length,
     excludedCount: excludedCount(viewer, conference, all),
-    nextCursor: last && start + page.length < matches.length ? last.id : null,
+    nextCursor: last && page.length < rest.length ? last.id : null,
   };
 }
 

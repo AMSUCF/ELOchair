@@ -1,10 +1,14 @@
-import type { ContributionRole } from "@elochair/schema";
+import { type ContributionRole, LIMITS } from "@elochair/schema";
 import type { MailMessage } from "./mail";
 
 /*
- * Participant emails: fixed text in en, es and pt. Invitations carry no text an owner wrote
- * except their own display name, sanitized to one line without links: ELO's signed mail must
- * not become a vehicle for someone else's message.
+ * Participant emails: fixed text in en, es and pt.
+ * - Invitations go to people who have agreed to nothing yet. They carry no text an owner wrote
+ *   except the owner's display name, sanitized to one line without links (sanitizeName): ELO's
+ *   signed mail must not become a vehicle for someone else's message.
+ * - Mail to people who are part of the proposal (confirmed contributors, its owner, the
+ *   conference's contact address) shows owner-written text, such as the title, as it was
+ *   typed, cleaned up to one line (oneLine).
  */
 
 export type MailLang = "en" | "es" | "pt";
@@ -21,8 +25,13 @@ export function mailLang(preferences: readonly string[], fallback: string): Mail
 /** Dots that mail clients and IDNA treat as a domain separator. */
 const DOT = "[.\\u3002\\uFF0E\\uFF61]";
 const LABEL = "[\\p{L}\\p{M}\\p{N}_-]+";
-/** Links with a scheme: "https://...", "ftp://...", "mailto:...", "tel:...". */
-const SCHEME_LINK = /\b(?:[a-z][a-z0-9+.-]*:\/\/|(?:mailto|tel|sms|callto|javascript|data):)\S*/giu;
+/**
+ * Links with a scheme: "https://...", "ftp://...", "mailto:a@b", "tel:5550100". A scheme
+ * without "//" needs a target right after its colon, so words such as "Data:" or "Tel: Aviv"
+ * stay.
+ */
+const SCHEME_LINK =
+  /\b(?:[a-z][a-z0-9+.-]*:\/\/\S*|(?:mailto|tel|sms|callto|javascript|data):\S+)/giu;
 /**
  * Bare host names ("evil-phish.com", "www.x.org/path"): a dotted name whose last label has two
  * or more letters, like every top-level domain. Initials ("J.R.R.") and "e.g." do not match.
@@ -33,10 +42,11 @@ const HOST_WITH_PATH = new RegExp(`${LABEL}(?:${DOT}${LABEL})+[/?#]\\S*`, "gu");
 const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/gu;
 
 /**
- * Owner-written text for ELO-signed mail: one line, at most 100 characters, without links. It
- * removes anything a mail client might turn into a link (URLs, bare domains, email addresses)
- * and invisible format characters (bidi overrides, zero-width), which could otherwise hide or
- * reorder text. Ordinary names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil") pass.
+ * Owner-written text for ELO-signed mail to people who have agreed to nothing (the owner's name
+ * in an invitation): one line, at most 100 characters, without links. It removes anything a
+ * mail client might turn into a link (URLs, bare domains, email addresses) and invisible format
+ * characters (bidi overrides, zero-width), which could otherwise hide or reorder text. Ordinary
+ * names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil") pass.
  */
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
   const clean = (name ?? "")
@@ -51,6 +61,40 @@ export function sanitizeName(name: string | null | undefined, fallback: string):
     .replace(/\s+/g, " ")
     .trim();
   return Array.from(clean).slice(0, 100).join("").trim() || fallback;
+}
+
+/**
+ * Format characters that oneLine() removes: every one except zero-width (non-)joiners between
+ * letters or pictographs (how Persian, Indic scripts and emoji sequences are spelled) and tag
+ * sequences after a pictograph (subdivision flags). The first two alternatives match what is
+ * kept; only the last one (captured) is a stray character.
+ */
+const FORMAT_CHAR =
+  /(?<=[\p{L}\p{M}\p{N}\p{Extended_Pictographic}\p{Emoji_Modifier}])[\u200C\u200D](?=[\p{L}\p{M}\p{Extended_Pictographic}])|(?<=\p{Extended_Pictographic})[\u{E0020}-\u{E007E}]+\u{E007F}|(\p{Cf})/gu;
+
+const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
+
+/**
+ * Owner-written text for mail to people who are part of the proposal (its title in receipts and
+ * withdrawal notices): kept as written, links and all, on one line. Line breaks, tabs and other
+ * control characters become spaces, invisible format characters (bidi overrides, zero-width
+ * spaces) are removed, runs of spaces become one, and text longer than `max` characters is cut
+ * between characters and ends with an ellipsis, never silently.
+ */
+export function oneLine(text: string | null | undefined, fallback: string, max = 300): string {
+  const clean = (text ?? "")
+    .replace(FORMAT_CHAR, (kept, stray: string | undefined) => (stray === undefined ? kept : ""))
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return fallback;
+  const chars = Array.from(GRAPHEMES.segment(clean), (g) => g.segment);
+  if (chars.length <= max) return clean;
+  const kept = chars
+    .slice(0, max - 1)
+    .join("")
+    .trimEnd();
+  return `${kept}…`;
 }
 
 const DATE_LOCALE: Record<MailLang, string> = { en: "en", es: "es-CO", pt: "pt-BR" };
@@ -122,7 +166,7 @@ export function receivedMessage(
   to: string,
   v: { conference: string; format: string; title: string; link: string; deadline: string },
 ): MailMessage {
-  const title = sanitizeName(v.title, "—");
+  const title = oneLine(v.title, "—");
   return {
     to,
     subject: {
@@ -138,12 +182,16 @@ export function receivedMessage(
   };
 }
 
+/**
+ * Withdrawal notice for confirmed contributors and the conference's contact address: the title
+ * and the proposal's link, so that the contact address can tell which proposal it was.
+ */
 export function withdrawnMessage(
   lang: MailLang,
   to: string,
-  v: { conference: string; format: string; title: string },
+  v: { conference: string; format: string; title: string; link: string },
 ): MailMessage {
-  const title = sanitizeName(v.title, "—");
+  const title = oneLine(v.title, "—");
   return {
     to,
     subject: {
@@ -152,9 +200,9 @@ export function withdrawnMessage(
       pt: `${v.conference}: proposta retirada`,
     }[lang],
     text: {
-      en: `The proposal "${title}" (${v.format}) for ${v.conference} has been withdrawn by its owner.`,
-      es: `La propuesta «${title}» (${v.format}) para ${v.conference} ha sido retirada por quien la creó.`,
-      pt: `A proposta «${title}» (${v.format}) para ${v.conference} foi retirada por quem a criou.`,
+      en: `The proposal "${title}" (${v.format}) for ${v.conference} has been withdrawn by its owner.\n\n${v.link}`,
+      es: `La propuesta «${title}» (${v.format}) para ${v.conference} ha sido retirada por quien la creó.\n\n${v.link}`,
+      pt: `A proposta «${title}» (${v.format}) para ${v.conference} foi retirada por quem a criou.\n\n${v.link}`,
     }[lang],
   };
 }
@@ -185,12 +233,17 @@ export function invitationWithdrawnMessage(
 
 export type Answer = "confirmed" | "declined" | "left";
 
+/**
+ * Tells the owner, its only recipient, that someone confirmed, declined or left. `who` is what
+ * the owner typed when inviting them (the name, else the email address), shown as typed on one
+ * line.
+ */
 export function answeredMessage(
   lang: MailLang,
   to: string,
   v: { conference: string; who: string; answer: Answer; link: string },
 ): MailMessage {
-  const who = sanitizeName(v.who, "—");
+  const who = oneLine(v.who, "—", LIMITS.name);
   const verb = {
     en: { confirmed: "confirmed", declined: "declined", left: "left" },
     es: {

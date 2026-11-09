@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AppEnv } from "./context";
 import { auditLog, people, submissions } from "./db/schema";
 import { type SandboxSummary, seedSandbox } from "./fixtures";
-import { createApiToken, saveConference } from "./repo";
+import { createApiToken, grantRole, saveConference } from "./repo";
 import { call, makeTestApp, personId, type TestApp } from "./testkit";
 
 let t: TestApp;
@@ -197,6 +197,84 @@ describe("MCP for chairs' agents", () => {
     expect(last?.details).toEqual({
       tool: "list_submissions",
       args: { type: "talk", cursor: ok.nextCursor, limit: 2, hasQuery: false },
+    });
+    await client.close();
+  });
+
+  it("every refused call writes exactly one audit row, naming the arguments only (#4)", async () => {
+    const client = await connect(t.public, tokenM);
+    const toolRows = () =>
+      t.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "agent.mcp_tool"))
+        .orderBy(auditLog.id);
+    const free = [
+      "Maria Rodriguez Universidad",
+      "Abstract: a poem about",
+      "Someone Named Here",
+      "Portugues words",
+    ];
+    const cases: [Record<string, unknown>, string[]][] = [
+      [{ type: free[0] }, ["type"]],
+      [{ track: free[1] }, ["track"]],
+      [{ cursor: free[2] }, ["cursor"]],
+      [{ language: free[3] }, ["language"]],
+      [{ type: free[0], language: free[3], status: ["submitted"] }, ["language", "type"]],
+      // Shaped like keys, up to the shared limit of 64 characters, but not keys of the
+      // conference (#6: no separate, shorter MCP limit).
+      [{ type: `k${"_".repeat(61)}` }, ["type"]],
+      [{ track: `k${"x".repeat(63)}` }, ["track"]],
+      [{ q: "   " }, ["q"]],
+      // A well-formed ID that is not a submission of the conference.
+      [{ cursor: "00000000-0000-4000-8000-000000000000" }, ["cursor"]],
+    ];
+    for (const [args, invalid] of cases) {
+      const before = (await toolRows()).length;
+      const result = await client.callTool({ name: "list_submissions", arguments: args });
+      expect(result.isError).toBe(true);
+      expect(parse(result)).toEqual({ error: "invalid", args: invalid });
+      const added = (await toolRows()).slice(before);
+      expect(added.map((r) => r.details)).toEqual([
+        { tool: "list_submissions", args: { invalid } },
+      ]);
+    }
+    expect(findLeaks(await t.db.select().from(auditLog), free)).toEqual([]);
+    await client.close();
+  });
+
+  it("accepts type and track keys up to the shared limit, as REST does (#6)", async () => {
+    const key = `t${"x".repeat(63)}`;
+    const config = structuredClone(conferences.elo2027);
+    config.slug = "longkeys";
+    config.submissionTypes = [{ ...config.submissionTypes[0]!, key }];
+    const k = await saveConference(t.db, config, "reviewing");
+    await grantRole(t.db, {
+      conferenceId: k.id,
+      personId: await personId(t, s.chairEmail),
+      role: "chair",
+    });
+    const token = (
+      await createApiToken(t.db, {
+        personId: await personId(t, s.chairEmail),
+        conferenceId: k.id,
+        tier: "M",
+        name: "long keys",
+      })
+    ).token;
+    const client = await connect(t.public, token);
+    const viaMcp = await client.callTool({ name: "list_submissions", arguments: { type: key } });
+    expect(viaMcp.isError).toBeFalsy();
+    const path = `/api/conferences/longkeys/submissions?type=${key}`;
+    const viaRest = await call(t.public, "GET", path, { token });
+    expect(viaRest.status).toBe(200);
+    expect(parse(viaMcp)).toEqual(viaRest.json);
+    const [last] = (
+      await t.db.select().from(auditLog).where(eq(auditLog.action, "agent.mcp_tool"))
+    ).slice(-1);
+    expect(last?.details).toEqual({
+      tool: "list_submissions",
+      args: { type: key, hasQuery: false },
     });
     await client.close();
   });

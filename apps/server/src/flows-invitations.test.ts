@@ -14,7 +14,7 @@ import { seedOpenCall } from "./fixtures";
 import type { MemoryTransport } from "./mail";
 import { RateLimiter } from "./ratelimit";
 import { createApiToken, grantRole } from "./repo";
-import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
+import { call, makeTestApp, ORIGIN, personId, signIn, type TestApp } from "./testkit";
 
 /*
  * Review fixes, round 3: invitation limits and their audit, answering invitations (agents,
@@ -124,8 +124,10 @@ const get = (cookie: string, s: Sub) =>
 beforeAll(async () => {
   t = await makeTestApp();
   ({ slug, conferenceId } = await seedOpenCall(t.db, { now: NOW }));
-  // These flows write a lot from one account; the per-minute write limit has its own test.
+  // These flows write a lot from one account, and sign many people in from one address; the
+  // per-minute write limit has its own test here, and the sign-in limits theirs in auth.test.ts.
   t.deps.limits.writesPerPerson = new RateLimiter(100_000, 60_000);
+  t.deps.limits.linkPerIp = new RateLimiter(100_000, 60_000);
 }, 120_000);
 afterAll(() => t.close());
 
@@ -731,6 +733,97 @@ describe("what mail carries", () => {
     const ptText = (await mailTo("deadline-pt@example.org")).at(-1)?.text;
     expect(ptText).toContain("até 3 de março de 2027");
     expect(ptText).not.toMatch(/March/);
+  });
+
+  it("the owner's notices name an invitee invited by address alone by that address (#1)", async () => {
+    const owner = await person("addr-owner@example.org", "Olga Owner", ["es"]);
+    let s = await fill(owner, await draft(owner), "Sin nombres");
+    const [byLink, decliner, inApp] = [
+      "bruno@example.net",
+      "carla@example.net",
+      "dora@example.net",
+    ];
+    secrets.push(byLink, decliner, inApp);
+    for (const email of [byLink, decliner, inApp]) {
+      const res = await invite(owner, s, email); // no name: the form does not require one
+      expect(res.status).toBe(201);
+      s = res.json;
+    }
+    const answer = async (email: string, body: Record<string, unknown>) =>
+      call(t.public, "POST", "/api/invitations/answer", {
+        body: { token: await inviteToken(email), ...body },
+      });
+    expect(
+      (
+        await answer(byLink, {
+          answer: "confirm",
+          acceptedAgreements: AGREEMENTS,
+          displayName: "Bruno Real",
+        })
+      ).json,
+    ).toEqual({ answer: "confirmed" });
+    expect((await answer(decliner, { answer: "decline" })).json).toEqual({ answer: "declined" });
+    const dora = await signIn(t, inApp);
+    expect(
+      (
+        await call(t.public, "POST", `/api/me/invitations/${s.id}/answer`, {
+          cookie: dora,
+          body: { answer: "confirm", acceptedAgreements: AGREEMENTS, displayName: "Dora Real" },
+        })
+      ).json,
+    ).toEqual({ answer: "confirmed" });
+    const left = await call(t.public, "POST", `/api/submissions/${s.id}/leave`, {
+      cookie: dora,
+      body: {},
+    });
+    expect(left.status).toBe(204);
+
+    const notices = (await mailTo("addr-owner@example.org")).filter((m) =>
+      /confirmó|rechazó|dejó/.test(m.subject),
+    );
+    expect(notices.map((m) => m.subject)).toEqual([
+      `ELO 2027 (convocatoria de prueba): ${byLink} confirmó su participación en tu propuesta`,
+      `ELO 2027 (convocatoria de prueba): ${decliner} rechazó participar en tu propuesta`,
+      `ELO 2027 (convocatoria de prueba): ${inApp} confirmó su participación en tu propuesta`,
+      `ELO 2027 (convocatoria de prueba): ${inApp} dejó tu propuesta`,
+    ]);
+    for (const m of notices) {
+      expect(m.text).toContain(`${ORIGIN}/es/s/${s.id}`);
+      expect(m.text).not.toMatch(/^—/);
+    }
+  });
+
+  it("receipts and withdrawal notices show the title as written, with the proposal's link (#2)", async () => {
+    const title = "Poems with p5.js and three.js — Big Data: Bitsy.org @ ELO 2027";
+    const owner = await person("title-owner@example.org", "Tia Title");
+    let s = await fill(owner, await draft(owner), title);
+    s = (await invite(owner, s, "title-coauthor@example.org", { name: "Cy" })).json;
+    const coauthor = await person("title-coauthor@example.org", "Cy Coauthor", ["pt"]);
+    await call(t.public, "POST", `/api/me/invitations/${s.id}/answer`, {
+      cookie: coauthor,
+      body: { answer: "confirm", acceptedAgreements: AGREEMENTS },
+    });
+    s = await submitted(owner, (await get(owner, s)).json);
+    for (const [to, lang] of [
+      ["title-owner@example.org", "en"],
+      ["title-coauthor@example.org", "pt"],
+    ] as const) {
+      const receipt = (await mailTo(to)).at(-1)?.text ?? "";
+      expect(receipt).toContain(title);
+      expect(receipt).toContain(`${ORIGIN}/${lang}/s/${s.id}`);
+    }
+    const wd = await call(t.public, "POST", `/api/submissions/${s.id}/withdraw`, {
+      cookie: owner,
+      body: { version: s.version },
+    });
+    expect(wd.json.status).toBe("withdrawn");
+    const contact = (await mailTo(conferences.elo2027.contactEmail)).at(-1)?.text ?? "";
+    expect(contact).toContain(title);
+    expect(contact).toContain(`${ORIGIN}/en/s/${s.id}`);
+    const toCoauthor = (await mailTo("title-coauthor@example.org")).at(-1)?.text ?? "";
+    expect(toCoauthor).toMatch(/foi retirada/);
+    expect(toCoauthor).toContain(title);
+    expect(toCoauthor).toContain(`${ORIGIN}/pt/s/${s.id}`);
   });
 });
 
