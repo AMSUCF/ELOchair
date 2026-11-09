@@ -19,12 +19,28 @@ const NOT_ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 /**
  * Zero-width (non-)joiners are how some scripts are spelled (Persian compound surnames, Indic
  * scripts) and how emoji sequences are built, so they are allowed between letters or
- * pictographs, and nowhere else.
+ * pictographs, and nowhere else. A skin tone counts as part of the pictograph before it: the
+ * woman artist with a medium skin tone is U+1F469 U+1F3FD U+200D U+1F3A8.
  */
 const JOINER_IN_WORD =
-  /(?<=[\p{L}\p{M}\p{N}\p{Extended_Pictographic}])[\u200C\u200D](?=[\p{L}\p{M}\p{Extended_Pictographic}])/gu;
+  /(?<=[\p{L}\p{M}\p{N}\p{Extended_Pictographic}\p{Emoji_Modifier}])[\u200C\u200D](?=[\p{L}\p{M}\p{Extended_Pictographic}])/gu;
+/**
+ * The invisible tags of a subdivision flag (Scotland is the black flag U+1F3F4, then the tags
+ * g b s c t and a cancel tag): a region's two letters, one to four letters or digits, and the
+ * cancel tag, right after the black flag. Tags are otherwise refused, because they can spell
+ * out hidden text.
+ */
+const SUBDIVISION_TAGS =
+  /(?<=\u{1F3F4})[\u{E0061}-\u{E007A}]{2}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{1,4}\u{E007F}/gu;
 /** A letter or digit that shows on screen (Hangul fillers are letters, but invisible). */
 const VISIBLE_LETTER = /(?!\p{Default_Ignorable_Code_Point})[\p{L}\p{N}]/u;
+
+/**
+ * Unpaired UTF-16 surrogates: half a character, which is no text at all. Postgres refuses them
+ * inside JSON (a 500 instead of a 400) and turns them into U+FFFD in text columns.
+ */
+const isWellFormed = (s: string) => !/\p{Cs}/u.test(s);
+const WELL_FORMED = "text without broken characters (unpaired UTF-16 surrogates)";
 
 /** One line of text, trimmed, with at least one visible letter or digit and nothing invisible. */
 export const OneLine = (max: number) =>
@@ -33,8 +49,9 @@ export const OneLine = (max: number) =>
     .trim()
     .min(1)
     .max(max)
+    .refine(isWellFormed, WELL_FORMED)
     .refine(
-      (s) => !NOT_ONE_LINE.test(s.replace(JOINER_IN_WORD, "")),
+      (s) => !NOT_ONE_LINE.test(s.replace(SUBDIVISION_TAGS, "").replace(JOINER_IN_WORD, "")),
       "one line of text, without control or invisible formatting characters",
     )
     .refine((s) => VISIBLE_LETTER.test(s), "at least one letter or digit");
@@ -48,29 +65,25 @@ const Text = (max: number) =>
   z
     .string()
     .max(max)
-    .refine((s) => !hasStrayControl(s), NO_CONTROL);
+    .refine((s) => !hasStrayControl(s), NO_CONTROL)
+    .refine(isWellFormed, WELL_FORMED);
 
 export { LIMITS };
 
 const Version = z.int().min(1);
 
+/** Whether every string in a field value (the value itself, or each item of a list) passes. */
+const everyString = (v: FieldValue, ok: (s: string) => boolean) =>
+  typeof v === "string" ? ok(v) : Array.isArray(v) ? v.every(ok) : true;
+
 const BoundedFieldValue = FieldValue.refine(
   (v) =>
-    typeof v === "string"
-      ? v.length <= LIMITS.fieldText
-      : Array.isArray(v)
-        ? v.length <= LIMITS.fieldItems && v.every((x) => x.length <= LIMITS.fieldText)
-        : true,
+    (!Array.isArray(v) || v.length <= LIMITS.fieldItems) &&
+    everyString(v, (s) => s.length <= LIMITS.fieldText),
   `field values are limited to ${LIMITS.fieldText} characters`,
-).refine(
-  (v) =>
-    typeof v === "string"
-      ? !hasStrayControl(v)
-      : Array.isArray(v)
-        ? !v.some(hasStrayControl)
-        : true,
-  NO_CONTROL,
-);
+)
+  .refine((v) => everyString(v, (s) => !hasStrayControl(s)), NO_CONTROL)
+  .refine((v) => everyString(v, isWellFormed), WELL_FORMED);
 
 export const CreateSubmissionInput = z
   .object({

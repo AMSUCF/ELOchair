@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Key } from "./config";
+import { LocalizedText } from "./i18n";
 import { AnswerInvitationInput, OneLine, ProfileInput, UpdateSubmissionInput } from "./inputs";
 
 const name = OneLine(200);
@@ -57,6 +58,56 @@ describe("one-line text: names, affiliations, pronouns", () => {
     expect(name.safeParse(s).success).toBe(false);
   });
 
+  const cp = (...points: number[]) => String.fromCodePoint(...points);
+  const ZWJ = 0x200d;
+  /** Tag characters spelling `text`, as in subdivision flags (and in hidden-text tricks). */
+  const tags = (text: string) => cp(...[...text].map((c) => 0xe0000 + c.charCodeAt(0)));
+  const BLACK_FLAG = 0x1f3f4;
+  const CANCEL_TAG = 0xe007f;
+
+  it.each([
+    ["woman artist, medium skin tone", `she/her ${cp(0x1f469, 0x1f3fd, ZWJ, 0x1f3a8)}`],
+    ["technologist, dark skin tone", `ela/dela ${cp(0x1f9d1, 0x1f3ff, ZWJ, 0x1f4bb)}`],
+    [
+      "couple with heart, two skin tones",
+      `they ${cp(0x1f9d1, 0x1f3fb, ZWJ, 0x2764, 0xfe0f, ZWJ, 0x1f9d1, 0x1f3ff)}`,
+    ],
+    ["thumbs up with a skin tone", `they ${cp(0x1f44d, 0x1f3fd)}`],
+    ["woman artist", `she/her ${cp(0x1f469, ZWJ, 0x1f3a8)}`],
+    ["family", `he/him ${cp(0x1f468, ZWJ, 0x1f469, ZWJ, 0x1f467)}`],
+    ["transgender flag", `they/them ${cp(0x1f3f3, 0xfe0f, ZWJ, 0x26a7, 0xfe0f)}`],
+    ["the flag of Scotland", `she ${cp(BLACK_FLAG)}${tags("gbsct")}${cp(CANCEL_TAG)}`],
+    ["the flag of Wales", `he ${cp(BLACK_FLAG)}${tags("gbwls")}${cp(CANCEL_TAG)}`],
+    [
+      "a subdivision flag outside the emoji set",
+      `ela ${cp(BLACK_FLAG)}${tags("usca")}${cp(CANCEL_TAG)}`,
+    ],
+    ["a letter from outside the BMP", `${cp(0x1d49c)}na Pérez`],
+  ])("accepts emoji and astral characters: %s", (_, s) => {
+    expect(name.safeParse(s).success).toBe(true);
+  });
+
+  it.each([
+    ["a lone tag character", `Ana${tags("g")}`],
+    ["tags without a flag", `Ana ${tags("gbsct")}${cp(CANCEL_TAG)}`],
+    ["tags after another pictograph", `she ${cp(0x1f3f3)}${tags("gbsct")}${cp(CANCEL_TAG)}`],
+    ["a flag's tags without the cancel tag", `she ${cp(BLACK_FLAG)}${tags("gbsct")}`],
+    ["a black flag and only the cancel tag", `she ${cp(BLACK_FLAG, CANCEL_TAG)}`],
+    [
+      "hidden words in tags after a flag",
+      `Ana ${cp(BLACK_FLAG)}${tags("ignoreall")}${cp(CANCEL_TAG)}`,
+    ],
+    ["hidden text with spaces", `Ana ${cp(BLACK_FLAG)}${tags("gb sct")}${cp(CANCEL_TAG)}`],
+    ["a joiner after a skin tone, at the end", `they ${cp(0x1f44d, 0x1f3fd, ZWJ)}`],
+    ["a joiner after a skin tone, before a space", `she ${cp(0x1f469, 0x1f3fd, ZWJ)} x`],
+    ["a skin tone then a right-to-left mark", `she ${cp(0x1f469, 0x1f3fd, 0x200f)}`],
+    ["a lone high surrogate", `Ana ${String.fromCharCode(0xd800)} Pérez`],
+    ["a lone low surrogate", `${String.fromCharCode(0xdc00)}Ana`],
+    ["surrogates in the wrong order", `Ana ${String.fromCharCode(0xdc00, 0xd800)}`],
+  ])("refuses %s", (_, s) => {
+    expect(name.safeParse(s).success).toBe(false);
+  });
+
   it("applies to the name an invitee gives when confirming", () => {
     const answer = (displayName: string) =>
       AnswerInvitationInput.safeParse({ answer: "confirm", displayName }).success;
@@ -100,6 +151,29 @@ describe("free text: title, abstract, field values and bios", () => {
     expect(update({ fields: { needs: text } })).toBe(false);
     expect(update({ fields: { platforms: ["web", text] } })).toBe(false);
     expect(profile({ en: text })).toBe(false);
+  });
+
+  it.each([
+    ["a lone high surrogate", String.fromCharCode(0xd800)],
+    ["a lone low surrogate", String.fromCharCode(0xdc00)],
+    ["a reversed pair", String.fromCharCode(0xdc00, 0xd800)],
+  ])("refuses %s (Postgres refuses it in JSON: a 500, not a 400)", (_, ch) => {
+    const text = `a${ch}b`;
+    expect(update({ title: text })).toBe(false);
+    expect(update({ abstract: text })).toBe(false);
+    expect(update({ fields: { needs: text } })).toBe(false);
+    expect(update({ fields: { platforms: ["web", text] } })).toBe(false);
+    expect(profile({ en: text })).toBe(false);
+    expect(LocalizedText.safeParse({ en: text }).success).toBe(false);
+  });
+
+  it("keeps characters outside the BMP, which are written as surrogate pairs", () => {
+    const text = `Olas ${String.fromCodePoint(0x1f30a)} y ${String.fromCodePoint(0x1d49c)}`;
+    expect(text).toHaveLength(12);
+    expect(update({ title: text, abstract: text })).toBe(true);
+    expect(update({ fields: { needs: text, platforms: [text] } })).toBe(true);
+    expect(profile({ en: text })).toBe(true);
+    expect(LocalizedText.safeParse({ en: text }).success).toBe(true);
   });
 });
 
