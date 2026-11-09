@@ -52,6 +52,22 @@ async function signedIn(
   return c.json({ person: person && projectSelf(viewer, person) });
 }
 
+type Outcome = "allowed" | "refused_first" | "refused";
+
+/**
+ * Audits the first refusal in each limiter window (spec 02 §2.1: every 429 is audited), without
+ * the IP or the address: the row says which limit, nothing about who.
+ */
+async function rateLimited(c: Context<AppEnv>, outcome: Outcome, limit: string) {
+  if (outcome === "refused_first") {
+    await audit(c.get("deps").db, c.get("viewer"), {
+      action: "auth.rate_limited",
+      details: { limit },
+    });
+  }
+  return c.json({ error: "rate_limited" }, 429);
+}
+
 export const authRoutes = new Hono<AppEnv>()
   .post("/request-link", async (c) => {
     const deps = c.get("deps");
@@ -59,9 +75,10 @@ export const authRoutes = new Hono<AppEnv>()
     const email = normalizeEmail(body.email);
     // The answer never depends on whether an account exists, so this cannot enumerate people.
     // Check the IP first: a request refused for its IP must not use up the address's budget.
-    if (!deps.limits.linkPerIp.hit(c.get("clientIp")) || !deps.limits.linkPerEmail.hit(email)) {
-      return c.json({ error: "rate_limited" }, 429);
-    }
+    const perIp = deps.limits.linkPerIp.attempt(c.get("clientIp"));
+    if (perIp !== "allowed") return rateLimited(c, perIp, "link_per_ip");
+    const perEmail = deps.limits.linkPerEmail.attempt(email);
+    if (perEmail !== "allowed") return rateLimited(c, perEmail, "link_per_email");
     await requestMagicLink(deps.db, {
       email,
       lang: body.lang,
@@ -98,9 +115,8 @@ export const authRoutes = new Hono<AppEnv>()
     // Limited per IP only. Per address, brute force is already bounded by the five attempts on
     // each code and by how many codes can be requested, and a per-address limit would let any
     // IP block someone else's sign-in.
-    if (!deps.limits.codePerIp.hit(c.get("clientIp"))) {
-      return c.json({ error: "rate_limited" }, 429);
-    }
+    const perIp = deps.limits.codePerIp.attempt(c.get("clientIp"));
+    if (perIp !== "allowed") return rateLimited(c, perIp, "code_per_ip");
     const result = await verifyCode(deps.db, {
       email: normalizeEmail(body.email),
       code: body.code,

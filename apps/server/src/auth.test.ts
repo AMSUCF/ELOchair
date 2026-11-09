@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { loginTokens } from "./db/schema";
+import { auditLog, loginTokens } from "./db/schema";
 import { call, makeTestApp, signIn, type TestApp } from "./testkit";
 
 let t: TestApp;
@@ -143,6 +143,29 @@ describe("review fixes: rate limits", () => {
     }
     // From another IP the victim can still ask for links: their own budget was never touched.
     expect(u.deps.limits.linkPerEmail.hit("victim@example.org")).toBe(true);
+    // The first refusal in the window is audited once, without the address or the IP.
+    const rows = (await u.db.select().from(auditLog)).filter(
+      (r) => r.action === "auth.rate_limited",
+    );
+    expect(rows.map((r) => r.details)).toEqual([{ limit: "link_per_ip" }]);
+    expect(JSON.stringify(rows)).not.toMatch(/example\.org|127\.0\.0\.1/);
+    await u.close();
+  });
+
+  it("refused code guesses are audited once per window", async () => {
+    const u = await makeTestApp();
+    let refused = 0;
+    for (let i = 0; i < 40; i++) {
+      const r = await call(u.public, "POST", "/api/auth/verify-code", {
+        body: { email: "guess@example.org", code: "12345678" },
+      });
+      if (r.status === 429) refused++;
+    }
+    expect(refused).toBeGreaterThan(1);
+    const rows = (await u.db.select().from(auditLog)).filter(
+      (r) => r.action === "auth.rate_limited",
+    );
+    expect(rows.map((r) => r.details)).toEqual([{ limit: "code_per_ip" }]);
     await u.close();
   });
 

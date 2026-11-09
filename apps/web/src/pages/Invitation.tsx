@@ -24,6 +24,8 @@ type Info = {
   invitedName: string | null;
   /** The invitee's profile has no name: confirming needs one (absent from older servers). */
   nameNeeded?: boolean;
+  /** The submission's status: withdrawn work can only be declined. */
+  status?: string;
   presenterCap: { max: number; roleCounts: boolean; countIfConfirmed: number | null } | null;
   agreements: Agreement[];
 };
@@ -202,6 +204,9 @@ function Answer({
   const askName = info.nameNeeded !== false;
   const nameRequired = info.nameNeeded === true;
   const nameHelp = ["inv-name-help", nameMissing ? "inv-name-error" : ""].filter(Boolean).join(" ");
+  const withdrawn = info.status === "withdrawn";
+  // Declining is always possible; confirming needs an open call and work that is not withdrawn.
+  const canConfirm = info.conference.callOpen && !withdrawn;
   return (
     <>
       <p>
@@ -228,9 +233,13 @@ function Answer({
             : t("invCapNot")}
         </p>
       )}
-      {!info.conference.callOpen && <p className="notice">{t("invClosed")}</p>}
+      {withdrawn ? (
+        <p className="notice">{t("invWithdrawn")}</p>
+      ) : (
+        !info.conference.callOpen && <p className="notice">{t("invClosed")}</p>
+      )}
       <div className="stack wide">
-        {info.conference.callOpen && (
+        {canConfirm && (
           <>
             {askName && (
               <>

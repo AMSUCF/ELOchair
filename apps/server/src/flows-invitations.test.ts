@@ -687,9 +687,24 @@ describe("what mail carries", () => {
   });
 
   it("an owner's display name loses bare domains and email addresses in invitations (#23 #59)", async () => {
+    // Bidi and zero-width characters are refused at input (OneLine); sanitizeName strips them
+    // again for names saved before that rule (see mail.test.ts).
+    const bidi = await call(t.public, "PUT", "/api/me/profile", {
+      cookie: await signIn(t, "phish-bidi@example.org"),
+      body: {
+        displayName: "Ana Pérez ‮moc.evil",
+        affiliation: null,
+        country: null,
+        languages: ["en"],
+        pronouns: null,
+        orcid: null,
+        bios: {},
+      },
+    });
+    expect(bidi.status).toBe(400);
     const owner = await person(
       "phish-owner@example.org",
-      "Ana Pérez ‮verify at elo-signin.com or help@evil.example now",
+      "Ana Pérez verify at elo-signin.com or help@evil.example now",
     );
     const s = await draft(owner);
     await invite(owner, s, "phish-target@example.org");
