@@ -51,8 +51,23 @@ export function ownCapCount(
 }
 
 export class QueryNotAllowed extends Error {}
-/** The cursor is not a submission of the conference (400 invalid at path "cursor"). */
-export class CursorNotFound extends Error {}
+/** Paging order: (createdAt, id), at the millisecond precision a cursor carries. */
+type PagingKey = readonly [number, string];
+const pagingKey = (r: SubmissionRecord): PagingKey => [
+  Date.parse(r.submission.createdAt),
+  r.submission.id,
+];
+const comesAfter = (a: PagingKey, b: PagingKey) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
+const byPagingKey = (a: SubmissionRecord, b: SubmissionRecord) => {
+  const [x, y] = [pagingKey(a), pagingKey(b)];
+  return comesAfter(x, y) ? 1 : comesAfter(y, x) ? -1 : 0;
+};
+/** The cursor format is checked by SubmissionQuery (PageCursor): "<ms>.<id>". */
+function parseCursor(cursor: string): PagingKey {
+  const dot = cursor.indexOf(".");
+  return [Number(cursor.slice(0, dot)), cursor.slice(dot + 1)];
+}
+const cursorAt = ([ms, id]: PagingKey) => `${ms}.${id}`;
 
 export type QueryResult = {
   items: ProjectedSubmission[];
@@ -80,13 +95,10 @@ export function viewerChairs(viewer: Viewer, conferenceId: string): boolean {
  * The one query behind the REST list, the CSV exports and the MCP tools. It projects first and
  * filters only on projected fields, so a filter can never reveal what the projection hides.
  *
- * Paging is by key: the cursor is the ID of the last item of the previous page, and the next
- * page holds the matching items after that submission in the conference's order (createdAt,
- * id). The cursor is placed in that order among the submissions this viewer can see, so a page
- * continues where the last one ended even if that last item has since stopped matching the
- * filters (withdrawn, say). A cursor that is not a submission this viewer can see throws
- * CursorNotFound, never a silent restart at the first page. Missing and invisible answer alike,
- * so a cursor cannot be used to learn whether someone else's draft exists.
+ * Paging is by key: the cursor is the position just after the last item of the previous page,
+ * in the order (createdAt, id). It is compared, never looked up, so a page continues where the
+ * last one ended whatever happened to that item since (withdrawn, returned to draft, deleted),
+ * and a cursor cannot be used to learn whether a submission exists.
  */
 export async function querySubmissions(
   db: Db,
@@ -98,18 +110,14 @@ export async function querySubmissions(
   if (query.q && viewer.kind === "agent" && viewer.tier === "M") {
     throw new QueryNotAllowed("q_not_allowed");
   }
-  // In the conference's order: loadSubmissionRecords() sorts by (createdAt, id).
-  const all = records ?? (await loadSubmissionRecords(db, conference));
-  const position = new Map(all.map((r, i) => [r.submission.id, i]));
+  // Sorted here by the same key cursors compare with (the database also sorts by microseconds).
+  const all = [...(records ?? (await loadSubmissionRecords(db, conference)))].sort(byPagingKey);
+  const keys = new Map(all.map((r) => [r.submission.id, pagingKey(r)]));
+  const keyOf = (id: string) => keys.get(id) as PagingKey;
   const projected = all
     .map((r) => projectSubmission(viewer, r))
     .filter((p): p is ProjectedSubmission => p !== null);
-  const after = query.cursor
-    ? projected.some((p) => p.id === query.cursor)
-      ? position.get(query.cursor)
-      : undefined
-    : -1;
-  if (after === undefined) throw new CursorNotFound("cursor");
+  const after = query.cursor ? parseCursor(query.cursor) : null;
 
   const q = query.q?.toLocaleLowerCase();
   const matches = projected.filter((p) => {
@@ -140,15 +148,15 @@ export async function querySubmissions(
     return true;
   });
 
-  // Matches keep the conference's order, so the rest starts at the first one past the cursor.
-  const rest = matches.filter((p) => (position.get(p.id) ?? -1) > after);
+  // Matches keep the paging order, so the rest starts at the first one past the cursor.
+  const rest = after ? matches.filter((p) => comesAfter(keyOf(p.id), after)) : matches;
   const page = rest.slice(0, query.limit);
   const last = page.at(-1);
   return {
     items: page,
     total: matches.length,
     excludedCount: excludedCount(viewer, conference, all),
-    nextCursor: last && page.length < rest.length ? last.id : null,
+    nextCursor: last && page.length < rest.length ? cursorAt(keyOf(last.id)) : null,
   };
 }
 

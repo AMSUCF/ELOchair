@@ -176,6 +176,19 @@ const flag = z.preprocess(
 );
 
 /** One query shape for the REST list, the CSV exports and the MCP tools. */
+/**
+ * A paging cursor: the position just after the last item of the previous page, written
+ * "<createdAt in milliseconds>.<id>". It is a position in the conference's order, not a lookup,
+ * so a page continues correctly whatever happened to that item since (withdrawn, returned to
+ * draft, deleted), and a cursor reveals nothing about submissions the viewer cannot see.
+ */
+export const PageCursor = z
+  .string()
+  .regex(
+    /^\d{1,15}\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    "nextCursor from a previous page",
+  );
+
 export const SubmissionQuery = z
   .object({
     status: list(SubmissionStatus.exclude(["draft"])).optional(),
@@ -188,7 +201,8 @@ export const SubmissionQuery = z
     incomplete: flag.optional(),
     /** Title search; refused for viewers who cannot see titles. */
     q: z.string().trim().min(1).max(LIMITS.query).optional(),
-    cursor: z.string().max(200).optional(),
+    /** nextCursor from the previous page; empty means the first page. */
+    cursor: z.union([z.literal(""), PageCursor]).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100),
   })
   .strict();

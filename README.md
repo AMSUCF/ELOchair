@@ -20,7 +20,7 @@ It is mobile-first, and chairs can run it through agents, with submission conten
   - a chair page with counts, filters and CSV exports
   - read-only MCP tools for chairs' agents
 
-  It has been through three rounds of adversarial review ([spec 02 §4](docs/specs/02-submission-mvp.md#4-review-before-the-dry-run)) and is awaiting the Barranquilla CFP and a dry run with committee volunteers.
+  It has been through four rounds of adversarial review ([spec 02 §4](docs/specs/02-submission-mvp.md#4-review-before-the-dry-run)) and is awaiting the Barranquilla CFP and a dry run with committee volunteers.
 
 ## Try it
 

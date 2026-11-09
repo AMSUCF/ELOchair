@@ -1,4 +1,4 @@
-import { type AgentViewer, projectSubmission, type SubmissionRecord } from "@elochair/policy";
+import { type AgentViewer, projectSubmission } from "@elochair/policy";
 import { LIMITS, ParticipationMode, SubmissionQuery, SubmissionStatus } from "@elochair/schema";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -34,19 +34,19 @@ const failure = (code: string, extra: Record<string, unknown> = {}) => ({
 
 /**
  * list_submissions arguments: the REST query (type and track are machine keys, language a
- * language code), with a submission ID as the cursor. Free text cannot pass as a type, track,
- * language or cursor, so none can reach the audit row. Title search (q) is the one free-text
+ * language code, the cursor a position from a previous page). Free text cannot pass as a type,
+ * track, language or cursor, so none can reach the audit row. Title search (q) is the one free-text
  * argument, and it is never audited.
  *
  * This is the only validator of those strings. The tool's advertised inputSchema bounds them as
  * plain strings, so a badly shaped value reaches the handler (which audits the refusal) instead
  * of being refused by the SDK before any audit row is written.
  */
-const ListQuery = SubmissionQuery.extend({ cursor: z.uuid().optional() });
+const ListQuery = SubmissionQuery;
 const QUERY_KEYS = new Set(Object.keys(ListQuery.shape));
 /** The longest language tag BCP 47 (RFC 5646, 4.4.1) asks implementations to support. */
 const LANGUAGE_TAG_MAX = 35;
-/** A submission ID (a UUID, 36 characters), with room for a badly shaped value to be audited. */
+/** A cursor ("<ms>.<uuid>", at most 52 characters), with room for a badly shaped value. */
 const CURSOR_MAX = 64;
 
 /** The argument names (never their values) a failed parse complains about. */
@@ -143,11 +143,7 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
         hasPendingInvitations: z.boolean().optional(),
         incomplete: z.boolean().optional(),
         q: z.string().max(LIMITS.query).optional(),
-        cursor: z
-          .string()
-          .max(CURSOR_MAX)
-          .optional()
-          .describe("nextCursor from the previous page: a submission ID"),
+        cursor: z.string().max(CURSOR_MAX).optional().describe("nextCursor from the previous page"),
         limit: z.number().int().min(1).max(500).optional(),
       },
       annotations: { readOnlyHint: true },
@@ -168,28 +164,20 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
         ...(args.limit === undefined ? {} : { limit }),
         hasQuery: Boolean(q),
       };
-      let records: SubmissionRecord[] | undefined;
       return withConference(
         tool,
         audited,
         async (k) => {
           try {
-            return await querySubmissions(deps.db, agent, k, query, records);
+            return await querySubmissions(deps.db, agent, k, query);
           } catch (err) {
             if (err instanceof QueryNotAllowed) return { error: "q_not_allowed" };
             throw err;
           }
         },
         async (k) => {
-          const refused = unknownKeys(k, query);
-          if (query.cursor) {
-            // A cursor names a submission of this conference that this token can see, whatever
-            // the filters; missing and invisible are refused alike (as querySubmissions does).
-            records = await loadSubmissionRecords(deps.db, k);
-            const at = records.find((r) => r.submission.id === query.cursor);
-            if (!at || projectSubmission(agent, at) === null) refused.push("cursor");
-          }
-          return refused.sort();
+          // The cursor's shape was checked by ListQuery; as a position it needs no lookup.
+          return unknownKeys(k, query).sort();
         },
       );
     },

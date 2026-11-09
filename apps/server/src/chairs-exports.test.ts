@@ -448,40 +448,47 @@ describe("paging the chair list (#12)", () => {
       cookie: chairCookie,
     });
   const ids = (res: { json: { items: { id: string }[] } }) => res.json.items.map((i) => i.id);
+  const idOf = (cursor: string) => cursor.slice(cursor.indexOf(".") + 1);
 
-  it("continues after the last item shown, even when it has since left the filter", async () => {
-    const everything = ids(await list("status=submitted&limit=500"));
-    const page1 = await list("status=submitted&limit=100");
-    expect(ids(page1)).toEqual(everything.slice(0, 100));
-    const boundary = page1.json.nextCursor as string;
-    expect(boundary).toBe(everything[99]);
-    // The boundary proposal is withdrawn before "Show more": it no longer matches.
-    await t.db.update(submissions).set({ status: "withdrawn" }).where(eq(submissions.id, boundary));
-    try {
-      const page2 = await list(`status=submitted&limit=100&cursor=${boundary}`);
-      expect(page2.status).toBe(200);
-      expect(ids(page2)).toEqual(everything.slice(100, 200));
-      expect(page2.json.total).toBe(page1.json.total - 1);
-      // A cursor that never matched the filter is placed in the same order.
-      const other = page1.json.items[99].typeKey === "panel" ? "talk" : "panel";
-      const ofOtherType = ids(await list(`type=${other}&status=submitted&limit=500`));
-      expect(ofOtherType).not.toContain(boundary);
-      const position = everything.indexOf(boundary);
-      const expected = ofOtherType.filter((id) => everything.indexOf(id) > position).slice(0, 5);
-      expect(expected).toHaveLength(5);
-      const next = await list(`type=${other}&status=submitted&limit=5&cursor=${boundary}`);
-      expect(ids(next)).toEqual(expected);
-    } finally {
-      await t.db
-        .update(submissions)
-        .set({ status: "submitted" })
-        .where(eq(submissions.id, boundary));
-    }
-  });
+  // What can happen to the last item shown before "Show more": it leaves the filter
+  // (withdrawn), or it leaves what the chair can see (returned to draft by its owner).
+  for (const [change, status] of [
+    ["withdrawn", "withdrawn"],
+    ["returned to draft", "draft"],
+  ] as const) {
+    it(`continues after the last item shown, even when it has since been ${change}`, async () => {
+      const everything = ids(await list("status=submitted&limit=500"));
+      const page1 = await list("status=submitted&limit=100");
+      expect(ids(page1)).toEqual(everything.slice(0, 100));
+      const cursor = page1.json.nextCursor as string;
+      const boundary = idOf(cursor);
+      expect(boundary).toBe(everything[99]);
+      await t.db.update(submissions).set({ status }).where(eq(submissions.id, boundary));
+      try {
+        const page2 = await list(`status=submitted&limit=100&cursor=${cursor}`);
+        expect(page2.status).toBe(200);
+        expect(ids(page2)).toEqual(everything.slice(100, 200));
+        expect(page2.json.total).toBe(page1.json.total - 1);
+        // The same position works under any other filter.
+        const other = page1.json.items[99].typeKey === "panel" ? "talk" : "panel";
+        const ofOtherType = ids(await list(`type=${other}&status=submitted&limit=500`));
+        const position = everything.indexOf(boundary);
+        const expected = ofOtherType.filter((id) => everything.indexOf(id) > position).slice(0, 5);
+        expect(expected).toHaveLength(5);
+        const next = await list(`type=${other}&status=submitted&limit=5&cursor=${cursor}`);
+        expect(ids(next)).toEqual(expected);
+      } finally {
+        await t.db
+          .update(submissions)
+          .set({ status: "submitted" })
+          .where(eq(submissions.id, boundary));
+      }
+    });
+  }
 
-  it("refuses a cursor that is not a submission of the conference, instead of starting over", async () => {
-    const madeUp = ["00000000-0000-4000-8000-000000000000", "page-2", ownSubmittedId.slice(1)];
-    for (const cursor of madeUp) {
+  it("refuses a cursor that is not a position from a previous page", async () => {
+    const malformed = ["page-2", ownSubmittedId, `x.${ownSubmittedId}`, "123.not-an-id"];
+    for (const cursor of malformed) {
       const res = await list(`status=submitted&limit=100&cursor=${cursor}`);
       expect(res.status).toBe(400);
       expect(res.json).toEqual({
@@ -489,20 +496,33 @@ describe("paging the chair list (#12)", () => {
         issues: [{ path: "cursor", message: expect.any(String) }],
       });
     }
+    // An empty cursor is the first page.
+    expect(ids(await list("status=submitted&limit=3&cursor="))).toEqual(
+      ids(await list("status=submitted&limit=3")),
+    );
   });
 
-  it("answers a cursor the viewer cannot see like a made-up one, so it reveals nothing", async () => {
-    const [first] = ids(await list("status=submitted&limit=1"));
-    // A signed-in stranger sees the conference but none of its proposals while it is in review.
+  it("treats a cursor as a position, so it reveals nothing about submissions", async () => {
+    const page1 = await list("status=submitted&limit=1");
+    const real = page1.json.nextCursor as string;
+    const [ms] = real.split(".");
+    // A position nobody holds is compared like any other: just before the real item at the same
+    // millisecond, so that item comes first, then the same items as after the real cursor.
+    const madeUp = `${ms}.00000000-0000-4000-8000-000000000000`;
+    const afterMadeUp = ids(await list(`status=submitted&limit=5&cursor=${madeUp}`));
+    const afterReal = ids(await list(`status=submitted&limit=5&cursor=${real}`));
+    expect(afterMadeUp).toEqual([idOf(real), ...afterReal.slice(0, 4)]);
+    // A signed-in stranger sees none of the proposals while the conference is in review: every
+    // cursor, real or not, gives the same empty answer.
     const stranger = await signIn(t, "cursor-stranger@example.org");
     const asStranger = (cursor: string) =>
       call(t.public, "GET", `/api/conferences/${s.slug}/submissions?cursor=${cursor}`, {
         cookie: stranger,
       });
-    const real = await asStranger(first as string);
-    const madeUp = await asStranger("00000000-0000-4000-8000-000000000000");
-    expect(real.status).toBe(400);
-    expect(real.json).toEqual(madeUp.json);
-    expect((await asStranger("")).status).toBe(200);
+    const a = await asStranger(real);
+    const b = await asStranger(madeUp);
+    expect(a.status).toBe(200);
+    expect(a.json).toEqual(b.json);
+    expect(a.json.items).toEqual([]);
   });
 });

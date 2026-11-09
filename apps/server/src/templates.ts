@@ -44,14 +44,16 @@ const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/gu;
 /**
  * Owner-written text for ELO-signed mail to people who have agreed to nothing (the owner's name
  * in an invitation): one line, at most 100 characters, without links. It removes anything a
- * mail client might turn into a link (URLs, bare domains, email addresses) and invisible format
- * characters (bidi overrides, zero-width), which could otherwise hide or reorder text. Ordinary
- * names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil") pass.
+ * mail client might turn into a link (URLs, bare domains, email addresses) and invisible
+ * characters other than those writing needs (removeStrayInvisible), which could otherwise hide
+ * or reorder text. Ordinary names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil",
+ * Persian and Indic names spelled with joiners) pass.
  */
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
-  const clean = (name ?? "")
-    // Format characters go first, so "evil<U+200B>.com" cannot slip past the domain rule.
-    .replace(/[\p{Cf}\p{Co}]/gu, "")
+  // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule. Kept
+  // joiners sit only between letters or pictographs, so they cannot rejoin a removed domain.
+  const clean = removeStrayInvisible(name ?? "")
+    .replace(/\p{Co}/gu, "")
     .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
     .replace(/\S*[@＠]\S*/gu, "")
     .replace(SCHEME_LINK, "")

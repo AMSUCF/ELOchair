@@ -99,7 +99,10 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - Bios are stored per language (`bios: { en, es, … }`) and kept on the person, never on the submission.
   - The configuration says whether a bio is requested and how long it may be (`rules.bio`).
   - A missing requested bio, and a bio longer than `rules.bio.maxWords` in any language (`longBios`), are warnings, not blocks.
-- **Input hygiene.** Title, abstract, custom-field text and bios accept tabs and line breaks but no other control characters, and no ill-formed Unicode (400 `invalid`). One-line fields (display name, affiliation, pronouns, invited name and affiliation) also refuse invisible formatting characters (bidi controls, zero-width spaces, soft hyphens, tag characters) and need at least one letter or digit. Two exceptions, defined once in `packages/schema/src/invisible.ts`: zero-width joiners inside words and emoji (Persian names, Indic scripts, emoji sequences), and the three standard subdivision flags (England, Scotland, Wales). Any other tag characters could spell out hidden text. Machine keys are at most 64 characters.
+- **Input hygiene.** Title, abstract, custom-field text and bios accept tabs and line breaks but no other control characters, and no ill-formed Unicode (400 `invalid`). One-line fields (display name, affiliation, pronouns, invited name and affiliation) also refuse invisible characters (format characters and default-ignorable code points: bidi controls, zero-width spaces, soft hyphens, variation selectors, tag characters, combining grapheme joiners, Hangul fillers) and need at least one letter or digit. Any of these could carry hidden text, one character per byte. The exceptions are defined once in `packages/schema/src/invisible.ts`, which mail cleanup and the browser use too:
+  - a zero-width joiner between visible letters or pictographs (Persian names, Indic conjuncts, emoji sequences);
+  - one presentation selector after an emoji;
+  - the three standard subdivision flags (England, Scotland, Wales). Machine keys are at most 64 characters.
 - The chair view and CSV include pronouns.
 
 ### 1.7 What ELO's formats need now
@@ -114,7 +117,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - filters: `status[]`, `type`, `track`, `language`, `participationMode`
   - booleans: `hasSelfIdWarnings`, `hasPendingInvitations`, `incomplete`
   - `q`, a title search
-  - paging: `cursor` and `limit`. Paging is by key: the cursor is the last ID of the previous page, placed in the conference's order (`createdAt`, `id`) among the submissions the viewer can see, so a page continues correctly even if that item has since left the filter. A cursor the viewer cannot see gets 400 `invalid` at path `cursor`, whether or not it exists.
+  - paging: `cursor` and `limit`. Paging is by key. The cursor is the position just after the last item of the previous page, written `<createdAt in ms>.<id>`. It is compared, never looked up, so a page continues correctly whatever happened to that item since (withdrawn, returned to draft, deleted), and a cursor reveals nothing about submissions the viewer cannot see. A malformed cursor gets 400 `invalid` at path `cursor`; an empty one means the first page.
 - **`querySubmissions(viewer, conference, query)`**, on the server:
   - projects every record first, then filters only on projected fields, ordered by `(createdAt, id)`
   - returns `{ items, total, excludedCount, nextCursor }`
@@ -130,10 +133,11 @@ The goal is to open a call for proposals that people can submit to from a phone,
   | Call closed or wrong phase | 409 | `call_closed` |
   | Stale version | 409 | `stale` |
   | Agent on a write route or an invitation link route | 403 | `agents_read_only` |
-  | Over a limit | 429 | `rate_limited`, audited once per window |
+  | Over a limit | 429 | `rate_limited`, audited |
 
   - The answer routes return 404 when the caller has no contribution on the submission, and 409 `already_answered` only for the caller's own answered row.
   - Rate-limit audit rows name the limit, never the address or the IP: `contributor.invite_rate_limited`, `contributor.resend_rate_limited`, `person.rate_limited`, `invitation.rate_limited` and `auth.rate_limited`. They are written after the rollback, so a refused request still leaves its row.
+  - Invitation and resend refusals are audited every time, because they are bounded by the write limit. The per-person write limit, the invitation-link limit and the sign-in limits audit the first refusal in each window, so a flood of refused requests does not become a flood of audit rows.
 
 ### 2.2 Routes
 
@@ -248,13 +252,14 @@ axe reports no violations on any new page, in light and dark mode. CI is green.
 
 ## 4. Review before the dry run
 
-On November 8–9, 2026, the built MVP had an adversarial review, followed by two more review rounds on the fixes.
+On November 8–9, 2026, the built MVP had an adversarial review, followed by three more review rounds on the fixes.
 
 | Round | Reviewed | Confirmed | Rejected | Notes |
 |---|---|---|---|---|
 | 1 | The MVP: lifecycle and concurrency, authorization and privacy, consent, audit and mail, web UI, schema and policy | 64 | 6 | 3 high: invitation limits bypassed by remove and re-invite; stale saves losing typed text; submit after unsaved edits always stale |
 | 2 | The round 1 fixes, area by area | 19 (17 distinct) | — | 1 high: quadratic backtracking in the new citation patterns |
 | 3 | The round 2 fixes | 6 | — | All low: tag characters as a hidden-text channel; lost citation forms; a cursor that revealed whether an unseen draft existed; a late retry moving focus |
+| 4 | The round 3 fixes | 5 | — | 1 medium: other invisible characters (variation selectors, unassigned tags, grapheme joiners) still carried hidden text; low: paging broke when the boundary item was returned to draft (now a position cursor), invitation mail used its own invisible-character rule, two documentation claims |
 
 How each round worked:
 - Each finding had a concrete scenario, most reproduced against the running app.
