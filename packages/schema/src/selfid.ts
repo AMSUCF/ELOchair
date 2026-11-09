@@ -168,24 +168,29 @@ const COAUTHOR_PARTICLE = `(?:(?:${[...PARTICLES].filter((p) => p !== "y" && p !
 /** A capitalized word, matched whole: the lookahead stops it from ending before its last letter. */
 const COAUTHOR_WORD = String.raw`\p{Lu}[\p{L}'’\-]{0,40}(?![\p{L}'’\-])`;
 const COAUTHOR = String.raw`${COAUTHOR_PARTICLE}${COAUTHOR_WORD}(?:\s${COAUTHOR_PARTICLE}${COAUTHOR_WORD})?`;
-/** " and ", " y ", " e ", " & ", each with an optional serial comma. */
-const CONJUNCTION = String.raw`(?:,?\s(?:and|y|e)\s|,?\s?&\s?)`;
-const ET_AL = String.raw`,?\set\.?\sal(?:ii)?\.?`;
+/** " and ", " y ", " e ", " & ", each with an optional serial comma (spaced or not). */
+const CONJUNCTION = String.raw`(?:\s?,?\s(?:and|y|e)\s|\s?,?\s?&\s?)`;
+const ET_AL = String.raw`\s?,?\set\.?\sal(?:ii)?\.?`;
 /**
  * What may stand between a cited surname and "(2021)": co-authors, "et al.", a possessive.
  * Co-authors listed with commas count only when the list ends with a conjunction or "et al."
- * ("Pérez, Gómez y Ruiz (2020)", "Pérez, Gómez et al. (2020)"): a comma alone is how places
- * are written ("León, Guanajuato (2019)", "La Paz, Bolivia (2019)").
+ * ("Pérez, Gómez y Ruiz (2020)", "Pérez, Gómez et al. (2020)", "Pérez y Gómez et al. (2020)",
+ * "Pérez y Gómez y Ruiz (2020)"): a comma alone is how places are written ("León, Guanajuato
+ * (2019)", "La Paz, Bolivia (2019)"). Every repetition is bounded and whitespace has been
+ * collapsed to single characters, so matching stays linear.
  */
-const AUTHOR_TAIL = String.raw`(?:(?:,\s?${COAUTHOR}){0,3}(?:${CONJUNCTION}${COAUTHOR}|${ET_AL}))?(?:['’]s?)?`;
+const AUTHOR_TAIL = String.raw`(?:(?:\s?,\s?${COAUTHOR}){0,3}(?:(?:${CONJUNCTION}${COAUTHOR}){1,3}(?:${ET_AL})?|${ET_AL}))?(?:['’]s?)?`;
 const OPEN_YEAR = String.raw`\s?[(\[]\s?(?:(?:eds?|orgs?|coords?|comps?)\.?\s?,?\s?)?${YEAR}`;
 
 /**
  * Articles that make the capitalized word after them a place or a title rather than someone's
  * surname: "La Paz", "La Cruz y la Espada", "Los Santos". The person's own article is allowed
- * ("La Rosa (2019)" for Ana La Rosa, "De la Cruz (2020)" for Juan de la Cruz).
+ * ("La Rosa (2019)" for Ana La Rosa, "De la Cruz (2020)" for Juan de la Cruz). "El" and "Le"
+ * are not in the list: they are as often part of a cited surname that a profile may leave out
+ * ("El Amrani" for Mohamed Amrani, "Le Nguyen" for Thanh Nguyen), and a missed self-citation
+ * costs more than a needless warning.
  */
-const ARTICLES = new Set(["EL", "LA", "LAS", "LO", "LOS", "LE", "LES"]);
+const ARTICLES = new Set(["LA", "LAS", "LO", "LOS", "LES"]);
 
 /** After a surname cited narratively: " (2019)", " et al. (2021)", " y Gómez (2020)", "'s (2019)". */
 const NARRATIVE = new RegExp(`${AUTHOR_TAIL}${OPEN_YEAR}`, "uy");

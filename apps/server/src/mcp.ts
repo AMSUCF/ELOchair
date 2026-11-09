@@ -183,9 +183,11 @@ function buildServer(deps: Deps, agent: AgentViewer): McpServer {
         async (k) => {
           const refused = unknownKeys(k, query);
           if (query.cursor) {
-            // A cursor names a submission of this conference, whatever the filters.
+            // A cursor names a submission of this conference that this token can see, whatever
+            // the filters; missing and invisible are refused alike (as querySubmissions does).
             records = await loadSubmissionRecords(deps.db, k);
-            if (!records.some((r) => r.submission.id === query.cursor)) refused.push("cursor");
+            const at = records.find((r) => r.submission.id === query.cursor);
+            if (!at || projectSubmission(agent, at) === null) refused.push("cursor");
           }
           return refused.sort();
         },

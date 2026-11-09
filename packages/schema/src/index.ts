@@ -5,6 +5,7 @@ export * from "./config";
 export * from "./domain";
 export * from "./i18n";
 export * from "./inputs";
+export * from "./invisible";
 export * from "./selfid";
 export * from "./validate";
 export * from "./words";

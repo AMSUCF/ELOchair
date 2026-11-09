@@ -694,7 +694,7 @@ describe("what mail carries", () => {
     const bidi = await call(t.public, "PUT", "/api/me/profile", {
       cookie: await signIn(t, "phish-bidi@example.org"),
       body: {
-        displayName: "Ana Pérez ‮moc.evil",
+        displayName: "Ana Pérez \u202Emoc.evil",
         affiliation: null,
         country: null,
         languages: ["en"],
@@ -712,7 +712,7 @@ describe("what mail carries", () => {
     await invite(owner, s, "phish-target@example.org");
     const text = (await mailTo("phish-target@example.org")).at(-1)?.text ?? "";
     expect(text).toMatch(/^Ana Pérez verify at or now has listed you/);
-    expect(text).not.toMatch(/elo-signin|evil\.example|@|‮/);
+    expect(text).not.toMatch(/elo-signin|evil\.example|@|\u202E/);
   });
 
   it("the receipt's deadline is written in each recipient's language (#27)", async () => {

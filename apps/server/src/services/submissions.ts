@@ -82,10 +82,11 @@ export function viewerChairs(viewer: Viewer, conferenceId: string): boolean {
  *
  * Paging is by key: the cursor is the ID of the last item of the previous page, and the next
  * page holds the matching items after that submission in the conference's order (createdAt,
- * id). The cursor is placed in that order among all of the conference's submissions, so a page
+ * id). The cursor is placed in that order among the submissions this viewer can see, so a page
  * continues where the last one ended even if that last item has since stopped matching the
- * filters (withdrawn, say) or become invisible. A cursor that is not a submission of the
- * conference throws CursorNotFound; it never silently restarts at the first page.
+ * filters (withdrawn, say). A cursor that is not a submission this viewer can see throws
+ * CursorNotFound, never a silent restart at the first page. Missing and invisible answer alike,
+ * so a cursor cannot be used to learn whether someone else's draft exists.
  */
 export async function querySubmissions(
   db: Db,
@@ -100,11 +101,15 @@ export async function querySubmissions(
   // In the conference's order: loadSubmissionRecords() sorts by (createdAt, id).
   const all = records ?? (await loadSubmissionRecords(db, conference));
   const position = new Map(all.map((r, i) => [r.submission.id, i]));
-  const after = query.cursor ? position.get(query.cursor) : -1;
-  if (after === undefined) throw new CursorNotFound("cursor");
   const projected = all
     .map((r) => projectSubmission(viewer, r))
     .filter((p): p is ProjectedSubmission => p !== null);
+  const after = query.cursor
+    ? projected.some((p) => p.id === query.cursor)
+      ? position.get(query.cursor)
+      : undefined
+    : -1;
+  if (after === undefined) throw new CursorNotFound("cursor");
 
   const q = query.q?.toLocaleLowerCase();
   const matches = projected.filter((p) => {

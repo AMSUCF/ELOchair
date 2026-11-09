@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ContributionRole, Key } from "./config";
 import { FieldValue, ParticipationMode, SubmissionStatus } from "./domain";
 import { LanguageCode } from "./i18n";
+import { hasStrayInvisible } from "./invisible";
 import { LIMITS } from "./limits";
 
 /*
@@ -11,27 +12,11 @@ import { LIMITS } from "./limits";
  */
 
 /**
- * Characters a one-line name must not contain: control characters (newlines, tabs, NUL...),
- * format characters (bidi overrides, zero-width spaces, byte-order marks, soft hyphens) and the
- * Unicode line and paragraph separators.
+ * Characters a one-line name must not contain: control characters (newlines, tabs, NUL...) and
+ * the Unicode line and paragraph separators. Invisible format characters (bidi overrides,
+ * zero-width spaces, byte-order marks, soft hyphens) are refused by hasStrayInvisible().
  */
-const NOT_ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-/**
- * Zero-width (non-)joiners are how some scripts are spelled (Persian compound surnames, Indic
- * scripts) and how emoji sequences are built, so they are allowed between letters or
- * pictographs, and nowhere else. A skin tone counts as part of the pictograph before it: the
- * woman artist with a medium skin tone is U+1F469 U+1F3FD U+200D U+1F3A8.
- */
-const JOINER_IN_WORD =
-  /(?<=[\p{L}\p{M}\p{N}\p{Extended_Pictographic}\p{Emoji_Modifier}])[\u200C\u200D](?=[\p{L}\p{M}\p{Extended_Pictographic}])/gu;
-/**
- * The invisible tags of a subdivision flag (Scotland is the black flag U+1F3F4, then the tags
- * g b s c t and a cancel tag): a region's two letters, one to four letters or digits, and the
- * cancel tag, right after the black flag. Tags are otherwise refused, because they can spell
- * out hidden text.
- */
-const SUBDIVISION_TAGS =
-  /(?<=\u{1F3F4})[\u{E0061}-\u{E007A}]{2}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{1,4}\u{E007F}/gu;
+const NOT_ONE_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 /** A letter or digit that shows on screen (Hangul fillers are letters, but invisible). */
 const VISIBLE_LETTER = /(?!\p{Default_Ignorable_Code_Point})[\p{L}\p{N}]/u;
 
@@ -51,7 +36,9 @@ export const OneLine = (max: number) =>
     .max(max)
     .refine(isWellFormed, WELL_FORMED)
     .refine(
-      (s) => !NOT_ONE_LINE.test(s.replace(SUBDIVISION_TAGS, "").replace(JOINER_IN_WORD, "")),
+      // Format characters are refused except joiners inside words and emoji and the three
+      // standard subdivision flags (see invisible.ts).
+      (s) => !NOT_ONE_LINE.test(s) && !hasStrayInvisible(s),
       "one line of text, without control or invisible formatting characters",
     )
     .refine((s) => VISIBLE_LETTER.test(s), "at least one letter or digit");

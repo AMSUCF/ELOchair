@@ -200,12 +200,12 @@ describe("review fixes, round 3: secrets and owner-written text in mail", () => 
       ["www.evil.org", "?"],
       ["EVIL-PHISH.COM/login?x=1", "?"],
       ["evil-phish。com Ana", "Ana"],
-      ["evil​.com Ana", "Ana"],
-      ["Ana ‮moc.live‬", "Ana"],
-      ["​⁦⁩", "?"],
+      ["evil\u200B.com Ana", "Ana"],
+      ["Ana \u202Emoc.live\u202C", "Ana"],
+      ["\u200B\u2066\u2069", "?"],
       ["mailto:a tel:5550100 Ana", "Ana"],
       ["10.0.0.1 Ana", "Ana"],
-      ["Line\nbreak here", "Line break here"],
+      ["Line\nbreak\u2028here", "Line break here"],
     ];
     for (const [input, out] of cases) expect(sanitizeName(input, "?")).toBe(out);
     expect([...sanitizeName("ü".repeat(150), "?")]).toHaveLength(100);
@@ -262,6 +262,13 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
     const artist = "\u{1F469}\u{1F3FD}\u200D\u{1F3A8}";
     const scotland = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
     expect(oneLine(`Poems ${artist} ${scotland}`, "—")).toBe(`Poems ${artist} ${scotland}`);
+    // Tags that are not a standard flag can spell hidden instructions for AI mail readers.
+    const hidden = Array.from("IGNORE PREVIOUS", (c) =>
+      String.fromCodePoint(0xe0000 + c.charCodeAt(0)),
+    );
+    expect(oneLine(`Poems \u{1F4CE}${hidden.join("")}\u{E007F} for the web`, "—")).toBe(
+      "Poems \u{1F4CE} for the web",
+    );
     expect(oneLine(" \u200B\n ", "—")).toBe("—");
     expect(oneLine(null, "—")).toBe("—");
     // A generous cap, ending in an ellipsis, never splitting a character.

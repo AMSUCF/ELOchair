@@ -1,3 +1,4 @@
+import { removeStrayInvisible } from "@elochair/schema/pure";
 import { useEffect, useRef } from "react";
 import type { Issue } from "./api";
 import { isMessageKey, useT } from "./i18n";
@@ -5,13 +6,12 @@ import { isMessageKey, useT } from "./i18n";
 /**
  * A typed or pasted name as it is sent. Pasting often brings invisible format characters along
  * (direction marks, zero-width spaces, soft hyphens, byte-order marks); they are removed, except
- * the zero-width (non-)joiners some scripts are spelled with. Then outer spaces go. The server
+ * joiners inside words and emoji and the standard subdivision flags, which the server accepts
+ * too (removeStrayInvisible). Then outer spaces and joiners go. The server
  * still decides what it accepts; this only spares people a refusal for something they cannot see.
  */
 export const cleanName = (typed: string) =>
-  typed
-    .replace(/(?![\u200C\u200D])\p{Cf}/gu, "")
-    .replace(/^[\s\u200C\u200D]+|[\s\u200C\u200D]+$/gu, "");
+  removeStrayInvisible(typed).replace(/^[\s\u200C\u200D]+|[\s\u200C\u200D]+$/gu, "");
 
 /**
  * Why the server refused the name in an invitation answer: missing (422, code "required"), or

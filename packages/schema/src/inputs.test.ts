@@ -78,10 +78,6 @@ describe("one-line text: names, affiliations, pronouns", () => {
     ["transgender flag", `they/them ${cp(0x1f3f3, 0xfe0f, ZWJ, 0x26a7, 0xfe0f)}`],
     ["the flag of Scotland", `she ${cp(BLACK_FLAG)}${tags("gbsct")}${cp(CANCEL_TAG)}`],
     ["the flag of Wales", `he ${cp(BLACK_FLAG)}${tags("gbwls")}${cp(CANCEL_TAG)}`],
-    [
-      "a subdivision flag outside the emoji set",
-      `ela ${cp(BLACK_FLAG)}${tags("usca")}${cp(CANCEL_TAG)}`,
-    ],
     ["a letter from outside the BMP", `${cp(0x1d49c)}na Pérez`],
   ])("accepts emoji and astral characters: %s", (_, s) => {
     expect(name.safeParse(s).success).toBe(true);
@@ -98,6 +94,16 @@ describe("one-line text: names, affiliations, pronouns", () => {
       `Ana ${cp(BLACK_FLAG)}${tags("ignoreall")}${cp(CANCEL_TAG)}`,
     ],
     ["hidden text with spaces", `Ana ${cp(BLACK_FLAG)}${tags("gb sct")}${cp(CANCEL_TAG)}`],
+    // Only the three standard emoji flags (England, Scotland, Wales) keep their tags: anything
+    // else after a black flag could spell hidden text six characters at a time.
+    [
+      "a subdivision flag outside the emoji set",
+      `ela ${cp(BLACK_FLAG)}${tags("usca")}${cp(CANCEL_TAG)}`,
+    ],
+    [
+      "hidden words split into flag-shaped chunks",
+      `Ana ${["ignore", "allpre", "vious"].map((w) => `${cp(BLACK_FLAG)}${tags(w)}${cp(CANCEL_TAG)}`).join("")}`,
+    ],
     ["a joiner after a skin tone, at the end", `they ${cp(0x1f44d, 0x1f3fd, ZWJ)}`],
     ["a joiner after a skin tone, before a space", `she ${cp(0x1f469, 0x1f3fd, ZWJ)} x`],
     ["a skin tone then a right-to-left mark", `she ${cp(0x1f469, 0x1f3fd, 0x200f)}`],

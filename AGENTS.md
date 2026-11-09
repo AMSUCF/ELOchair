@@ -94,3 +94,5 @@ Spec 02 has the details.
 - `npm run e2e` uses the browsers installed for Playwright 1.63; `playwright-core` is pinned to match.
 - MCP tests drive `/api/mcp` with the real SDK `Client`, whose `fetch` is pointed at `app.request`. Every tool result goes through `findLeaks()`.
 - When you edit files with scripts, assert that each replacement matched. Biome reformats code, and a silent no-op edit cost an hour once.
+- Write invisible characters (zero-width, bidi, BOM, tag characters) as escapes such as `\u200B` or `\u{E007F}`, never literally. Some editing tools decode escapes into the real characters, so check changed files for them before committing.
+- Invisible characters in short text have one definition, `packages/schema/src/invisible.ts`. It is used by `OneLine`, by mail cleanup and by the browser.

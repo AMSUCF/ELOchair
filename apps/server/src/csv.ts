@@ -22,7 +22,7 @@ export function csvCell(value: unknown): string {
 
 export function toCsv(header: string[], rows: unknown[][]): string {
   const lines = [header, ...rows].map((r) => r.map(csvCell).join(","));
-  return `﻿${lines.join("\r\n")}\r\n`;
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
 /** Times in the conference's own time zone, ISO-like with the offset. */

@@ -84,6 +84,17 @@ export function InvitationPage() {
   /** One status line in every state, so what happens is announced and can take focus. */
   const statusRef = useRef<HTMLParagraphElement>(null);
   const focusPending = useContext(FocusPending);
+  /**
+   * Only the latest load, on a page that is still shown, may act on its answer: a slow retry that
+   * lands after the person moved on must not move focus on the page they are on now.
+   */
+  const live = useRef({ mounted: false, generation: 0 });
+  useEffect(() => {
+    live.current.mounted = true;
+    return () => {
+      live.current.mounted = false;
+    };
+  }, []);
 
   const load = useCallback(
     async (retry = false) => {
@@ -91,10 +102,12 @@ export function InvitationPage() {
         setState({ step: "invalid" });
         return;
       }
+      const generation = ++live.current.generation;
       setState({ step: "loading" });
       // "Try again" goes away while loading: focus stays with the line that says what happens.
       if (retry) statusRef.current?.focus();
       const r = await api<Info>("/api/invitations/info", { method: "POST", body: { token } });
+      if (!live.current.mounted || generation !== live.current.generation) return;
       // After a retry the invitation arrives as new content: its heading takes focus.
       if (r.ok && retry && focusPending) focusPending.current = true;
       setState(r.ok ? { step: "ready", info: r.data } : failure(r.status));

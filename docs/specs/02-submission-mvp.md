@@ -29,7 +29,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - **Declining or leaving** sets status `declined`; the row is kept as evidence.
   - Declined contributors disappear from every view except the chair view, and from team counts and the presenter cap. A chair's tier M view of their own submission hides them too: it is the contributor's view, not the chair's.
   - Declining is always allowed, even after the deadline and on withdrawn work, because a person must always be able to refuse authorship.
-  - The owner is emailed whenever someone confirms, declines or leaves.
+  - The owner is emailed whenever someone confirms, declines or leaves. The notice names the person as the owner typed them (name, or else the address) and links to the proposal.
 - **Single-blind, open and public views list only confirmed contributors.** An unconfirmed name is never shown to reviewers.
 - **Limits:**
   - 20 invitations per owner per day, and 5 per recipient address per day across all owners.
@@ -42,6 +42,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - It contains the owner's display name (one line, with links, bare domains, email addresses and invisible formatting characters removed), the conference title, the format, the role, and a link.
   - It contains no submission title, no abstract, and no name the owner typed for the invitee. ELO's signed mail must not carry text an attacker wrote to people who have not agreed to anything.
   - If the proposal is withdrawn while the invitation is pending, the invitee gets a notice without the title, in the invitation's language.
+  - Mail to people who are part of the proposal (receipts, withdrawal notices, answers to the owner) shows owner-written text, such as the title, as typed: one line, without invisible formatting characters, cut with an ellipsis past 300 characters. Titles such as "Poems with p5.js" stay whole.
   - Once sent, the outbox keeps a copy with the link token removed (sign-in mail likewise loses its link and code), so the database and its backups hold no working link.
 - **The invitation link** carries a single-use token, stored only as a hash. It expires at `submissionsClose` or after 14 days, whichever is later; declining stays possible after the close.
   - It opens `/:lang/invitation#token`. That page shows the conference, the format, the title, the owner, the role, and what the role means for the presenter cap. On withdrawn work it offers only Decline.
@@ -55,7 +56,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - Drafts can be deleted outright: a hard delete by the owner. The audit row keeps IDs only, and pending invitees are told.
 - **The call is open** when the phase is `cfp_open` and the server's receipt time `t` satisfies `submissionsOpen ≤ t < submissionsClose` (`isCallOpen`). There is no grace period, and the client clock never decides anything: the conference, Start and editor pages follow the `callOpen` the server returns.
   - Create, edit, invite, remove, return to draft, submit and delete need an open call.
-  - **Withdraw** (from `submitted` only) is allowed in phases `cfp_open`, `reviewing` and `deciding`, whether or not the call is open. Withdrawal mail goes to every confirmed contributor and to `contactEmail`; pending invitees get the notice without the title (§1.2).
+  - **Withdraw** (from `submitted` only) is allowed in phases `cfp_open`, `reviewing` and `deciding`, whether or not the call is open. Withdrawal mail goes to every confirmed contributor and to `contactEmail`, with the title and the proposal's link; pending invitees get the notice without the title (§1.2).
   - **Confirm** needs an open call and work that is not withdrawn. **Decline and leave** are always allowed, whatever the status or phase.
 - **Submitted work stays valid.** A submitted submission always passes `validateSubmission`.
   - An edit or co-author change that would break this returns 422 `issues` and saves nothing.
@@ -77,7 +78,9 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - Only chairs see everyone's counts. The cap report counts **confirmed** contributions only, and lists pending invitations separately as a number.
   - The wording comes from the configuration: "This conference programs at most {max} first-author or presenting roles per person ({types} do not count). You have {n} in submitted proposals."
 - **Self-identification checks** run live in the browser on the owner's own data, as names, affiliations and emails the owner can already see. The server check (`/check`, submit) is authoritative and adds ORCID iDs and email domains.
-  - Citations are recognized in narrative form (`Pérez et al. (2021)`, `Pérez y Gómez (2020)`, `Pérez's (2019)`, `Pérez [2019]`), in parentheses, and as reference-list entries (`Pérez, A. L. (2021).`, `GONÇALVES, João Carlos. … 2020.`), as are names joined in link hosts and paths. The detector runs in linear time on any input.
+  - Citations are recognized in narrative form (`Pérez et al. (2021)`, `Pérez y Gómez (2020)`, `Pérez, Gómez y Ruiz et al. (2020)`, `Pérez's (2019)`, `Pérez [2019]`), in parentheses, and as reference-list entries (`Pérez, A. L. (2021).`, `GONÇALVES, João Carlos. … 2020.`), as are names joined in link hosts and paths.
+  - A list joined by commas alone is a place, not co-authors (`León, Guanajuato (2019)`). An article (la, las, lo, los, les) before a surname makes it a place or a title, unless the person's own name has it. "El" and "Le" are not treated as articles, because they are often part of a cited surname.
+  - Whitespace runs are collapsed and every repetition is bounded, so the detector runs in linear time on any input. Tests hold it to a time budget on hostile text.
   - The editor shows the server's findings only for text unchanged since that check; the live hints cover edited text.
   - The server returns `{ path, kind }` only. Chairs and agents see counts.
   - Reviewers never receive findings or contributor person IDs.
@@ -96,7 +99,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - Bios are stored per language (`bios: { en, es, … }`) and kept on the person, never on the submission.
   - The configuration says whether a bio is requested and how long it may be (`rules.bio`).
   - A missing requested bio, and a bio longer than `rules.bio.maxWords` in any language (`longBios`), are warnings, not blocks.
-- **Input hygiene.** Title, abstract, custom-field text and bios accept tabs and line breaks but no other control characters, and no ill-formed Unicode (400 `invalid`). One-line fields (display name, affiliation, pronouns, invited name and affiliation) also refuse invisible formatting characters (bidi controls, zero-width spaces, soft hyphens) and need at least one letter or digit. Zero-width joiners stay allowed inside words and emoji, which Persian names, Indic scripts and emoji sequences need. Machine keys are at most 64 characters.
+- **Input hygiene.** Title, abstract, custom-field text and bios accept tabs and line breaks but no other control characters, and no ill-formed Unicode (400 `invalid`). One-line fields (display name, affiliation, pronouns, invited name and affiliation) also refuse invisible formatting characters (bidi controls, zero-width spaces, soft hyphens, tag characters) and need at least one letter or digit. Two exceptions, defined once in `packages/schema/src/invisible.ts`: zero-width joiners inside words and emoji (Persian names, Indic scripts, emoji sequences), and the three standard subdivision flags (England, Scotland, Wales). Any other tag characters could spell out hidden text. Machine keys are at most 64 characters.
 - The chair view and CSV include pronouns.
 
 ### 1.7 What ELO's formats need now
@@ -111,7 +114,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - filters: `status[]`, `type`, `track`, `language`, `participationMode`
   - booleans: `hasSelfIdWarnings`, `hasPendingInvitations`, `incomplete`
   - `q`, a title search
-  - paging: `cursor` and `limit`
+  - paging: `cursor` and `limit`. Paging is by key: the cursor is the last ID of the previous page, placed in the conference's order (`createdAt`, `id`) among the submissions the viewer can see, so a page continues correctly even if that item has since left the filter. A cursor the viewer cannot see gets 400 `invalid` at path `cursor`, whether or not it exists.
 - **`querySubmissions(viewer, conference, query)`**, on the server:
   - projects every record first, then filters only on projected fields, ordered by `(createdAt, id)`
   - returns `{ items, total, excludedCount, nextCursor }`
@@ -181,6 +184,7 @@ Write routes have a 64 KB body limit and 60 writes a minute per person. Input sc
 ### 2.4 MCP (read-only)
 - **Endpoint:** `/api/mcp`, so it inherits the token resolution, tier C refusal on the public listener and agent audit of `/api/*`. Cookie sessions get 401. Transport is Streamable HTTP, stateless, with JSON responses.
 - Only read tools are registered. Each tool call writes one `agent.mcp_tool` audit row containing the tool name and its validated enum and ID arguments. Arguments are validated before the audit: invalid ones are refused with `{error: "invalid", args: [names]}` and audited as `{invalid: [names]}`, so free text never reaches the audit log.
+  - The advertised input schema uses plain bounded strings, so the handler sees, validates and audits every call within those bounds. The SDK itself refuses calls that break the advertised schema (a wrong JSON type, an over-long string, a value outside an enum). Those leave only the middleware's `agent.request` row, and no value is stored.
 - Each tool calls the same service function as its REST counterpart, through projections. The tools are:
   - **`conference_overview`** returns:
     - phase and deadlines; formats and tracks
@@ -241,6 +245,24 @@ Write routes have a 64 KB body limit and 60 writes a minute per person. Input sc
 16. A chair finds the submissions, opens one (with a declined contributor), sees localized problem labels, and downloads both CSVs through their links.
 
 axe reports no violations on any new page, in light and dark mode. CI is green.
+
+## 4. Review before the dry run
+
+On November 8–9, 2026, the built MVP had an adversarial review, followed by two more review rounds on the fixes.
+
+| Round | Reviewed | Confirmed | Rejected | Notes |
+|---|---|---|---|---|
+| 1 | The MVP: lifecycle and concurrency, authorization and privacy, consent, audit and mail, web UI, schema and policy | 64 | 6 | 3 high: invitation limits bypassed by remove and re-invite; stale saves losing typed text; submit after unsaved edits always stale |
+| 2 | The round 1 fixes, area by area | 19 (17 distinct) | — | 1 high: quadratic backtracking in the new citation patterns |
+| 3 | The round 2 fixes | 6 | — | All low: tag characters as a hidden-text channel; lost citation forms; a cursor that revealed whether an unseen draft existed; a late retry moving focus |
+
+How each round worked:
+- Each finding had a concrete scenario, most reproduced against the running app.
+- An independent verifier tried to refute every finding before it counted.
+- Every fix has a regression test, and the significant ones were mutation-checked: the fix was reverted to see the test fail, then restored.
+- Fixes were made in isolated worktrees split by file ownership, then merged and run through `npm run check` and the e2e suite.
+
+The rules and contracts above describe the reviewed behaviour. Machine-drafted Spanish and Portuguese strings added during the review still need native review.
 
 ## Deferred
 

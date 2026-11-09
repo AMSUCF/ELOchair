@@ -36,7 +36,7 @@ function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let cell = "";
   let quoted = false;
-  const src = text.replace(/^﻿/, "");
+  const src = text.replace(/^\uFEFF/, "");
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (quoted) {
@@ -489,5 +489,20 @@ describe("paging the chair list (#12)", () => {
         issues: [{ path: "cursor", message: expect.any(String) }],
       });
     }
+  });
+
+  it("answers a cursor the viewer cannot see like a made-up one, so it reveals nothing", async () => {
+    const [first] = ids(await list("status=submitted&limit=1"));
+    // A signed-in stranger sees the conference but none of its proposals while it is in review.
+    const stranger = await signIn(t, "cursor-stranger@example.org");
+    const asStranger = (cursor: string) =>
+      call(t.public, "GET", `/api/conferences/${s.slug}/submissions?cursor=${cursor}`, {
+        cookie: stranger,
+      });
+    const real = await asStranger(first as string);
+    const madeUp = await asStranger("00000000-0000-4000-8000-000000000000");
+    expect(real.status).toBe(400);
+    expect(real.json).toEqual(madeUp.json);
+    expect((await asStranger("")).status).toBe(200);
   });
 });

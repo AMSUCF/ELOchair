@@ -1,4 +1,4 @@
-import { type ContributionRole, LIMITS } from "@elochair/schema";
+import { type ContributionRole, LIMITS, removeStrayInvisible } from "@elochair/schema";
 import type { MailMessage } from "./mail";
 
 /*
@@ -50,7 +50,7 @@ const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/gu;
  */
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
   const clean = (name ?? "")
-    // Format characters go first, so "evil​.com" cannot slip past the domain rule.
+    // Format characters go first, so "evil<U+200B>.com" cannot slip past the domain rule.
     .replace(/[\p{Cf}\p{Co}]/gu, "")
     .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
     .replace(/\S*[@＠]\S*/gu, "")
@@ -63,15 +63,6 @@ export function sanitizeName(name: string | null | undefined, fallback: string):
   return Array.from(clean).slice(0, 100).join("").trim() || fallback;
 }
 
-/**
- * Format characters that oneLine() removes: every one except zero-width (non-)joiners between
- * letters or pictographs (how Persian, Indic scripts and emoji sequences are spelled) and tag
- * sequences after a pictograph (subdivision flags). The first two alternatives match what is
- * kept; only the last one (captured) is a stray character.
- */
-const FORMAT_CHAR =
-  /(?<=[\p{L}\p{M}\p{N}\p{Extended_Pictographic}\p{Emoji_Modifier}])[\u200C\u200D](?=[\p{L}\p{M}\p{Extended_Pictographic}])|(?<=\p{Extended_Pictographic})[\u{E0020}-\u{E007E}]+\u{E007F}|(\p{Cf})/gu;
-
 const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 /**
@@ -82,8 +73,9 @@ const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
  * between characters and ends with an ellipsis, never silently.
  */
 export function oneLine(text: string | null | undefined, fallback: string, max = 300): string {
-  const clean = (text ?? "")
-    .replace(FORMAT_CHAR, (kept, stray: string | undefined) => (stray === undefined ? kept : ""))
+  // Invisible format characters go, except joiners inside words and emoji and the standard
+  // subdivision flags (removeStrayInvisible).
+  const clean = removeStrayInvisible(text ?? "")
     .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
