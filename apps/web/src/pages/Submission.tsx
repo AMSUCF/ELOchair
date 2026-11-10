@@ -22,7 +22,7 @@ import {
 import { formatDateTime, viewerTimeZone } from "../format";
 import { cleanName, describedBy, ErrorSummary, FieldError, fieldId, nameRefusal } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
-import { contribStatusKey, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
+import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
@@ -1058,7 +1058,9 @@ function People({
                 <span className="meta">{[c.affiliation, c.email].filter(Boolean).join(" · ")}</span>
               </p>
               <p>
-                <span className="badge">{t(contribStatusKey(c.status))}</span>
+                <span className="badge" data-tone={contribTone(c.status)}>
+                  {t(contribStatusKey(c.status))}
+                </span>
               </p>
               {editable && (
                 <div className="actions">
