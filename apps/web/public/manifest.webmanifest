@@ -4,8 +4,8 @@
   "description": "Submissions and peer review for the Electronic Literature Organization conference.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f5ef",
-  "theme_color": "#1d1b3a",
+  "background_color": "#0e1f18",
+  "theme_color": "#0e1f18",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

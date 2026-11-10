@@ -36,3 +36,11 @@ export const deadlineKey = (d: keyof ConferenceConfig["deadlines"]): MessageKey 
 export type IssueCode = SubmissionIssue["code"] | "self_identification";
 /** A short label for an issue code, for lists. A code without one fails the typecheck. */
 export const issueLabelKey = (c: IssueCode): MessageKey => `issueLabel_${c}`;
+
+/** The chip tone for a conference phase. The chip's text carries the meaning; this only supports it. */
+export const phaseTone = (p: ConferencePhase): "good" | "info" | "quiet" =>
+  p === "cfp_open" ? "good" : p === "archived" || p === "draft" ? "quiet" : "info";
+
+/** The chip tone for a contributor's status; the text still says which it is. */
+export const contribTone = (s: ContributionStatus): "good" | "warn" | "quiet" =>
+  s === "confirmed" ? "good" : s === "invited" ? "warn" : "quiet";
