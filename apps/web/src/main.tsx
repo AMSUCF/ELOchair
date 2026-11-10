@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { App, RootError } from "./App";
-import "./styles.css";
+import "./styles/index.css";
 
 /**
  * A data router, so a page with unsaved work can hold back in-app navigation (useBlocker). The
