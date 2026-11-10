@@ -31,6 +31,10 @@ export const fieldId = (path: string) => `field-${path.replace(/[^a-zA-Z0-9_-]+/
 export function useIssueText() {
   const { t } = useT();
   return (issue: Issue) => {
+    // A format with no real minimum length asks for one word: say "required", not "1 words".
+    if (issue.code === "too_few_words" && Number(issue.params?.min) <= 1) {
+      return t("issue_required");
+    }
     const key = `issue_${issue.code}`;
     return isMessageKey(key) ? t(key, issue.params) : t("issue_generic");
   };

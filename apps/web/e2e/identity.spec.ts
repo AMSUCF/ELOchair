@@ -65,8 +65,26 @@ test("the call's page shows the conference: theme and echo, place, deadline, for
     page.getByRole("heading", { level: 2, name: "Submission formats", exact: true }),
   ).toBeVisible();
   await expect(page.locator("#formats .echo")).toHaveText("Formatos de envío");
-  await expect(page.locator(".formats > li")).toHaveCount(6);
-  await expect(page.locator(".formats > li").first()).toContainText("350–500 words");
+  // The call's seven formats, in its order, with its lengths; then the one taken by email.
+  const formats = page.locator(".formats > li");
+  await expect(formats).toHaveCount(8);
+  await expect(formats.locator("h3")).toContainText([
+    "Paper",
+    "Lightning talk",
+    "Panel",
+    "Artist talk",
+    "Workshop",
+    "Reading or performance",
+    "Work for the exhibition",
+    "Curatorial pitch",
+  ]);
+  await expect(formats.first()).toContainText("300 words at most");
+  await expect(formats.first()).toContainText("15 minutes");
+  await expect(formats.nth(1)).toContainText("150 words at most");
+  await expect(formats.first().locator(".echo")).toHaveText("Ponencia");
+  const elsewhere = page.locator(".format-elsewhere");
+  await expect(elsewhere).toContainText("Not submitted here");
+  await expect(elsewhere).toContainText("by email");
   await expect(page.locator(".timeline > li")).toHaveCount(5);
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
