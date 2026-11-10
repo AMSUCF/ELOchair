@@ -45,6 +45,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   editWords: "{count} palavras (entre {min} e {max})",
   editWordsUnder: "{count} palavras: são necessárias pelo menos {min}",
   editWordsOver: "{count} palavras: no máximo {max}",
+  editWordsMax: "{count} palavras (no máximo {max})",
   editTrack: "Eixo",
   editTopics: "Temas",
   editLanguage: "Idioma do resumo",
@@ -145,6 +146,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issue_declined_cannot_reinvite: "Essa pessoa recusou e não pode ser convidada novamente.",
   issue_owner_cannot_be_removed: "Não é possível remover quem criou a proposta.",
   issue_unknown_field: "Este formato não tem esse campo.",
+  issue_out_of_range: "Escreva um número entre {min} e {max}.",
   issue_generic: "Verifique este valor.",
 
   myTitle: "As minhas submissões",
@@ -230,6 +232,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issueLabel_declined_cannot_reinvite: "Pessoa que recusou, convidada de novo",
   issueLabel_owner_cannot_be_removed: "Foi removida quem criou a proposta",
   issueLabel_unknown_field: "Campo desconhecido",
+  issueLabel_out_of_range: "Um número fora do intervalo",
   issueLabel_empty_title: "Sem título",
   issueLabel_self_identification: "Aviso de autoidentificação",
 };

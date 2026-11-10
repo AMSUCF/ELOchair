@@ -107,6 +107,9 @@ export const en = {
   confFullCallNote:
     "The theme statement, suggested topics and registration are on the conference site.",
   statWords: "words",
+  confWordsMax: "up to {max} words",
+  statWordsMax: "words at most",
+  confNotHere: "Not submitted here",
   statMinutes: "minutes",
   statPeople: "people",
   statPerson: "person",

@@ -131,6 +131,9 @@ export const CustomField = z.object({
   public: z.boolean().default(false),
   options: z.array(z.object({ key: Key, label: LocalizedText })).optional(),
   maxWords: z.int().positive().optional(),
+  /** For number fields: the smallest and largest value accepted (both inclusive). */
+  min: z.number().optional(),
+  max: z.number().optional(),
 });
 export type CustomField = z.infer<typeof CustomField>;
 
@@ -191,6 +194,14 @@ const ConferenceConfigShape = z.object({
   topics: z.array(z.object({ key: Key, label: LocalizedText })).default([]),
   reviewPools: z.array(ReviewPool).min(1),
   submissionTypes: z.array(SubmissionType).min(1),
+  /**
+   * Formats the call offers that are not submitted through ELOchair (ELO 2027 takes curatorial
+   * pitches by email). The conference page lists them so the call is complete; nothing else
+   * uses them.
+   */
+  otherFormats: z
+    .array(z.object({ key: Key, name: LocalizedText, description: LocalizedText }))
+    .default([]),
   /** True while the content is a stand-in (e.g. dates not yet announced). The UI says so. */
   placeholder: z.boolean().default(false),
 });
@@ -249,6 +260,20 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     c.submissionTypes.map((t) => t.key),
   );
 
+  // A format is either submitted here or it is not: the two lists share one set of keys.
+  const typeKeys = new Set(c.submissionTypes.map((t) => t.key));
+  unique(
+    ["otherFormats"],
+    c.otherFormats.map((f) => f.key),
+  );
+  c.otherFormats.forEach((f, i) => {
+    if (typeKeys.has(f.key)) {
+      issue(["otherFormats", i, "key"], `"${f.key}" is already a submission type`);
+    }
+    text(["otherFormats", i, "name"], f.name);
+    text(["otherFormats", i, "description"], f.description);
+  });
+
   c.reviewPools.forEach((p, i) => {
     text(["reviewPools", i, "name"], p.name);
     unique(
@@ -282,6 +307,12 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       const fat = [...at, "fields", j];
       text([...fat, "label"], f.label);
       text([...fat, "help"], f.help);
+      if (f.min !== undefined && f.max !== undefined && f.min > f.max) {
+        issue(fat, "min must not exceed max");
+      }
+      if ((f.min !== undefined || f.max !== undefined) && f.kind !== "number") {
+        issue(fat, "min and max are for number fields");
+      }
       const hasOptions = (f.options?.length ?? 0) > 0;
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {
         issue([...fat, "options"], "select fields need options");
