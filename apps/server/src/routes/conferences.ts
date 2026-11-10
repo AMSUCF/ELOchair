@@ -52,17 +52,20 @@ function canChair(viewer: Viewer, conferenceId: string): boolean {
 
 const visible = (viewer: Viewer, k: ConferenceRow) => k.phase !== "draft" || canChair(viewer, k.id);
 
-function summary(k: ConferenceRow) {
+function summary(k: ConferenceRow, now: Date) {
   const c = k.config;
   return {
     slug: k.slug,
     phase: k.phase,
     year: c.year,
     title: c.title,
+    theme: c.theme,
     location: c.location,
     modality: c.modality,
     dates: c.dates,
     placeholder: c.placeholder,
+    // The server clock decides, here as on the conference's own page.
+    callOpen: isCallOpen(c, k.phase, now),
   };
 }
 
@@ -76,8 +79,12 @@ const Statuses = z
 export const conferenceRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const viewer = c.get("viewer");
-    const all = await listConferences(c.get("deps").db);
-    return c.json({ conferences: all.filter((k) => visible(viewer, k)).map(summary) });
+    const { db, now } = c.get("deps");
+    const all = await listConferences(db);
+    const at = now();
+    return c.json({
+      conferences: all.filter((k) => visible(viewer, k)).map((k) => summary(k, at)),
+    });
   })
   .get("/:slug", async (c) => {
     const k = await getConference(c.get("deps").db, c.req.param("slug"));
