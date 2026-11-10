@@ -6,7 +6,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type CliContext, runCli } from "./cli";
 import { auditLog, conferences } from "./db/schema";
-import { seedOpenCall } from "./fixtures";
+import { seedTestCall } from "./fixtures";
 import { getConference, grantRole, saveConference } from "./repo";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
@@ -62,7 +62,7 @@ beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "elochair-phases-"));
   adminCookie = await signIn(t, "phase-admin@example.org");
   for (const slug of ["race-a", "race-b", "race-c", "clock", "cli-set", "cli-import"]) {
-    const { conferenceId } = await seedOpenCall(t.db, { slug, now: new Date("2027-02-01") });
+    const { conferenceId } = await seedTestCall(t.db, { slug, now: new Date("2027-02-01") });
     await grantRole(t.db, {
       conferenceId,
       personId: await personId(t, "phase-admin@example.org"),

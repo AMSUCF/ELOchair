@@ -96,6 +96,7 @@ Spec 02 has the details.
 
 - Server tests drive both listeners in-process with `app.request()` against an in-memory PGlite database. Use `apps/server/src/testkit.ts`.
 - Fixtures are deterministic, shaped like ELO 2026: 200 submissions and 41 reviewers. Three fictional people deliberately exceed the presenter cap.
+- Server tests that need an open call use `seedTestCall()`, which opens the made-up call in `apps/server/src/fixture-call.ts`. Never build a test on a real conference's configuration (`conferences.elo2027`): it changes whenever the organisers decide something. Development and the e2e tests use `seedOpenCall()`, which is ELO 2027's own configuration on dates that follow the clock.
 - `npm run e2e` uses the browsers installed for Playwright 1.63; `playwright-core` is pinned to match.
 - MCP tests drive `/api/mcp` with the real SDK `Client`, whose `fetch` is pointed at `app.request`. Every tool result goes through `findLeaks()`.
 - When you edit files with scripts, assert that each replacement matched. Biome reformats code, and a silent no-op edit cost an hour once.
