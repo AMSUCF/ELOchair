@@ -8,7 +8,9 @@ A submission and peer-review system, in the spirit of EasyChair, built around ho
 - English, Spanish and Portuguese throughout
 - open-access archiving after the conference
 
-It is mobile-first, and chairs can run it through agents, with submission content kept off cloud models. The first real use is **ELO 2027 at Universidad del Norte, Barranquilla**.
+It is mobile-first, and chairs can run it through agents, with submission content kept off cloud models. The first real use is **ELO 2027 at Universidad del Norte, Barranquilla**, and the web app wears that conference's identity, "Ecologies of Attention" ([design notes](docs/design/visual-identity.md)).
+
+![ELOchair on a phone: the ELO 2027 call, the home page, the editor and the chair's list](docs/design/screenshots/phone-paper.webp)
 
 ## Status
 
@@ -42,4 +44,5 @@ npm run e2e     # phone-size browser tests with accessibility checks
 
 - [AGENTS.md](AGENTS.md): repository map, commands and house rules, for people and coding agents
 - [deploy/README.md](deploy/README.md): running ELOchair on ELO's server
-- [docs/](docs/): discovery notes, plan and specs
+- [docs/](docs/): discovery notes, plan, specs and design notes
+- [Issues](https://github.com/AMSUCF/ELOchair/issues): what is planned and what is open to pick up

@@ -282,8 +282,8 @@ The rules and contracts above describe the reviewed behaviour. Machine-drafted S
 
 These were set aside on purpose, with the reason for each.
 
-**Waiting on the Barranquilla team**
-- **Per-paper panel abstracts.** This depends on their CFP. If it asks for them, add `panelItems` to the submission type.
+**From the Barranquilla call, not yet built**
+- **Per-paper panel abstracts.** The call, published in November 2026 at <https://elo27.eliterature.org/>, asks for them (150-word abstracts of three to four papers or five to six lightning talks, plus a 150-word rationale). Adding `panelItems` is tracked in [issue #15](https://github.com/AMSUCF/ELOchair/issues/15); the call's other formats in [issue #14](https://github.com/AMSUCF/ELOchair/issues/14).
 
 **Not needed for the January launch**
 - **Transferring ownership.** Chairs can reassign it in the database, with an audit row.
