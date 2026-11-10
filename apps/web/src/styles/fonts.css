@@ -1,0 +1,16 @@
+/*
+ * Self-hosted fonts (SIL Open Font License), bundled from @fontsource packages, so no request
+ * leaves the app's origin and the Content-Security-Policy needs no exception. Each file declares
+ * font-display: swap and a unicode-range per subset; the browser fetches only what a page uses.
+ *
+ * Roles (see tokens.css): Bricolage Grotesque for headings, Schibsted Grotesk for the interface,
+ * Brygada 1918 for long prose and italic echoes, JetBrains Mono for labels and numerals,
+ * Unbounded 800 for the wordmark and the eyebrow line.
+ */
+@import "@fontsource-variable/bricolage-grotesque/wght.css";
+@import "@fontsource-variable/schibsted-grotesk/wght.css";
+@import "@fontsource-variable/schibsted-grotesk/wght-italic.css";
+@import "@fontsource-variable/brygada-1918/wght.css";
+@import "@fontsource-variable/brygada-1918/wght-italic.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@fontsource/unbounded/latin-800.css";

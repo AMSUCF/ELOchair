@@ -1,4 +1,4 @@
-import { type ConferenceConfig, conferences } from "@elochair/schema";
+import { type ConferenceConfig, type ConferenceConfigInput, conferences } from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/client";
 import {
@@ -9,6 +9,7 @@ import {
   reviewerProfiles,
   submissions,
 } from "./db/schema";
+import { fixtureCall } from "./fixture-call";
 import { grantRole, saveConference } from "./repo";
 
 /*
@@ -521,29 +522,21 @@ export async function seedSandbox(
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * An open call relative to `now`, cloned from ELO 2027, for development and end-to-end tests:
- * opened yesterday, closing in 30 days, phase cfp_open. Tests pass whatever date they run on.
- */
-export async function seedOpenCall(
+/** A call that is open relative to `now`: opened yesterday, closing in 30 days, phase cfp_open. */
+async function seedCall(
   db: Db,
-  opts: { slug?: string; now: Date; chairEmails?: string[] },
+  base: ConferenceConfigInput,
+  opts: { slug: string; now: Date; chairEmails?: string[] },
 ): Promise<{ conferenceId: string; slug: string }> {
-  const slug = opts.slug ?? "elo2027-open";
+  const { slug } = opts;
   const t = opts.now.getTime();
   const iso = (ms: number) => new Date(ms).toISOString();
   const date = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-  const base = structuredClone(conferences.elo2027);
   const conf = await saveConference(
     db,
     {
-      ...base,
+      ...structuredClone(base),
       slug,
-      title: {
-        en: "ELO 2027 (open test call)",
-        es: "ELO 2027 (convocatoria de prueba)",
-        pt: "ELO 2027 (chamada de teste)",
-      },
       placeholder: true,
       deadlines: {
         submissionsOpen: iso(t - DAY_MS),
@@ -566,3 +559,38 @@ export async function seedOpenCall(
   }
   return { conferenceId: conf.id, slug };
 }
+
+/**
+ * ELO 2027's own configuration as an open call, for development and the end-to-end tests: what
+ * people will really be offered, on dates that follow the clock, so it works whatever day it is.
+ */
+export function seedOpenCall(
+  db: Db,
+  opts: { slug?: string; now: Date; chairEmails?: string[] },
+): Promise<{ conferenceId: string; slug: string }> {
+  return seedCall(
+    db,
+    {
+      ...conferences.elo2027,
+      title: {
+        en: "ELO 2027 (open test call)",
+        es: "ELO 2027 (convocatoria de prueba)",
+        pt: "ELO 2027 (chamada de teste)",
+      },
+    },
+    { ...opts, slug: opts.slug ?? "elo2027-open" },
+  );
+}
+
+/**
+ * The fixture call (fixture-call.ts) as an open call, for server tests: formats and limits that
+ * do not change when a real conference's configuration does.
+ */
+export function seedTestCall(
+  db: Db,
+  opts: { slug?: string; now: Date; chairEmails?: string[] },
+): Promise<{ conferenceId: string; slug: string }> {
+  return seedCall(db, fixtureCall, { ...opts, slug: opts.slug ?? fixtureCall.slug });
+}
+
+export { fixtureCall };

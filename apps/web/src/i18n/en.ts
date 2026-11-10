@@ -26,7 +26,7 @@ export const en = {
   modality_in_person: "In person",
   modality_hybrid: "Hybrid",
   confPlaceholder:
-    "This page is a placeholder. Dates, theme and formats will change when the call for proposals is announced.",
+    "This page is provisional. The theme, dates and deadline follow the published call; formats, policies and the day submissions open may still change.",
   confNotFound: "We could not find that conference.",
   confDates: "Conference dates",
   confDeadlines: "Deadlines",
@@ -77,7 +77,7 @@ export const en = {
   role_chair: "Chair",
   role_track_chair: "Track chair",
   role_reviewer: "Reviewer",
-  navMain: "Account and language",
+  navMain: "Main menu",
   verifyConfirm: "This link signs you in as {email}.",
   verifyButton: "Sign in",
   verifySigningIn: "Signing in…",
@@ -96,6 +96,24 @@ export const en = {
   crashTitle: "Something went wrong",
   crashBody: "This page could not be shown. Reload it, or go back to the list of conferences.",
   crashReload: "Reload the page",
+  heroEyebrow: "Electronic Literature Organization Conference",
+  homeSeeCall: "See the call",
+  homeOthers: "Other conferences",
+  confFactDates: "Dates",
+  confFactVenue: "Venue",
+  confDaysOne: "day left",
+  confDaysOther: "days left",
+  confFullCall: "Read the full call",
+  confFullCallNote:
+    "The theme statement, suggested topics and registration are on the conference site.",
+  statWords: "words",
+  confWordsMax: "up to {max} words",
+  statWordsMax: "words at most",
+  confNotHere: "Not submitted here",
+  statMinutes: "minutes",
+  statPeople: "people",
+  statPerson: "person",
+  footerOrg: "Electronic Literature Organization",
 } as const;
 
 export type MessageKey = keyof typeof en;

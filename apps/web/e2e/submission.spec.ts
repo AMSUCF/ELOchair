@@ -195,19 +195,22 @@ test("submit a talk from a phone: word count, self-identification, co-author, ag
   await page.goto(`/en/c/${CALL}`);
   await expect(page.getByText(/^Submissions are open until/)).toBeVisible();
   await expectAccessibleInBothThemes(page);
-  await start(page, "Individual talk");
+  await start(page, "Paper");
   await expectAccessible(page);
 
   await page.getByLabel("Title").fill("Poems that read");
+  // The call gives papers a maximum length and no minimum.
+  await page.getByLabel("Abstract (anonymized)").fill(`${words(305)} as Ana Testing Owner argued`);
+  await expect(page.locator("#abstract-count")).toHaveText("310 words: at most 300 allowed");
   await page.getByLabel("Abstract (anonymized)").fill(`${words(240)} as Ana Testing Owner argued`);
-  await expect(page.locator("#abstract-count")).toHaveText("245 words: at least 250 needed");
+  await expect(page.locator("#abstract-count")).toHaveText("245 words (at most 300)");
   await expect(page.getByText("The abstract mentions an author's name.")).toBeVisible();
   // Saved, the server's check finds the name too; rewording clears the warning before saving.
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   await expect(page.getByText("The abstract mentions an author's name.")).toBeVisible();
   await page.getByLabel("Abstract (anonymized)").fill(words(260));
-  await expect(page.locator("#abstract-count")).toHaveText("260 words (between 250 and 300)");
+  await expect(page.locator("#abstract-count")).toHaveText("260 words (at most 300)");
   await expect(page.getByText("The abstract mentions an author's name.")).toHaveCount(0);
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
@@ -279,9 +282,11 @@ test("a panel of three: one invitee declines and is replaced", async ({
   const owner = "e2e-panel@example.org";
   await signIn(page, request, owner);
   await setName(page, "Pia Panel Owner");
-  await start(page, "Panel or roundtable");
+  await start(page, "Panel");
   await page.getByLabel("Title").fill("Panel on platforms");
-  await page.getByLabel("Session abstract (anonymized)").fill(words(400));
+  // A panel is a rationale of up to 150 words and an abstract for each of its papers.
+  await page.getByLabel("Rationale for the panel (anonymized)").fill(words(120));
+  await page.getByLabel("Abstract of each paper or talk (anonymized)").fill(words(420));
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   const invites: string[] = [];
@@ -333,14 +338,13 @@ test("an exhibition work submitted by URL, on a phone whose clock is wrong", asy
   await page.clock.setFixedTime(new Date("2099-01-01T00:00:00Z"));
   await signIn(page, request, "e2e-artist@example.org");
   await setName(page, "Ada Artist");
-  await start(page, "Exhibition work");
+  await start(page, "Work for the exhibition");
   const editor = page.url();
   await page.getByLabel("Title").fill("A garden of forking links");
-  await page.getByLabel("Artist statement").fill(words(360));
+  await page.getByLabel("Abstract", { exact: true }).fill(words(280));
   await page
-    .getByLabel("URL of the work or a demonstration in progress")
+    .getByLabel("Link to the work or to documentation of it (optional)")
     .fill("https://example.net/garden");
-  await page.getByLabel(/Platforms and tools used/).fill("Twine and hand-written JavaScript.");
 
   // Leaving with unsaved changes asks first; staying keeps the text.
   let asked = "";
@@ -362,6 +366,45 @@ test("an exhibition work submitted by URL, on a phone whose clock is wrong", asy
   await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
 });
 
+test("a workshop says how many people it is for, within the call's 15 to 30", async ({
+  page,
+  request,
+}) => {
+  await signIn(page, request, "e2e-workshop@example.org");
+  await setName(page, "Wanda Workshop");
+  await page.goto(`/en/c/${CALL}`);
+  await page.getByRole("link", { name: "Submit a proposal" }).click();
+  // The seven formats submitted here are offered; the one taken by email is not.
+  await expect(page.getByRole("radio")).toHaveCount(7 + 3); // formats, and how you take part
+  await expect(
+    page.getByRole("radio", { name: /Lightning talk · up to 150 words · 5 minutes/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("radio", { name: /Curatorial/ })).toHaveCount(0);
+  await page.getByRole("radio", { name: /Workshop/ }).check();
+  await page.getByRole("radio", { name: "In person" }).check();
+  await page.getByRole("button", { name: /^Start a / }).click();
+  await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
+
+  await page.getByLabel("Title").fill("Mapping attention by hand");
+  await page.getByLabel("Description of the workshop and its goals (anonymized)").fill(words(180));
+  const people = page.getByLabel("Expected number of participants (between 15 and 30)");
+  await people.fill("40");
+  await page.getByLabel("Tools and room conditions you will need").fill("Tables, paper and pens.");
+  await saveDraft(page);
+  await acceptAgreements(page);
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+  // Refused with the reason beside the field, and the proposal stays a draft.
+  await expect(page.getByText("Enter a number from 15 to 30.").first()).toBeVisible();
+  await expect(page.locator(".badge.status-draft")).toBeVisible();
+  await expectAccessible(page);
+
+  await people.fill("20");
+  await saveDraft(page);
+  await acceptAgreements(page);
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+  await expect(page.getByText("Submitted. A receipt is on its way")).toBeVisible();
+});
+
 test("invitees answer in the app: asked for their own name, one confirms then leaves, one declines", async ({
   page,
   request,
@@ -370,7 +413,7 @@ test("invitees answer in the app: asked for their own name, one confirms then le
   const owner = "e2e-inapp-owner@example.org";
   await signIn(page, request, owner);
   await setName(page, "Olga Inapp Owner");
-  await start(page, "Individual talk");
+  await start(page, "Paper");
   await page.getByLabel("Title").fill("Reading in the app");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
@@ -439,7 +482,7 @@ test("a new invitee must give their own name to confirm by link, and the owner t
 }) => {
   await signIn(page, request, "e2e-names-owner@example.org");
   await setName(page, "Nadia Names Owner");
-  await start(page, "Individual talk");
+  await start(page, "Paper");
   await page.getByLabel("Title").fill("Names in their own words");
   await saveDraft(page);
   await invite(page, "e2e-nameless@example.org", 2, { name: "Typed By The Owner" });
@@ -497,7 +540,7 @@ test("withdrawn work: a pending invitee can only decline by link, and a co-autho
   const title = "Withdrawn with company";
   await signIn(page, request, "e2e-withdraw-owner@example.org");
   await setName(page, "Wendy Withdraw Owner");
-  await start(page, "Individual talk");
+  await start(page, "Paper");
   const editor = page.url();
   await page.getByLabel("Title").fill(title);
   await page.getByLabel("Abstract (anonymized)").fill(words(260));
@@ -575,12 +618,13 @@ test("reordering around a declined panelist: Move down changes the order, which 
 }) => {
   await signIn(page, request, "e2e-order-owner@example.org");
   await setName(page, "Oscar Order Owner");
-  await start(page, "Panel or roundtable");
+  await start(page, "Panel");
   await page.getByLabel("Title").fill("Panel in a new order");
-  // The owner's name in the abstract leaves a self-identification warning for the chairs.
+  // The owner's name in the rationale leaves a self-identification warning for the chairs.
   await page
-    .getByLabel("Session abstract (anonymized)")
-    .fill(`${words(380)} as Oscar Order Owner argued`);
+    .getByLabel("Rationale for the panel (anonymized)")
+    .fill(`${words(100)} as Oscar Order Owner argued`);
+  await page.getByLabel("Abstract of each paper or talk (anonymized)").fill(words(450));
   await saveDraft(page);
   await invite(page, "e2e-order-a@example.org", 2, { name: "Ada Declines", role: "panelist" });
   await answerByLink(browser, request, "e2e-order-a@example.org", "decline");
@@ -613,7 +657,7 @@ test("a co-author's bio longer than the call's limit gets a note in the owner's 
   // elo2027-open keeps ELO 2027's rules.bio.maxWords (300).
   await signIn(page, request, "e2e-bio-owner@example.org");
   await setName(page, "Bianca Bio Owner");
-  await start(page, "Individual talk");
+  await start(page, "Paper");
   await page.getByLabel("Title").fill("Bios at length");
   await saveDraft(page);
   await invite(page, "e2e-bio-co@example.org", 2, { name: "Typed Bio Person" });
@@ -698,9 +742,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
 
   // Format names follow the interface language.
   await page.goto(`/es/c/${CALL}/manage`);
-  await expect(
-    card("Panel on platforms").getByText(/^Panel o mesa redonda · Enviada/),
-  ).toBeVisible();
+  await expect(card("Panel on platforms").getByText(/^Panel · Enviada/)).toBeVisible();
   await expect(card("Panel in a new order").locator(".notice")).toHaveText(
     "Problemas: Número de personas incorrecto, Aviso de autoidentificación",
   );

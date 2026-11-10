@@ -8,7 +8,7 @@ import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, type ConferenceDetail } from "../api";
-import { useT } from "../i18n";
+import { type MessageKey, useT } from "../i18n";
 import { type IssueCode, issueLabelKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
@@ -147,6 +147,22 @@ function useListing(slug: string, query: string) {
   return { listing, failed, loadingMore, moreFailed, more };
 }
 
+/**
+ * One overview figure: the catalog's sentence ("{n} drafts in progress") with its number set
+ * large. The sentence stays whole, in the order each language wants.
+ */
+function Figure({ k, n }: { k: MessageKey; n: number }) {
+  const { t } = useT();
+  const [before, after = ""] = t(k, { n: "{n}" }).split("{n}");
+  return (
+    <li>
+      {before}
+      <strong className="stat-value">{n}</strong>
+      {after}
+    </li>
+  );
+}
+
 /** The chair's live view of a call: counts, filters, the list and CSV exports. */
 export function ManagePage() {
   const { slug = "" } = useParams();
@@ -181,14 +197,14 @@ export function ManagePage() {
       <p className="meta">
         <Localized text={config.title} fallback={config.defaultLanguage} />
       </p>
-      <ul className="facts">
+      <ul className="overview">
         {/* Every proposal sent in (withdrawn ones too), whatever the filter: not what is shown. */}
-        <li>{t("manageReceived", { n: o.total })}</li>
-        <li>{t("manageDrafts", { n: o.draftCount })}</li>
-        <li>{t("manageIncomplete", { n: o.incomplete })}</li>
-        <li>{t("managePending", { n: o.withPendingInvitations })}</li>
-        <li>{t("manageSelfId", { n: o.withSelfIdWarnings })}</li>
-        {cap?.ok && <li>{t("manageOverCap", { n: cap.data.over.length })}</li>}
+        <Figure k="manageReceived" n={o.total} />
+        <Figure k="manageDrafts" n={o.draftCount} />
+        <Figure k="manageIncomplete" n={o.incomplete} />
+        <Figure k="managePending" n={o.withPendingInvitations} />
+        <Figure k="manageSelfId" n={o.withSelfIdWarnings} />
+        {cap?.ok && <Figure k="manageOverCap" n={cap.data.over.length} />}
         {o.withoutAvailableChair > 0 && (
           <li className="notice">{t("manageNoChair", { n: o.withoutAvailableChair })}</li>
         )}

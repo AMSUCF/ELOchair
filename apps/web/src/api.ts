@@ -52,10 +52,13 @@ export type ConferenceSummary = {
   phase: ConferencePhase;
   year: number;
   title: LocalizedText;
+  theme: LocalizedText;
   location: LocalizedText;
   modality: ConferenceConfig["modality"];
   dates: { start: string; end: string };
   placeholder: boolean;
+  /** Decided by the server clock. */
+  callOpen: boolean;
 };
 
 export type ConferenceDetail = {

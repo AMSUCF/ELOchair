@@ -1,0 +1,327 @@
+/*
+ * The shell: a forest band (header, and on some pages a hero) with a content sheet sliding over
+ * it, and a forest footer. See Shell in App.tsx.
+ */
+.shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--band-bg);
+  color: var(--band-text);
+}
+
+/*
+ * Band art: slow glow fields and contour lines behind the header and hero. Decoration only
+ * (aria-hidden, no pointer events). It fades out towards the bottom, where the sheet covers it.
+ */
+.band-art {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--band-art-height, 20rem);
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+
+.shell-hero {
+  --band-art-height: 52rem;
+}
+
+.glow {
+  position: absolute;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.glow-green {
+  left: -12rem;
+  top: -14rem;
+  background: radial-gradient(closest-side, var(--glow-green), transparent);
+}
+
+.glow-teal {
+  right: -14rem;
+  top: 2rem;
+  background: radial-gradient(closest-side, var(--glow-teal), transparent);
+}
+
+.glow-amber {
+  left: 22%;
+  top: 14rem;
+  width: 26rem;
+  height: 26rem;
+  background: radial-gradient(closest-side, var(--glow-amber), transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .glow-green {
+    animation: drift-a 26s ease-in-out infinite alternate;
+  }
+
+  .glow-teal {
+    animation: drift-b 32s ease-in-out infinite alternate;
+  }
+
+  .glow-amber {
+    animation: drift-c 38s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes drift-a {
+  to {
+    transform: translate(10vw, 6vh) scale(1.2);
+  }
+}
+
+@keyframes drift-b {
+  to {
+    transform: translate(-8vw, -5vh) scale(0.92);
+  }
+}
+
+@keyframes drift-c {
+  to {
+    transform: translate(5vw, -8vh) rotate(30deg);
+  }
+}
+
+/* Contour lines: the SVG is a mask, so the lines take the colour given here. */
+.contours {
+  position: absolute;
+  inset: 0;
+  background: var(--band-contour);
+  -webkit-mask: url("../assets/contours.svg") center / cover no-repeat;
+  mask: url("../assets/contours.svg") center / cover no-repeat;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--gutter);
+  top: -100px;
+  background: var(--band-accent);
+  color: var(--band-accent-text);
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: var(--radius-pill);
+  z-index: 10;
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+/* Header: a glass pill holding the wordmark, the navigation and the language switch. */
+.site-header {
+  padding: max(10px, env(safe-area-inset-top)) var(--pad-right) 0 var(--pad-left);
+}
+
+.nav-pill {
+  max-width: var(--wide);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  padding: 4px 6px 4px 16px;
+  border: 1px solid var(--band-line);
+  border-radius: 26px;
+  background: var(--band-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+/* The wordmark: ELO in mist, "chair" in lime with a soft glow, after the ELO27 mark. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  font-family: var(--font-mark);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--band-text);
+  text-decoration: none;
+}
+
+.brand-tail {
+  color: var(--band-accent);
+  text-shadow: 0 0 14px rgb(201 229 154 / 0.55);
+}
+
+.site-nav {
+  order: 3;
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+  border-top: 1px solid var(--band-line);
+  margin-top: 4px;
+}
+
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  color: var(--band-text);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: var(--band-accent);
+}
+
+/* The language switch: a segmented pill, the current language filled in. */
+.lang-switch {
+  display: flex;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--band-line);
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.05);
+}
+
+.lang-switch a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: var(--band-text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+
+.lang-switch a:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.lang-switch a[aria-current="true"] {
+  background: var(--band-accent);
+  color: var(--band-accent-text);
+  font-weight: 500;
+}
+
+@media (min-width: 46rem) {
+  .nav-pill {
+    flex-wrap: nowrap;
+    border-radius: var(--radius-pill);
+    padding-left: 22px;
+  }
+
+  .site-nav {
+    order: 0;
+    flex: 1;
+    flex-basis: auto;
+    border-top: 0;
+    margin: 0 0 0 12px;
+  }
+}
+
+/*
+ * The sheet: where pages live. Paper (or the forest surface in dark mode), with a rounded top
+ * that overlaps the band. Its content is centred at --content wide (or --wide) by padding, so
+ * no wrapper element is needed.
+ */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+}
+
+.sheet {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding-block: 26px 56px;
+  padding-inline: max(var(--pad-left), calc((100% - var(--content)) / 2))
+    max(var(--pad-right), calc((100% - var(--content)) / 2));
+}
+
+.sheet-wide {
+  padding-inline: max(var(--pad-left), calc((100% - var(--wide)) / 2))
+    max(var(--pad-right), calc((100% - var(--wide)) / 2));
+}
+
+/* Faint contour lines at the top of the sheet, fading out before the content gets dense. */
+.sheet::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: min(100%, 26rem);
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--contour), transparent);
+  -webkit-mask: url("../assets/contours.svg") center top / cover no-repeat;
+  mask: url("../assets/contours.svg") center top / cover no-repeat;
+}
+
+@media (min-width: 46rem) {
+  :root {
+    --radius-sheet: 44px;
+  }
+
+  .sheet {
+    padding-block: 40px 72px;
+  }
+}
+
+/* Footer: back on the band. */
+.site-footer {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 28px var(--pad-right) max(24px, env(safe-area-inset-bottom)) var(--pad-left);
+  background: var(--band-bg);
+  color: var(--band-muted);
+  font-size: 0.9rem;
+}
+
+.site-footer .contours {
+  z-index: -1;
+  opacity: 0.6;
+}
+
+.footer-inner {
+  max-width: var(--wide);
+  margin: 0 auto;
+  display: grid;
+  gap: 6px;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.site-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  color: var(--band-text);
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+}

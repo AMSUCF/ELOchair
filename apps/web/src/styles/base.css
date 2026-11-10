@@ -1,0 +1,92 @@
+/* Element defaults. Mobile-first: nothing here assumes a wide screen. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--band-bg);
+}
+
+body {
+  margin: 0;
+  background: var(--band-bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Motion is decoration only, and opt-in: every animation and transition in these stylesheets
+ * sits inside `@media (prefers-reduced-motion: no-preference)`. With reduced motion, nothing
+ * moves. Keep it that way when adding one (an e2e test checks).
+ */
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(1.9rem, 1.3rem + 3vw, 2.75rem);
+  line-height: 1.05;
+  margin: 8px 0 12px;
+}
+
+h1:focus {
+  outline: none;
+}
+
+h2 {
+  font-size: 1.4rem;
+  line-height: 1.15;
+  margin: 32px 0 10px;
+}
+
+h3 {
+  font-size: 1.15rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+}
+
+p {
+  margin: 0 0 12px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+strong {
+  font-weight: 650;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

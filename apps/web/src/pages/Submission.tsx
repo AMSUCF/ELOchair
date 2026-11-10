@@ -19,10 +19,10 @@ import {
   type Profile,
   type Role,
 } from "../api";
-import { formatDateTime, viewerTimeZone } from "../format";
+import { formatDateTime, hasMinimum, viewerTimeZone } from "../format";
 import { cleanName, describedBy, ErrorSummary, FieldError, fieldId, nameRefusal } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
-import { contribStatusKey, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
+import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
@@ -229,13 +229,16 @@ function WordCount({
 }) {
   const { t } = useT();
   const n = countWords(text, lang);
-  const state = n < min ? "under" : n > max ? "over" : "ok";
+  // With no real minimum there is nothing to be under: an empty abstract is simply not there yet.
+  const state = hasMinimum(min) && n < min ? "under" : n > max ? "over" : "ok";
   const label =
     state === "under"
       ? t("editWordsUnder", { count: n, min })
       : state === "over"
         ? t("editWordsOver", { count: n, max })
-        : t("editWords", { count: n, min, max });
+        : hasMinimum(min)
+          ? t("editWords", { count: n, min, max })
+          : t("editWordsMax", { count: n, max });
   // Announced only when the count crosses a limit, not on every keystroke.
   const previous = useRef(state);
   const [announcement, setAnnouncement] = useState("");
@@ -302,9 +305,8 @@ function FieldInput({
           />
           {field.maxWords && (
             <p className="meta">
-              {t("editWords", {
+              {t("editWordsMax", {
                 count: countWords(String(value ?? ""), lang),
-                min: 0,
                 max: field.maxWords,
               })}
             </p>
@@ -382,7 +384,11 @@ function FieldInput({
           <input
             id={id}
             type={field.kind === "url" ? "url" : field.kind === "number" ? "number" : "text"}
-            inputMode={field.kind === "url" ? "url" : undefined}
+            inputMode={
+              field.kind === "url" ? "url" : field.kind === "number" ? "numeric" : undefined
+            }
+            min={field.kind === "number" ? field.min : undefined}
+            max={field.kind === "number" ? field.max : undefined}
             value={String(value ?? "")}
             onChange={(e) =>
               onChange(
@@ -1058,7 +1064,9 @@ function People({
                 <span className="meta">{[c.affiliation, c.email].filter(Boolean).join(" · ")}</span>
               </p>
               <p>
-                <span className="badge">{t(contribStatusKey(c.status))}</span>
+                <span className="badge" data-tone={contribTone(c.status)}>
+                  {t(contribStatusKey(c.status))}
+                </span>
               </p>
               {editable && (
                 <div className="actions">

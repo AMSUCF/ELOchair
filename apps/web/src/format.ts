@@ -20,3 +20,21 @@ export function formatDateRange(start: string, end: string, lang: string): strin
 }
 
 export const viewerTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** "10.96° N 74.80° W": coordinates the way the conference's site writes them. */
+export function formatCoordinates({ lat, lon }: { lat: number; lon: number }): string {
+  const part = (value: number, positive: string, negative: string) =>
+    `${Math.abs(value).toFixed(2)}° ${value >= 0 ? positive : negative}`;
+  return `${part(lat, "N", "S")} ${part(lon, "E", "W")}`;
+}
+
+/** Whole days from `now` until `iso`, rounded up; never negative. For display only. */
+export function daysUntil(iso: string, now: number): number {
+  return Math.max(0, Math.ceil((Date.parse(iso) - now) / 86_400_000));
+}
+
+/**
+ * Whether a format's abstract has a real minimum length. Some calls give only a maximum; their
+ * configuration then asks for one word at least, which only means "not empty".
+ */
+export const hasMinimum = (minWords: number): boolean => minWords > 1;

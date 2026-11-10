@@ -134,3 +134,35 @@ describe("review fixes: configuration rules", () => {
     expect(issuePaths(c)).toContain("submissionTypes.2.fields.0.options.1.key");
   });
 });
+
+describe("conference details shown on its page", () => {
+  it("ELO 2027 carries what the published call states", () => {
+    const c = ConferenceConfig.parse(elo2027);
+    expect(c.theme).toMatchObject({
+      en: "Ecologies of Attention",
+      es: "Ecologías de la atención",
+    });
+    expect(c.dates).toEqual({ start: "2027-08-03", end: "2027-08-06" });
+    // February 14, 2027, 23:59 anywhere on Earth is 11:59 UTC the next day.
+    expect(new Date(c.deadlines.submissionsClose).toISOString()).toBe("2027-02-15T11:59:00.000Z");
+    expect(c.contactEmail).toBe("elo27@uninorte.edu.co");
+    expect(c.website).toBe("https://elo27.eliterature.org/");
+    expect(c.coordinates).toEqual({ lat: 10.96, lon: -74.8 });
+  });
+
+  it("website and coordinates are optional", () => {
+    const c = ConferenceConfig.parse(elo2026);
+    expect(c.website).toBeUndefined();
+    expect(c.coordinates).toBeUndefined();
+  });
+
+  it.each<[string, Partial<ConferenceConfigInput>, string]>([
+    ["a website that is not https", { website: "http://elo27.eliterature.org/" }, "website"],
+    ["a website that is not a URL", { website: "elo27.eliterature.org" }, "website"],
+    ["a script URL", { website: "javascript:alert(1)" }, "website"],
+    ["a latitude off the globe", { coordinates: { lat: 91, lon: 0 } }, "coordinates.lat"],
+    ["a longitude off the globe", { coordinates: { lat: 0, lon: -181 } }, "coordinates.lon"],
+  ])("rejects %s", (_, change, path) => {
+    expect(issuePaths({ ...clone(elo2027), ...change })).toEqual([path]);
+  });
+});

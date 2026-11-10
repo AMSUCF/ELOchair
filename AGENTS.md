@@ -15,8 +15,9 @@ packages/policy   Who may see what: viewers, submissionAccess(), allow-list proj
                   "@elochair/policy/testing" has findLeaks().
 apps/server       Hono API, Drizzle (Postgres; PGlite in tests and development), auth, audit log, CLI, fixtures.
 apps/web          Mobile-first React PWA; typed en/es/pt message catalogs; Playwright e2e tests.
+                  Styles are in src/styles: tokens first, then components (see docs/design).
 deploy/           Dockerfile, docker-compose (app, Postgres, Caddy), backups, runbook.
-docs/             Plan and specs.
+docs/             Plan, specs, and the design notes for the ELO 2027 identity.
 ```
 
 ## Commands
@@ -71,7 +72,11 @@ These are invariants. Do not trade them away for convenience.
 8. **Mobile-first and accessible (WCAG 2.1 AA).**
    - Touch targets are at least 44px, and nothing scrolls horizontally at 360px width.
    - Labelled form controls, live regions for status messages, and focus moves to the `h1` on navigation.
-   - The e2e tests run axe; keep them green.
+   - The e2e tests run axe in the light and dark themes; keep them green.
+   - The look follows [docs/design/visual-identity.md](docs/design/visual-identity.md). Colours, fonts and radii are tokens in `apps/web/src/styles/tokens.css`; never write them in a component.
+   - Text on the forest band sits on glow fields that axe cannot measure. `apps/web/e2e/identity.spec.ts` measures them; run it before changing a `--glow-*` or `--band-*` token.
+   - Motion is decoration and opt-in: put every animation or transition inside `@media (prefers-reduced-motion: no-preference)`.
+   - Fonts and images are served from the app's own origin, and never inlined as `data:` URLs (the Content-Security-Policy refuses those for fonts).
 
 9. **Browser bundle.** Browser code imports runtime helpers from `@elochair/schema/pure`; import types from `@elochair/schema` with `import type`.
 
@@ -91,6 +96,7 @@ Spec 02 has the details.
 
 - Server tests drive both listeners in-process with `app.request()` against an in-memory PGlite database. Use `apps/server/src/testkit.ts`.
 - Fixtures are deterministic, shaped like ELO 2026: 200 submissions and 41 reviewers. Three fictional people deliberately exceed the presenter cap.
+- Server tests that need an open call use `seedTestCall()`, which opens the made-up call in `apps/server/src/fixture-call.ts`. Never build a test on a real conference's configuration (`conferences.elo2027`): it changes whenever the organisers decide something. Development and the e2e tests use `seedOpenCall()`, which is ELO 2027's own configuration on dates that follow the clock.
 - `npm run e2e` uses the browsers installed for Playwright 1.63; `playwright-core` is pinned to match.
 - MCP tests drive `/api/mcp` with the real SDK `Client`, whose `fetch` is pointed at `app.request`. Every tool result goes through `findLeaks()`.
 - When you edit files with scripts, assert that each replacement matched. Biome reformats code, and a silent no-op edit cost an hour once.

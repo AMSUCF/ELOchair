@@ -1,0 +1,124 @@
+/*
+ * Tokens. Colours, fonts and shapes are named here and nowhere else.
+ *
+ * Two themes follow the system setting:
+ * - paper (light): the conference site's light sections. Ink on paper, teal actions.
+ * - forest (dark): its dark sections. Mist on forest, lime actions.
+ * The band (header, hero and footer) is forest in both, as on the conference site.
+ */
+:root {
+  /* The conference palette, the same in both themes. */
+  --forest: #0e1f18;
+  --mist: #eef2ea;
+  --lime: #c9e59a;
+  --gold: #f0d98a;
+  --teal: #1d5e57;
+  --paper: #f3f5ee;
+  --ink: #17251e;
+  --rust: #9a3f22;
+  --taupe: #5b5146;
+
+  /* Type roles. */
+  --font-display:
+    "Bricolage Grotesque Variable", "Schibsted Grotesk Variable", system-ui, sans-serif;
+  --font-sans:
+    "Schibsted Grotesk Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
+    sans-serif;
+  --font-serif: "Brygada 1918 Variable", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-mark: "Unbounded", "Bricolage Grotesque Variable", system-ui, sans-serif;
+
+  /* Shape and space. */
+  --radius-s: 10px;
+  --radius: 16px;
+  --radius-l: 24px;
+  --radius-sheet: 28px;
+  --radius-pill: 999px;
+  --gutter: 16px;
+  --touch: 44px;
+  --content: 46rem;
+  --wide: 70rem;
+
+  /* Respect notches and rounded corners (index.html sets viewport-fit=cover). */
+  --pad-left: max(var(--gutter), env(safe-area-inset-left));
+  --pad-right: max(var(--gutter), env(safe-area-inset-right));
+
+  /* The band: forest in both themes. */
+  --band-bg: var(--forest);
+  --band-text: var(--mist);
+  --band-muted: #cdd8ce;
+  --band-accent: var(--lime);
+  --band-accent-text: #10261d;
+  --band-echo: var(--gold);
+  --band-line: rgb(255 255 255 / 0.16);
+  --band-glass: rgb(14 31 24 / 0.6);
+  --band-contour: rgb(201 229 154 / 0.16);
+  /*
+   * Glow fields. Their peak alpha is capped so that mist, lime and gold text stay above 4.5:1
+   * wherever they sit on the band (measured in docs/design/visual-identity.md). Do not raise
+   * these without measuring again.
+   */
+  --glow-green: oklch(0.55 0.13 150 / 0.3);
+  --glow-teal: oklch(0.6 0.11 195 / 0.28);
+  --glow-amber: oklch(0.72 0.13 85 / 0.16);
+
+  /* Paper theme. */
+  --bg: var(--paper);
+  --surface: #fbfcf8;
+  --sunken: #e7ece0;
+  --text: var(--ink);
+  --muted: var(--taupe);
+  --line: #d3d9cd;
+  --control-border: #5f7a72;
+  --accent: var(--teal);
+  --accent-text: #ffffff;
+  --echo: var(--rust);
+  --label: var(--rust);
+  --numeral: var(--teal);
+  --notice-bg: #f6ecc9;
+  --notice-text: #5c4400;
+  --focus: var(--teal);
+  --danger: #a3261b;
+  --danger-text: #ffffff;
+  --tone-good-bg: var(--lime);
+  --tone-good-text: var(--ink);
+  --tone-warn-bg: var(--gold);
+  --tone-warn-text: #3a2c00;
+  --tone-info-bg: var(--teal);
+  --tone-info-text: #ffffff;
+  --tone-quiet-bg: var(--sunken);
+  --tone-quiet-text: var(--taupe);
+  --contour: rgb(29 94 87 / 0.14);
+  --shadow: 0 1px 2px rgb(16 38 29 / 0.05), 0 14px 32px -18px rgb(16 38 29 / 0.22);
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Forest theme. */
+    --bg: #12261d;
+    --surface: #1a2c24;
+    --sunken: #0e1f18;
+    --text: var(--mist);
+    --muted: #b4c2b6;
+    --line: #2c4036;
+    --control-border: #7d9488;
+    --accent: var(--lime);
+    --accent-text: #10261d;
+    --echo: var(--gold);
+    --label: var(--lime);
+    --numeral: var(--lime);
+    --notice-bg: #33300f;
+    --notice-text: #fbe7a6;
+    --focus: var(--lime);
+    --danger: #ffb4ab;
+    --danger-text: #2b0f0b;
+    --tone-info-bg: #2f7d74;
+    --tone-info-text: #ffffff;
+    --tone-quiet-bg: #223a2f;
+    --tone-quiet-text: #b4c2b6;
+    --contour: rgb(201 229 154 / 0.1);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 32px -18px rgb(0 0 0 / 0.6);
+  }
+}

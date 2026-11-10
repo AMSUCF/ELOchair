@@ -14,6 +14,8 @@ export type SubmissionIssue = {
     | "too_many_words"
     | "required"
     | "wrong_kind"
+    /** A number outside the range its field allows (params: min, max where set). */
+    | "out_of_range"
     | "unknown_option"
     | "team_size"
     | "no_lead"
@@ -87,8 +89,16 @@ function checkField(f: CustomField, v: FieldValue | undefined, lang: string): Su
     case "multiselect":
       if (!Array.isArray(v)) return [{ path, code: "wrong_kind" }];
       return v.every((x) => options.has(x)) ? [] : [{ path, code: "unknown_option" }];
-    case "number":
-      return typeof v === "number" && Number.isFinite(v) ? [] : [{ path, code: "wrong_kind" }];
+    case "number": {
+      if (typeof v !== "number" || !Number.isFinite(v)) return [{ path, code: "wrong_kind" }];
+      if ((f.min !== undefined && v < f.min) || (f.max !== undefined && v > f.max)) {
+        const params: Record<string, number> = {};
+        if (f.min !== undefined) params.min = f.min;
+        if (f.max !== undefined) params.max = f.max;
+        return [{ path, code: "out_of_range", params }];
+      }
+      return [];
+    }
   }
 }
 
