@@ -1,5 +1,14 @@
 import { useEffect, useRef } from "react";
-import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router";
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, translate, useT } from "./i18n";
 import { ConferencePage } from "./pages/Conference";
@@ -52,6 +61,34 @@ function pathIn(lang: string, pathname: string, search: string): string {
   return `/${lang}${withoutLang(pathname) || "/"}${search}`;
 }
 
+/** Pages that open with a hero on the band and render their own sheet: home and a conference. */
+const hasHero = (pathname: string) => /^\/(?:c\/[^/]+\/?)?$/.test(withoutLang(pathname) || "/");
+
+/** Slow glow fields and contour lines behind the header and hero. Decoration only. */
+function BandArt() {
+  return (
+    <div className="band-art" aria-hidden="true">
+      <span className="glow glow-green" />
+      <span className="glow glow-teal" />
+      <span className="glow glow-amber" />
+      <span className="contours" />
+    </div>
+  );
+}
+
+/**
+ * The wordmark: "ELO" plus "chair" in the accent colour, after the conference's ELO27 mark. One
+ * inline element, so that it is read as the single word "ELOchair" (as flex items, the two
+ * parts would be announced as two words).
+ */
+function Wordmark() {
+  return (
+    <span>
+      ELO<span className="brand-tail">chair</span>
+    </span>
+  );
+}
+
 /**
  * In place of a page that failed to render: say so, in the interface language. Its heading takes
  * focus, since whatever had focus (often the failed page's heading) is gone.
@@ -79,7 +116,7 @@ export function RootError() {
   const first = window.location.pathname.split("/")[1];
   const lang = isLang(first) ? first : detectLang();
   return (
-    <main id="main" lang={lang}>
+    <main id="main" lang={lang} className="sheet">
       <h1>{translate(lang, "crashTitle")}</h1>
       <p role="alert">{translate(lang, "crashBody")}</p>
       <p>
@@ -108,44 +145,73 @@ function Shell() {
     document.documentElement.lang = lang;
   }, [lang]);
 
+  const hero = hasHero(location.pathname);
+  const crashed = hero ? (
+    <div className="sheet">
+      <Crashed />
+    </div>
+  ) : (
+    <Crashed />
+  );
+
   return (
     <FocusPending.Provider value={focusPending}>
-      <div className="shell">
+      <div className={hero ? "shell shell-hero" : "shell"}>
+        <BandArt />
         <a className="skip-link" href="#main">
           {t("skipToContent")}
         </a>
         <header className="site-header">
-          <Link to={`/${lang}/`} className="brand">
-            <img src="/icon.svg" alt="" width="28" height="28" />
-            <span>{t("appName")}</span>
-          </Link>
-          <nav aria-label={t("navMain")} className="site-nav">
-            <Link to={`/${lang}/my`}>{t("navMySubmissions")}</Link>
-            <Link to={`/${lang}/me`}>{t("navAccount")}</Link>
-            <ul className="lang-list">
-              {LANGS.map((l) => (
-                <li key={l}>
-                  <Link
-                    to={pathIn(l, location.pathname, location.search)}
-                    lang={l}
-                    hrefLang={l}
-                    aria-current={l === lang ? "true" : undefined}
-                  >
-                    {LANG_NAMES[l]}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          <div className="nav-pill">
+            <Link to={`/${lang}/`} className="brand">
+              <Wordmark />
+            </Link>
+            <nav aria-label={t("navMain")} className="site-nav">
+              {/* NavLink marks the current page (aria-current="page"). */}
+              <NavLink to={`/${lang}/my`}>{t("navMySubmissions")}</NavLink>
+              <NavLink to={`/${lang}/me`}>{t("navAccount")}</NavLink>
+            </nav>
+            <nav aria-label={t("navLanguage")}>
+              <ul className="lang-switch">
+                {LANGS.map((l) => (
+                  <li key={l}>
+                    {/* The code is what shows; the name follows it for screen readers. */}
+                    <Link
+                      to={pathIn(l, location.pathname, location.search)}
+                      lang={l}
+                      hrefLang={l}
+                      title={LANG_NAMES[l]}
+                      aria-current={l === lang ? "true" : undefined}
+                    >
+                      {l.toUpperCase()}
+                      <span className="visually-hidden"> {LANG_NAMES[l]}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
         </header>
-        <main id="main">
+        {/* Hero pages render their hero and their own sheet; every other page is the sheet. */}
+        <main id="main" className={hero ? undefined : "sheet"}>
           {/* A new page (not a language switch) gets a fresh boundary. */}
-          <ErrorBoundary key={withoutLang(location.pathname)} fallback={<Crashed />}>
+          <ErrorBoundary key={withoutLang(location.pathname)} fallback={crashed}>
             <Outlet />
           </ErrorBoundary>
         </main>
         <footer className="site-footer">
-          <p>{t("footer")}</p>
+          <span className="contours" aria-hidden="true" />
+          <div className="footer-inner">
+            <p className="brand">
+              <Wordmark />
+            </p>
+            <p>{t("footer")}</p>
+            <p className="footer-links">
+              <a href="https://eliterature.org" rel="noreferrer">
+                {t("footerOrg")}
+              </a>
+            </p>
+          </div>
         </footer>
       </div>
     </FocusPending.Provider>

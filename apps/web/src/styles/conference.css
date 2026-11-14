@@ -1,0 +1,403 @@
+/* The hero on the band, and the public pages that use it: home and a conference's call. */
+.home,
+.conference {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Inside the band, the theme tokens take their band values, so shared components (eyebrows,
+ * buttons, links, chips) need no special cases there.
+ */
+.hero,
+.site-header,
+.site-footer {
+  --text: var(--band-text);
+  --muted: var(--band-muted);
+  --label: var(--band-accent);
+  --numeral: var(--band-accent);
+  --echo: var(--band-echo);
+  --accent: var(--band-accent);
+  --accent-text: var(--band-accent-text);
+  --line: var(--band-line);
+  --control-border: rgb(255 255 255 / 0.45);
+  --focus: var(--band-accent);
+  --surface: rgb(14 31 24 / 0.5);
+  --shadow: none;
+  color: var(--band-text);
+}
+
+.hero {
+  width: 100%;
+  max-width: calc(var(--wide) + var(--pad-left) + var(--pad-right));
+  margin: 0 auto;
+  padding: 20px var(--pad-right) 44px var(--pad-left);
+}
+
+/* "ELECTRONIC LITERATURE ORGANIZATION CONFERENCE", in the wordmark face. */
+.hero-eyebrow {
+  margin: 0 0 4px;
+  font-family: var(--font-mark);
+  font-weight: 800;
+  font-size: clamp(0.7rem, 0.55rem + 0.8vw, 1rem);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--band-accent);
+}
+
+.hero-coords {
+  margin: 0 0 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  color: var(--band-muted);
+}
+
+/* The title comes into focus from a blur, once: the conference's "attention" motif. */
+.hero h1 {
+  margin: 10px 0 6px;
+  font-size: clamp(2.6rem, 1.4rem + 7vw, 6rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero h1 {
+    animation: focus-in 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+.hero-home h1 {
+  font-size: clamp(2.4rem, 1.4rem + 5vw, 4.5rem);
+}
+
+@keyframes focus-in {
+  from {
+    filter: blur(12px);
+  }
+  to {
+    filter: blur(0);
+  }
+}
+
+/* The theme: display type when short, the serif when it is a sentence. */
+.hero-theme {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(1.7rem, 1rem + 4vw, 3.5rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--band-text);
+}
+
+.hero-theme.long {
+  max-width: 44rem;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(1.1rem, 1rem + 0.6vw, 1.35rem);
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--band-muted);
+}
+
+/* The theme's echo in the other language: serif italic in gold, as on the conference site. */
+.hero-echo {
+  margin: 8px 0 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1.3rem, 1rem + 2vw, 2.4rem);
+  line-height: 1.1;
+  color: var(--band-echo);
+}
+
+.hero-echo .echo {
+  font-weight: 400;
+}
+
+.hero-echo .echo::before {
+  content: none;
+}
+
+.hero-lede {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--band-muted);
+}
+
+/* Facts strip: dates, venue, deadline and actions on one glass card. */
+.hero-facts {
+  margin-top: 28px;
+  display: grid;
+  border: 1px solid var(--band-line);
+  border-radius: var(--radius-l);
+  background: var(--band-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+.hero-facts > div {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--band-line);
+}
+
+.hero-facts > div:last-child {
+  border-bottom: 0;
+}
+
+.fact {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.fact-sub {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  color: var(--band-muted);
+}
+
+.countdown {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--band-muted);
+}
+
+.countdown-number {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2.4rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--band-accent);
+}
+
+.hero-facts .actions {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+}
+
+.hero .status-line {
+  margin: 16px 0 0;
+  font-weight: 500;
+  color: var(--band-text);
+}
+
+@media (min-width: 52rem) {
+  .hero {
+    padding-top: 36px;
+    padding-bottom: 60px;
+  }
+
+  .hero-facts {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
+
+  .hero-facts > div {
+    border-bottom: 0;
+    border-right: 1px solid var(--band-line);
+  }
+
+  .hero-facts > div:last-child {
+    border-right: 0;
+  }
+}
+
+/* Home: the featured conference, on glass. */
+.feature {
+  margin-top: 24px;
+  max-width: 44rem;
+  padding: 20px;
+  border: 1px solid var(--band-line);
+  border-radius: var(--radius-l);
+  background: var(--band-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+.feature h2 {
+  margin: 10px 0 4px;
+  font-size: clamp(1.7rem, 1.2rem + 2.5vw, 2.6rem);
+  line-height: 1;
+}
+
+.feature h2 > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  color: var(--band-text);
+  text-decoration: none;
+}
+
+.feature h2 > a:hover {
+  color: var(--band-accent);
+}
+
+.feature .hero-theme {
+  font-size: clamp(1.3rem, 1rem + 2vw, 2rem);
+}
+
+.feature .hero-theme.long {
+  font-size: 1.05rem;
+}
+
+.feature .actions {
+  margin: 16px 0 0;
+}
+
+/* The link out to the conference's own site. */
+.call-link {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.call-link p {
+  margin: 0;
+}
+
+/* Formats: numbered cards. */
+.formats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.format-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.format-number {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--numeral);
+}
+
+.format h3 {
+  font-size: 1.5rem;
+  margin-bottom: 8px;
+}
+
+.format .facts {
+  margin-bottom: 0;
+}
+
+@media (min-width: 52rem) {
+  .formats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Key dates: a line with a dot per date; the deadline people must not miss is filled in. */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.timeline li {
+  position: relative;
+  padding: 0 0 22px 28px;
+  border-left: 2px solid var(--accent);
+  margin-left: 7px;
+}
+
+.timeline li:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg);
+}
+
+.timeline li.key::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.timeline p {
+  margin: 0;
+}
+
+.timeline .when {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 52rem) {
+  .timeline {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    padding: 22px 22px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .timeline li {
+    margin: 0;
+    padding: 26px 16px 14px 0;
+    border-left: 0;
+    border-top: 2px solid var(--accent);
+  }
+
+  .timeline li:last-child {
+    border-top-color: var(--accent);
+  }
+
+  .timeline li::before {
+    left: 0;
+    top: -8px;
+  }
+
+  .timeline li.key::before {
+    background: var(--accent);
+  }
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.plain-list li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.contact {
+  margin-top: 32px;
+}

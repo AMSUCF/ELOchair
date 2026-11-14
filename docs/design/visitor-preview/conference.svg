@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="930" viewBox="0 0 1000 930" role="img" aria-labelledby="title desc"><title id="title">Conference front door — comparison</title><desc id="desc">Structure sketch of the ELOchair visitor concept, including reviewer and organizer sign-in. The interactive HTML preview contains the complete navigation.</desc>
+<rect x="0" y="0" width="1000" height="930" rx="0" fill="#f3f5ee" stroke="none"/>
+<rect x="0" y="0" width="1000" height="415" rx="0" fill="#0e1f18" stroke="none"/>
+<text x="32" y="43" fill="#c9e59a" font-size="24" font-weight="700" font-family="Arial, sans-serif">ELOchair</text>
+<text x="200" y="40" fill="#eef2ea" font-size="14" font-weight="400" font-family="Arial, sans-serif">Submission guide</text>
+<text x="378" y="40" fill="#eef2ea" font-size="14" font-weight="400" font-family="Arial, sans-serif">Key dates</text>
+<text x="630" y="40" fill="#eef2ea" font-size="14" font-weight="400" font-family="Arial, sans-serif">Reviewer / organizer sign-in</text>
+<text x="920" y="40" fill="#eef2ea" font-size="12" font-weight="400" font-family="Arial, sans-serif">EN ES PT</text>
+<text x="36" y="113" fill="#c9e59a" font-size="12" font-weight="700" font-family="Arial, sans-serif">ELO 2027 · SUBMISSION AND REVIEW PORTAL</text>
+<text x="36" y="174" fill="#eef2ea" font-size="42" font-weight="700" font-family="Arial, sans-serif">Ecologies of Attention</text>
+<text x="36" y="217" fill="#eef2ea" font-size="17" font-weight="400" font-family="Arial, sans-serif">The Electronic Literature Organization’s conference and media arts festival,</text>
+<text x="36" y="244" fill="#eef2ea" font-size="17" font-weight="400" font-family="Arial, sans-serif">hosted by Universidad del Norte in Barranquilla, Colombia.</text>
+<text x="36" y="305" fill="#cdd8ce" font-size="15" font-weight="400" font-family="Arial, sans-serif">3–6 August 2027 · Barranquilla, Colombia · Hybrid</text>
+<rect x="36" y="333" width="255" height="48" rx="24" fill="#c9e59a" stroke="none"/>
+<text x="55" y="363" fill="#10261d" font-size="15" font-weight="700" font-family="Arial, sans-serif">Read the official CFP</text>
+<rect x="310" y="333" width="260" height="48" rx="24" fill="#0e1f18" stroke="#cdd8ce"/>
+<text x="330" y="363" fill="#eef2ea" font-size="15" font-weight="700" font-family="Arial, sans-serif">Start a proposal</text>
+<rect x="0" y="415" width="1000" height="66" rx="0" fill="#fbfcf8" stroke="none"/>
+<text x="36" y="452" fill="#17251e" font-size="15" font-weight="700" font-family="Arial, sans-serif">Call open · Deadline: 14 February 2027, 23:59 AoE (UTC−12)</text>
+<text x="36" y="526" fill="#17251e" font-size="26" font-weight="700" font-family="Arial, sans-serif">A meeting of research and practice</text>
+<text x="36" y="566" fill="#17251e" font-size="17" font-weight="400" font-family="Arial, sans-serif">Conference introduction → Official CFP → Submission guidance → Start a draft</text>
+<rect x="36" y="600" width="300" height="130" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="56" y="638" fill="#17251e" font-size="19" font-weight="700" font-family="Arial, sans-serif">Understand the call</text>
+<text x="56" y="679" fill="#1d5e57" font-size="14" font-weight="400" font-family="Arial, sans-serif">Find the relevant next step →</text>
+<rect x="356" y="600" width="300" height="130" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="376" y="638" fill="#17251e" font-size="19" font-weight="700" font-family="Arial, sans-serif">Plan a proposal</text>
+<text x="376" y="679" fill="#1d5e57" font-size="14" font-weight="400" font-family="Arial, sans-serif">Find the relevant next step →</text>
+<rect x="676" y="600" width="300" height="130" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="696" y="638" fill="#17251e" font-size="19" font-weight="700" font-family="Arial, sans-serif">Explore the conference</text>
+<text x="696" y="679" fill="#1d5e57" font-size="14" font-weight="400" font-family="Arial, sans-serif">Find the relevant next step →</text>
+<rect x="36" y="772" width="928" height="108" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="56" y="810" fill="#17251e" font-size="17" font-weight="700" font-family="Arial, sans-serif">Continue a proposal</text>
+<text x="56" y="847" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Author sign-in →</text>
+<text x="366" y="810" fill="#17251e" font-size="17" font-weight="700" font-family="Arial, sans-serif">Invited to review?</text>
+<text x="366" y="847" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Reviewer sign-in →</text>
+<text x="676" y="810" fill="#17251e" font-size="17" font-weight="700" font-family="Arial, sans-serif">Organizing ELO 2027?</text>
+<text x="676" y="847" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Organizer sign-in →</text>
+<text x="36" y="913" fill="#5b5146" font-size="12" font-weight="400" font-family="Arial, sans-serif">DESIGN STUDY · Provisional conference details · No live authentication</text>
+</svg>

@@ -166,6 +166,12 @@ const ConferenceConfigShape = z.object({
   defaultLanguage: LanguageCode,
   languages: z.array(LanguageCode).min(1),
   contactEmail: z.email(),
+  /** The conference's own site, where the full call lives. The conference page links to it. */
+  website: z.url({ protocol: /^https$/, error: "use an https:// address" }).optional(),
+  /** Where the conference takes place, in decimal degrees. Shown as on the conference's site. */
+  coordinates: z
+    .object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })
+    .optional(),
   dates: z.object({ start: IsoDate, end: IsoDate }),
   deadlines: z.object({
     submissionsOpen: IsoDateTime,

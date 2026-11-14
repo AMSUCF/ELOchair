@@ -1,0 +1,198 @@
+/* Forms and the pages people work in. */
+.stack {
+  display: grid;
+  gap: 8px;
+  max-width: 28rem;
+}
+
+.stack.wide {
+  max-width: none;
+}
+
+label {
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  min-height: var(--touch);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 9px 14px;
+}
+
+select {
+  padding: 4px 10px;
+}
+
+textarea {
+  line-height: 1.5;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--text);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+  border-color: var(--focus);
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+  border-width: 2px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+}
+
+fieldset.plain {
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 6px;
+}
+
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-height: var(--touch);
+  font-weight: 400;
+}
+
+.choice input {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: 3px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.word-count {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.word-count.under,
+.word-count.over,
+.field-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.field-error {
+  margin: 0;
+}
+
+.error-summary {
+  border: 3px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: var(--surface);
+}
+
+.error-summary h2 {
+  margin-top: 0;
+}
+
+.error-summary a {
+  color: var(--danger);
+}
+
+/* The editor: sections separated by hairlines, as on the conference site. */
+.editor > section,
+.editor > form {
+  margin-top: 8px;
+}
+
+.filters {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.filters label {
+  display: grid;
+  gap: 4px;
+}
+
+@media (min-width: 40rem) {
+  .filters {
+    grid-template-columns: repeat(3, 1fr) auto;
+    align-items: end;
+  }
+}
+
+/* The chair's overview: one tile per figure, the number set large inside its sentence. */
+.overview {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.overview li {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.overview li.notice {
+  border-color: transparent;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+
+.overview .stat-value {
+  margin-inline: 2px;
+  font-size: 1.35rem;
+}
+
+@media (min-width: 40rem) {
+  .overview {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

@@ -1,0 +1,372 @@
+/* Components shared by pages. Each one is described in docs/design/visual-identity.md. */
+
+/* Mono micro-label: "DATES · FECHAS" on the conference site. */
+.eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+/* Introductory text, in the serif. */
+.lede {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.meta {
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+/* The second language of a pair ("Key dates / Fechas clave"). Decoration: see Echo in ui.tsx. */
+.echo {
+  font-weight: 300;
+  color: var(--echo);
+}
+
+.echo::before {
+  content: " / ";
+}
+
+/* A numbered section heading with a hairline under it. */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 40px 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--text);
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 1.1rem + 2vw, 2.25rem);
+}
+
+.section-number {
+  flex: none;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--numeral);
+}
+
+.notice {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+
+.notice a {
+  color: inherit;
+}
+
+/* Cards */
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.3rem;
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
+.card h2 > a,
+.card h3 > a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card h2 > a:hover,
+.card h3 > a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+@media (min-width: 40rem) {
+  .cards {
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  }
+}
+
+/* Chips: status and phase. The text carries the meaning; the tone only supports it. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--tone-quiet-bg);
+  color: var(--tone-quiet-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.badge[data-tone="good"],
+.badge.status-submitted {
+  background: var(--tone-good-bg);
+  color: var(--tone-good-text);
+}
+
+.badge[data-tone="warn"],
+.badge.status-draft {
+  background: var(--tone-warn-bg);
+  color: var(--tone-warn-text);
+}
+
+.badge[data-tone="info"],
+.badge.status-accepted,
+.badge.status-confirmed,
+.badge.status-published {
+  background: var(--tone-info-bg);
+  color: var(--tone-info-text);
+}
+
+/* Outlined mono chip: "ACADEMIC", "Aug 4–6 · Uninorte". */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.status-line {
+  font-weight: 600;
+  min-height: 1.55em;
+}
+
+/* Lists of facts */
+.facts {
+  padding-left: 1.2em;
+  margin: 8px 0;
+}
+
+.deadlines,
+.details {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.details > div {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.details > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.deadlines dt,
+.details dt {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--label);
+  margin-bottom: 2px;
+}
+
+.deadlines dd,
+.details dd {
+  margin: 0;
+  display: grid;
+}
+
+.tz {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-bottom: 4px;
+}
+
+/* Stat tiles: "300 WORDS | 15 MIN | 250 BIO WORDS". */
+.stats {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--line);
+  gap: 1px;
+}
+
+.stats li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.stat-value {
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--numeral);
+}
+
+@media (min-width: 40rem) {
+  .stat-value {
+    font-size: 1.5rem;
+  }
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Buttons: pills. */
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 8px 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  .button {
+    transition:
+      transform 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+}
+
+button:hover,
+.button:hover {
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+button:active,
+.button:active {
+  transform: translateY(1px);
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+button.danger {
+  background: var(--danger);
+  color: var(--danger-text);
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/*
+ * On the band the tokens already make actions lime (see conference.css); only the secondary
+ * button differs, with a light outline instead of a lime one.
+ */
+.hero .button.secondary {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--band-text);
+  border-color: rgb(255 255 255 / 0.4);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/*
+ * Disclosure toggles ("I already have a code") are touch targets too. They stay list items so
+ * the open/closed marker shows; padding makes up the height around one line of text.
+ */
+summary {
+  display: list-item;
+  min-height: var(--touch);
+  padding-block: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Links that stand alone (not inside a sentence) are touch targets too. */
+.block-link,
+.card h2 > a,
+.card h3 > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+}
+
+.people {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.agreement {
+  display: grid;
+  gap: 4px;
+}
+
+/* A submitted abstract, shown for reading: the serif, as for long prose on the site. */
+.prose {
+  white-space: pre-wrap;
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: 1.5;
+}

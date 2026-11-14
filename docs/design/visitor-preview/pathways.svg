@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="930" viewBox="0 0 1000 930" role="img" aria-labelledby="title desc"><title id="title">Visitor pathways — comparison</title><desc id="desc">Structure sketch of the ELOchair visitor concept, including reviewer and organizer sign-in. The interactive HTML preview contains the complete navigation.</desc>
+<rect x="0" y="0" width="1000" height="930" rx="0" fill="#f3f5ee" stroke="none"/>
+<rect x="0" y="0" width="1000" height="415" rx="0" fill="#0e1f18" stroke="none"/>
+<text x="32" y="43" fill="#c9e59a" font-size="24" font-weight="700" font-family="Arial, sans-serif">ELOchair</text>
+<text x="200" y="40" fill="#eef2ea" font-size="14" font-weight="400" font-family="Arial, sans-serif">Submission guide</text>
+<text x="378" y="40" fill="#eef2ea" font-size="14" font-weight="400" font-family="Arial, sans-serif">Key dates</text>
+<text x="630" y="40" fill="#eef2ea" font-size="14" font-weight="400" font-family="Arial, sans-serif">Reviewer / organizer sign-in</text>
+<text x="920" y="40" fill="#eef2ea" font-size="12" font-weight="400" font-family="Arial, sans-serif">EN ES PT</text>
+<text x="36" y="113" fill="#c9e59a" font-size="12" font-weight="700" font-family="Arial, sans-serif">ELO 2027 · SUBMISSION AND REVIEW PORTAL</text>
+<text x="36" y="174" fill="#eef2ea" font-size="42" font-weight="700" font-family="Arial, sans-serif">How would you like to take part?</text>
+<text x="36" y="217" fill="#eef2ea" font-size="17" font-weight="400" font-family="Arial, sans-serif">Explore the conference, prepare a proposal, or return to your work.</text>
+<text x="36" y="244" fill="#eef2ea" font-size="17" font-weight="400" font-family="Arial, sans-serif">Choose your next step; no role registration is required.</text>
+<text x="36" y="305" fill="#cdd8ce" font-size="15" font-weight="400" font-family="Arial, sans-serif">3–6 August 2027 · Barranquilla, Colombia · Hybrid</text>
+<rect x="0" y="415" width="1000" height="66" rx="0" fill="#fbfcf8" stroke="none"/>
+<text x="36" y="452" fill="#17251e" font-size="15" font-weight="700" font-family="Arial, sans-serif">Call open · Deadline: 14 February 2027, 23:59 AoE (UTC−12)</text>
+<rect x="36" y="513" width="300" height="200" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="56" y="550" fill="#9a3f22" font-size="12" font-weight="400" font-family="Arial, sans-serif">EXPLORE</text>
+<text x="56" y="590" fill="#17251e" font-size="23" font-weight="700" font-family="Arial, sans-serif">I’m discovering</text>
+<text x="56" y="622" fill="#17251e" font-size="23" font-weight="700" font-family="Arial, sans-serif">the conference</text>
+<text x="56" y="680" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Continue →</text>
+<rect x="356" y="513" width="300" height="200" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="376" y="550" fill="#9a3f22" font-size="12" font-weight="400" font-family="Arial, sans-serif">PREPARE</text>
+<text x="376" y="590" fill="#17251e" font-size="23" font-weight="700" font-family="Arial, sans-serif">I’m considering</text>
+<text x="376" y="622" fill="#17251e" font-size="23" font-weight="700" font-family="Arial, sans-serif">a proposal</text>
+<text x="376" y="680" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Continue →</text>
+<rect x="676" y="513" width="300" height="200" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="696" y="550" fill="#9a3f22" font-size="12" font-weight="400" font-family="Arial, sans-serif">RETURN</text>
+<text x="696" y="590" fill="#17251e" font-size="23" font-weight="700" font-family="Arial, sans-serif">I already have</text>
+<text x="696" y="622" fill="#17251e" font-size="23" font-weight="700" font-family="Arial, sans-serif">a proposal</text>
+<text x="696" y="680" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Continue →</text>
+<rect x="36" y="772" width="928" height="108" rx="16" fill="#fbfcf8" stroke="#d3d9cd"/>
+<text x="56" y="810" fill="#17251e" font-size="17" font-weight="700" font-family="Arial, sans-serif">Continue a proposal</text>
+<text x="56" y="847" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Author sign-in →</text>
+<text x="366" y="810" fill="#17251e" font-size="17" font-weight="700" font-family="Arial, sans-serif">Invited to review?</text>
+<text x="366" y="847" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Reviewer sign-in →</text>
+<text x="676" y="810" fill="#17251e" font-size="17" font-weight="700" font-family="Arial, sans-serif">Organizing ELO 2027?</text>
+<text x="676" y="847" fill="#1d5e57" font-size="15" font-weight="700" font-family="Arial, sans-serif">Organizer sign-in →</text>
+<text x="36" y="913" fill="#5b5146" font-size="12" font-weight="400" font-family="Arial, sans-serif">DESIGN STUDY · Provisional conference details · No live authentication</text>
+</svg>

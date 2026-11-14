@@ -1,12 +1,21 @@
 import type { ConferenceConfigInput } from "../config";
 
 /**
- * ELO 2027, Universidad del Norte, Barranquilla. PLACEHOLDER DRAFT.
+ * ELO 2027, Universidad del Norte, Barranquilla. STILL PROVISIONAL (placeholder: true).
  *
- * Built from the 2026 submission types and the defaults agreed on 2026-11-08 (single-blind for
- * exhibition and performance, a cap of two lead/presenter roles excluding panels). Dates,
- * modality, theme, tracks and topics are stand-ins until the Barranquilla team's CFP arrives.
- * The Spanish and Portuguese text is machine-drafted and needs review by native speakers.
+ * From the call published at https://elo27.eliterature.org/ (read 2026-11-10): the theme, the
+ * conference dates (August 3 is the Lit(e)Lat network encounter, August 4–6 the conference),
+ * the submission deadline (February 14, 2027, 23:59 anywhere on Earth, which is UTC-12), the
+ * contact address, the website and the coordinates.
+ *
+ * Not from the call, and still stand-ins: the day submissions open, the notification and
+ * final-materials dates, the agreements, and the submission types, which are still the 2026
+ * ones with the defaults agreed on 2026-11-08 (single-blind for exhibition and performance, a
+ * cap of two lead/presenter roles excluding panels). The call's own eight formats are tracked
+ * in the repository's issues ("Adopt the ELO 2027 call's submission formats").
+ *
+ * The Spanish theme is the call's own wording. The other Spanish text and all the Portuguese
+ * are machine-drafted and need review by native speakers.
  */
 export const elo2027: ConferenceConfigInput = {
   slug: "elo2027",
@@ -14,9 +23,9 @@ export const elo2027: ConferenceConfigInput = {
   placeholder: true,
   title: { en: "ELO 2027", es: "ELO 2027", pt: "ELO 2027" },
   theme: {
-    en: "Theme to be announced.",
-    es: "Tema por anunciar.",
-    pt: "Tema a anunciar.",
+    en: "Ecologies of Attention",
+    es: "Ecologías de la atención",
+    pt: "Ecologias da atenção",
   },
   host: "Universidad del Norte",
   location: {
@@ -28,11 +37,14 @@ export const elo2027: ConferenceConfigInput = {
   timezone: "America/Bogota",
   defaultLanguage: "en",
   languages: ["en", "es", "pt"],
-  contactEmail: "elo2027@eliterature.org",
-  dates: { start: "2027-07-14", end: "2027-07-17" },
+  contactEmail: "elo27@uninorte.edu.co",
+  website: "https://elo27.eliterature.org/",
+  coordinates: { lat: 10.96, lon: -74.8 },
+  dates: { start: "2027-08-03", end: "2027-08-06" },
   deadlines: {
     submissionsOpen: "2027-01-11T00:00:00-05:00",
-    submissionsClose: "2027-03-01T23:59:00-05:00",
+    // February 14, 2027, 23:59 anywhere on Earth (UTC-12).
+    submissionsClose: "2027-02-14T23:59:00-12:00",
     notification: "2027-04-30T23:59:00-05:00",
     finalMaterials: "2027-05-31T23:59:00-05:00",
   },

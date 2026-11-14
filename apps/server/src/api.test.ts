@@ -193,6 +193,16 @@ describe("conference configuration", () => {
     expect((await call(t.public, "GET", "/api/conferences/elo2027")).status).toBe(404);
   });
 
+  it("gives the list what the home page shows: the theme, and whether the call is open", async () => {
+    const pub = await call(t.public, "GET", "/api/conferences");
+    const elo2026 = pub.json.conferences.find((k: { slug: string }) => k.slug === "elo2026");
+    expect(elo2026.theme.en).toMatch(/^Who is watching/);
+    // The server's answer, as on the conference's own page: an archived call is not open.
+    expect(elo2026.callOpen).toBe(false);
+    const detail = await call(t.public, "GET", "/api/conferences/elo2026");
+    expect(detail.json.callOpen).toBe(elo2026.callOpen);
+  });
+
   it("serves the public CFP configuration", async () => {
     const res = await call(t.public, "GET", "/api/conferences/elo2026");
     expect(res.json.config.submissionTypes.map((x: { key: string }) => x.key)).toContain(
