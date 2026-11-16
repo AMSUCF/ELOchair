@@ -72,9 +72,14 @@ for preview_file in "${preview_files[@]}"; do
     "$preview_temp/$preview_file" "elochair-preview:${DEPLOY_PATH%/}/"
 done
 
+curl_auth_args=()
+if [[ -n "${PREVIEW_BASIC_AUTH:-}" ]]; then
+  curl_auth_args=(--user "$PREVIEW_BASIC_AUTH")
+fi
 curl --fail --silent --show-error --location \
   --proto '=https' --proto-redir '=https' \
   --retry 3 --retry-delay 2 --max-time 20 \
+  "${curl_auth_args[@]}" \
   "${PREVIEW_URL}?preview_commit=${GITHUB_SHA:-manual}" \
   --output "$preview_temp/served.html"
 if ! cmp -s "$preview_source/index.html" "$preview_temp/served.html"; then

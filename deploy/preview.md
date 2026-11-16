@@ -12,6 +12,7 @@ In [AMSUCF/ELOchair → Settings → Secrets and variables → Actions](https://
 | --- | --- |
 | `DEPLOY_SSH_KEY` | A dedicated deployment private key, usable by the runner without a passphrase |
 | `DEPLOY_KNOWN_HOSTS` | The verified SSH `known_hosts` entry for jtm.io; for a nonstandard port, use its `[jtm.io]:port` entry |
+| `PREVIEW_BASIC_AUTH` | Optional. If `PREVIEW_URL` is behind HTTP Basic Auth, set this to `user:password` so the job's own verification request can still authenticate. Omit it if the preview path has no Basic Auth. |
 
 Under the **Variables** tab, add:
 

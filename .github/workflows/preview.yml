@@ -27,4 +27,5 @@ jobs:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
           PREVIEW_URL: ${{ vars.PREVIEW_URL }}
+          PREVIEW_BASIC_AUTH: ${{ secrets.PREVIEW_BASIC_AUTH }}
         run: bash deploy/preview.sh
