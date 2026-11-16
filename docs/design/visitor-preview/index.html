@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>ELOchair — visitor design concepts</title>
+<style>
+  :root { color-scheme:light dark; --study-bg:light-dark(#e7ece0,#0e1f18); --study-text:light-dark(#17251e,#eef2ea); --study-line:light-dark(#5f7a72,#7d9488); --study-surface:light-dark(#fbfcf8,#1a2c24); }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; background:var(--study-bg); color:var(--study-text); font:15px/1.6 system-ui,sans-serif; }
+  .study-chrome { max-width:1024px; margin:0 auto 24px; }
+  .study-chrome h1 { margin:0 0 8px; font-size:24px; }
+  .study-chrome p { margin:8px 0; }
+  .study-chrome a { color:inherit; text-underline-offset:3px; }
+  .study-controls { border:0; padding:0; display:flex; flex-wrap:wrap; gap:16px; margin:20px 0; }
+  .study-controls label { display:grid; gap:4px; font-size:13px; }
+  .study-controls select, .study-controls button { min-height:44px; border:1px solid var(--study-line); border-radius:10px; padding:9px 12px; font:inherit; color:var(--study-text); background:var(--study-surface); max-width:100%; }
+  .study-controls button { align-self:end; }
+  .study-note { font-size:13px; }
+  [data-variant][hidden] { display:none; }
+  #elo-visitor-designs .elo-stage .elo-product[data-device="mobile"] { max-width:360px; }
+  #elo-visitor-designs .elo-product a:focus-visible, .study-chrome :focus-visible { outline:3px solid currentColor; outline-offset:4px; }
+  @media(max-width:620px) { body { padding:12px; } .study-controls { gap:12px; } .study-controls label { width:100%; } }
+</style>
+</head>
+<body>
+<header class="study-chrome">
+  <h1>ELOchair · Visitor design concepts</h1>
+  <p>Submission-focused portal, with a clear route for reviewers and organizers. The conference landing page and official CFP stay at <a href="https://elo27.eliterature.org/" target="_blank" rel="noopener noreferrer">elo27.eliterature.org</a>.</p>
+  <form class="study-controls" aria-label="Design preview controls">
+    <label>Concept<select id="study-concept"><option value="companion">Submission companion — selected direction</option><option value="conference">Conference front door — comparison</option><option value="pathways">Visitor pathways — comparison</option></select></label>
+    <label>Preview width<select id="study-width"><option value="desktop">Desktop / responsive</option><option value="mobile">Mobile · 360 px</option></select></label>
+    <label>Illustrative call state<select id="study-phase"><option value="open">Open</option><option value="upcoming">Not open yet</option><option value="closed">Closed</option></select></label>
+    <button id="study-overview" type="button">Return to overview</button>
+  </form>
+  <p class="study-note">Design preview · English copy · Dates and formats are provisional. Sign-in is a visual endpoint; no email or account data is collected. EN / ES / PT indicate language-switch placement.</p>
+</header>
+<div id="elo-visitor-designs">
+  <section class="viz-carousel" aria-label="ELOchair visitor design alternatives">
+    <section data-variant="Submission companion" aria-label="Submission companion design">
+      <div class="elo-stage"><article id="elo-companion" class="elo-product" aria-label="Submission companion layout and call state"></article></div>
+    </section>
+    <section data-variant="Conference front door" aria-label="Conference front door design" hidden>
+      <div class="elo-stage"><article id="elo-conference" class="elo-product" aria-label="Conference front door layout and call state"></article></div>
+    </section>
+    <section data-variant="Visitor pathways" aria-label="Visitor pathways design" hidden>
+      <div class="elo-stage"><article id="elo-pathways" class="elo-product" aria-label="Visitor pathways layout and call state"></article></div>
+    </section>
+  </section>
+</div>
+<style>
+  #elo-visitor-designs { color-scheme:light dark; }
+  #elo-visitor-designs .elo-stage { min-height:0; }
+  #elo-visitor-designs .elo-product {
+    --elo-paper:light-dark(#f3f5ee,#12261d); --elo-ink:light-dark(#17251e,#eef2ea);
+    --elo-surface:light-dark(#fbfcf8,#1a2c24); --elo-muted:light-dark(#5b5146,#bfcbc0);
+    --elo-line:light-dark(#d3d9cd,#405849); --elo-accent:light-dark(#1d5e57,#c9e59a);
+    --elo-on-accent:light-dark(#ffffff,#10261d); --elo-echo:light-dark(#9a3f22,#f0d98a);
+    --elo-notice:light-dark(#f6ecc9,#33300f); --elo-on-notice:light-dark(#5c4400,#fbe7a6);
+    --elo-forest:light-dark(#10261d,#0c1c14); --elo-mist:light-dark(#eef2ea,#eef2ea);
+    --elo-lime:light-dark(#c9e59a,#c9e59a); --elo-gold:light-dark(#f0d98a,#f0d98a);
+    --elo-forest-line:light-dark(#405849,#405849); --elo-forest-soft:light-dark(#c6d1c3,#c6d1c3);
+    --elo-radius:20px; --elo-display:'Bricolage Grotesque','Trebuchet MS',sans-serif;
+    width:100%; max-width:1024px; margin-inline:auto; background:var(--elo-paper); color:var(--elo-ink);
+    font:400 15px/1.6 'Schibsted Grotesk',system-ui,sans-serif; border:1px solid var(--elo-line);
+    border-radius:24px; overflow:clip; container-type:inline-size; box-sizing:border-box;
+  }
+  #elo-visitor-designs .elo-product *, #elo-visitor-designs .elo-product *::before, #elo-visitor-designs .elo-product *::after { box-sizing:border-box; }
+  #elo-visitor-designs .elo-product [hidden] { display:none; }
+  #elo-visitor-designs .elo-product :where(p, h1, h2, h3) { margin:0; }
+  #elo-visitor-designs .elo-product a { color:var(--elo-accent); text-underline-offset:4px; }
+  #elo-visitor-designs .elo-product button, #elo-visitor-designs .elo-product input { font:inherit; }
+  #elo-visitor-designs .elo-top { display:flex; flex-wrap:wrap; align-items:center; gap:12px 24px; padding:18px 28px; border-bottom:1px solid var(--elo-forest-line); color:var(--elo-mist); background:var(--elo-forest); }
+  #elo-visitor-designs .elo-top .elo-logo { color:var(--elo-mist); font:700 20px/1.3 var(--elo-display); text-decoration:none; letter-spacing:-.7px; }
+  #elo-visitor-designs .elo-logo span { color:var(--elo-lime); }
+  #elo-visitor-designs .elo-top nav { display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; }
+  #elo-visitor-designs .elo-top :where(nav) a { color:var(--elo-mist); font-size:13px; text-decoration:none; padding-block:10px; min-height:44px; }
+  #elo-visitor-designs .elo-top :where(nav) a[aria-current="page"] { text-decoration:underline; text-decoration-color:var(--elo-lime); text-underline-offset:7px; }
+  #elo-visitor-designs .elo-languages { margin-left:auto; display:flex; align-items:center; gap:12px; font-size:12px; letter-spacing:.04em; }
+  #elo-visitor-designs .elo-languages span:first-child { border-bottom:2px solid var(--elo-lime); padding-block:6px; }
+  #elo-visitor-designs .elo-hero { padding:36px 36px 38px; color:var(--elo-mist); background:radial-gradient(ellipse at 5% 100%,color-mix(in srgb,var(--elo-lime) 10%,transparent),transparent 65%),var(--elo-forest); }
+  #elo-visitor-designs .elo-kicker { text-transform:uppercase; letter-spacing:.12em; font:500 11px/1.6 ui-monospace,monospace; }
+  #elo-visitor-designs .elo-hero .elo-kicker { color:var(--elo-lime); }
+  #elo-visitor-designs .elo-product h1 { font:600 clamp(30px,4.8cqw,48px)/1.1 var(--elo-display); letter-spacing:-1.3px; max-width:760px; margin-top:12px; }
+  #elo-visitor-designs .elo-product h2 { font:600 25px/1.22 var(--elo-display); letter-spacing:-.5px; }
+  #elo-visitor-designs .elo-product h3 { font:600 18px/1.3 var(--elo-display); }
+  #elo-visitor-designs .elo-product .elo-echo { color:var(--elo-gold); font:italic 22px/1.35 Georgia,serif; margin-top:10px; }
+  #elo-visitor-designs .elo-lede { margin-top:18px; max-width:620px; font-size:16px; }
+  #elo-visitor-designs .elo-meta { font-size:13px; color:var(--elo-muted); }
+  #elo-visitor-designs .elo-hero .elo-meta { color:var(--elo-forest-soft); }
+  #elo-visitor-designs .elo-facts { display:flex; flex-wrap:wrap; gap:6px 24px; margin-top:18px; }
+  #elo-visitor-designs .elo-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:22px; }
+  #elo-visitor-designs .elo-product .elo-btn { display:inline-flex; justify-content:center; align-items:center; gap:8px; padding:11px 20px; min-height:46px; border:1px solid var(--elo-accent); border-radius:999px; text-decoration:none; color:var(--elo-on-accent); background:var(--elo-accent); font-size:14px; font-weight:600; }
+  #elo-visitor-designs .elo-product .elo-btn.secondary { color:var(--elo-accent); background:transparent; }
+  #elo-visitor-designs .elo-hero .elo-btn { color:var(--elo-forest); background:var(--elo-lime); border-color:var(--elo-lime); }
+  #elo-visitor-designs .elo-hero .elo-btn.secondary { color:var(--elo-mist); background:transparent; border-color:var(--elo-forest-soft); }
+  #elo-visitor-designs .elo-product .elo-btn:disabled { opacity:.6; }
+  #elo-visitor-designs .elo-product .elo-btn:hover:not(:disabled) { text-decoration:underline; }
+  #elo-visitor-designs .elo-status { display:flex; flex-wrap:wrap; gap:8px 20px; align-items:baseline; padding:14px 36px; border-bottom:1px solid var(--elo-line); background:var(--elo-surface); }
+  #elo-visitor-designs .elo-status strong { font-size:14px; }
+  #elo-visitor-designs .elo-status .elo-meta { flex:1; min-width:180px; }
+  #elo-visitor-designs .elo-status a { font-size:13px; min-height:44px; display:inline-flex; align-items:center; }
+  #elo-visitor-designs .elo-main { padding:30px 36px 34px; }
+  #elo-visitor-designs .elo-stack { display:grid; gap:24px; }
+  #elo-visitor-designs .elo-section-title { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 20px; margin-bottom:16px; }
+  #elo-visitor-designs .elo-section-title .elo-meta { margin-left:auto; }
+  #elo-visitor-designs .elo-two { display:grid; grid-template-columns:1.45fr 1fr; gap:28px; }
+  #elo-visitor-designs .elo-main .elo-copy { margin-top:10px; max-width:680px; }
+  #elo-visitor-designs .elo-panel { border:1px solid var(--elo-line); border-radius:var(--elo-radius); background:var(--elo-surface); padding:22px; }
+  #elo-visitor-designs .elo-panel h3 { margin-bottom:8px; }
+  #elo-visitor-designs .elo-panel :where(p) + p { margin-top:10px; }
+  #elo-visitor-designs .elo-panel a.elo-textlink { display:inline-flex; align-items:center; min-height:44px; font-size:14px; }
+  #elo-visitor-designs .elo-steps { list-style:none; margin:0; padding:0; display:grid; gap:0; }
+  #elo-visitor-designs .elo-steps li { display:grid; grid-template-columns:30px 1fr; gap:12px; padding:16px 0; border-top:1px solid var(--elo-line); }
+  #elo-visitor-designs .elo-steps li:first-child { padding-top:0; border:0; }
+  #elo-visitor-designs .elo-step-no { color:var(--elo-echo); font:500 13px/1.8 ui-monospace,monospace; }
+  #elo-visitor-designs .elo-steps a { display:inline-block; font-weight:600; margin-bottom:3px; }
+  #elo-visitor-designs .elo-mini-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+  #elo-visitor-designs .elo-mini-grid .elo-panel { padding:18px; }
+  #elo-visitor-designs .elo-notice { background:var(--elo-notice); color:var(--elo-on-notice); border-radius:12px; padding:12px 16px; font-size:13px; }
+  #elo-visitor-designs .elo-footer { display:flex; flex-wrap:wrap; align-items:center; gap:12px 22px; padding:18px 36px; border-top:1px solid var(--elo-line); font-size:12px; color:var(--elo-muted); }
+  #elo-visitor-designs .elo-footer a { min-height:44px; display:inline-flex; align-items:center; }
+  #elo-visitor-designs .elo-footer span:first-child { margin-right:auto; }
+  #elo-visitor-designs .elo-pagebar { display:flex; flex-wrap:wrap; gap:10px 20px; padding:12px 36px; border-bottom:1px solid var(--elo-line); font-size:13px; background:var(--elo-surface); }
+  #elo-visitor-designs .elo-pagebar a { min-height:44px; display:inline-flex; align-items:center; }
+  #elo-visitor-designs .elo-product .elo-page-title { font:600 34px/1.15 var(--elo-display); margin-top:8px; }
+  #elo-visitor-designs .elo-type { padding:16px 0; border-top:1px solid var(--elo-line); }
+  #elo-visitor-designs .elo-type summary { min-height:44px; padding:8px 0; font-weight:600; }
+  #elo-visitor-designs .elo-type p { max-width:640px; margin:8px 0; }
+  #elo-visitor-designs .elo-ready { display:flex; flex-wrap:wrap; gap:14px 24px; align-items:center; padding:22px; background:var(--elo-surface); border:1px solid var(--elo-line); border-radius:var(--elo-radius); }
+  #elo-visitor-designs .elo-ready .elo-ready-copy { flex:1; min-width:170px; }
+  #elo-visitor-designs .elo-ready p { margin-top:6px; }
+  #elo-visitor-designs .elo-form { max-width:440px; display:grid; gap:12px; margin-top:28px; }
+  #elo-visitor-designs .elo-form input { width:100%; min-height:48px; border:1px solid var(--elo-line); border-radius:10px; padding:10px 12px; background:var(--elo-surface); color:var(--elo-ink); }
+  #elo-visitor-designs .elo-signin { padding-block:40px 72px; }
+  #elo-visitor-designs .elo-signin .elo-copy { max-width:520px; }
+  #elo-visitor-designs .elo-paths { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:26px; }
+  #elo-visitor-designs .elo-paths a { display:flex; flex-direction:column; gap:12px; padding:22px; background:var(--elo-surface); border:1px solid var(--elo-line); border-radius:var(--elo-radius); text-decoration:none; color:var(--elo-ink); min-height:210px; }
+  #elo-visitor-designs .elo-paths :where(a) strong { font:600 22px/1.2 var(--elo-display); }
+  #elo-visitor-designs .elo-paths a .elo-path-action { margin-top:auto; color:var(--elo-accent); font-weight:600; font-size:14px; }
+  #elo-visitor-designs .elo-paths a:hover .elo-path-action { text-decoration:underline; }
+  #elo-visitor-designs .elo-roadmap { display:flex; flex-wrap:wrap; gap:6px 18px; color:var(--elo-muted); font-size:13px; }
+  #elo-visitor-designs .elo-roadmap strong { color:var(--elo-accent); }
+  #elo-visitor-designs .elo-inset { max-width:700px; }
+  #elo-visitor-designs .elo-portal-label { margin-top:14px; font-size:13px; color:var(--elo-forest-soft); }
+  #elo-visitor-designs .elo-mobile-deadline { display:none; }
+  #elo-visitor-designs .elo-small-divider { padding-top:20px; border-top:1px solid var(--elo-line); }
+  #elo-visitor-designs .elo-product[data-device="mobile"] { max-width:390px; }
+  @container (max-width:620px) {
+    #elo-visitor-designs .elo-top { padding:16px 20px; gap:8px 14px; }
+    #elo-visitor-designs .elo-top nav { order:3; flex-basis:100%; gap:0 20px; }
+    #elo-visitor-designs .elo-languages { gap:12px; }
+    #elo-visitor-designs .elo-hero { padding:26px 22px 28px; }
+    #elo-visitor-designs .elo-product h1 { font-size:32px; letter-spacing:-.7px; }
+    #elo-visitor-designs .elo-product h2 { font-size:23px; }
+    #elo-visitor-designs .elo-product .elo-echo { font-size:16px; }
+    #elo-visitor-designs .elo-mobile-deadline { display:block; margin-top:14px; color:var(--elo-lime); font-size:13px; }
+    #elo-visitor-designs .elo-hero + :where(.elo-status) { display:none; }
+
+    #elo-visitor-designs .elo-lede { font-size:15px; }
+    #elo-visitor-designs .elo-status, #elo-visitor-designs .elo-pagebar { padding-inline:22px; }
+    #elo-visitor-designs .elo-main { padding:26px 22px; }
+    #elo-visitor-designs .elo-two, #elo-visitor-designs .elo-mini-grid, #elo-visitor-designs .elo-paths { grid-template-columns:1fr; gap:18px; }
+    #elo-visitor-designs .elo-paths a { min-height:0; gap:10px; padding:20px; }
+    #elo-visitor-designs .elo-footer { padding:18px 22px; }
+    #elo-visitor-designs .elo-actions .elo-btn { width:100%; }
+    #elo-visitor-designs .elo-panel { padding:18px; }
+    #elo-visitor-designs .elo-ready .elo-btn { width:100%; }
+    #elo-visitor-designs .elo-product .elo-page-title { font-size:29px; }
+  }
+  #elo-visitor-designs:has(.elo-product[data-device="mobile"]) .elo-stage { min-height:0; }
+  @media (max-width:620px) { #elo-visitor-designs .elo-stage { min-height:0; } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('elo-visitor-designs');
+  const variants = [
+    { key:'companion', name:'Submission companion', state:{ device:'desktop', phase:'open', screen:'home' } },
+    { key:'conference', name:'Conference front door', state:{ device:'desktop', phase:'open', screen:'home' } },
+    { key:'pathways', name:'Visitor pathways', state:{ device:'desktop', phase:'open', screen:'home' } }
+  ];
+  const validScreens = ['home','guide','call','signin','resume','reviewer','dates'];
+  function restore(snapshot) {
+    const data = snapshot?.modelContent?.visitorDesigns;
+    for (const v of variants) {
+      const saved = data?.[v.key];
+      if (!saved) continue;
+      if (['desktop','mobile'].includes(saved.device)) v.state.device = saved.device;
+      if (['open','upcoming','closed'].includes(saved.phase)) v.state.phase = saved.phase;
+      if (validScreens.includes(saved.screen)) v.state.screen = saved.screen;
+    }
+  }
+  restore(window.openai?.widgetState);
+  function persist() {
+    const visitorDesigns = Object.fromEntries(variants.map(v => [v.key,{...v.state}]));
+    window.openai?.setWidgetState?.({modelContent:{visitorDesigns},privateContent:null})?.catch(() => {});
+  }
+  const go = (screen, label, className='') => `<a href="#elo-${screen}" data-go="${screen}"${className ? ` class="${className} cursor-interaction"` : ' class="cursor-interaction"'}>${label}</a>`;
+  const official = (label='Official conference website ↗', className='') => `<a href="https://elo27.eliterature.org/" target="_blank" rel="noopener noreferrer"${className ? ` class="${className} cursor-interaction"` : ''}>${label}</a>`;
+  function top(v) {
+    const nav = v.key === 'conference'
+      ? `${go('home','Conference')}${official('Official CFP ↗')}${go('reviewer','Reviewer / organizer sign-in')}`
+      : `${go('guide','Submission guide')}${go('dates','Key dates')}${go('reviewer','Reviewer / organizer sign-in')}`;
+    return `<header class="elo-top">${go('home','ELO<span>chair</span>','elo-logo')}<nav aria-label="Main">${nav}</nav><div class="elo-languages" aria-label="Language selector placement: English, Spanish, Portuguese"><span lang="en">EN</span><span lang="es">ES</span><span lang="pt">PT</span></div></header>`;
+  }
+  const footer = () => `<footer class="elo-footer"><span>ELOchair · Electronic Literature Organization</span>${official()}<a href="mailto:elo27@uninorte.edu.co">Contact the organizers</a></footer>`;
+  function status(v) {
+    if (v.state.phase === 'upcoming') return `<div class="elo-status" role="status"><strong>Submissions are not open yet</strong><span class="elo-meta">Opening date to be confirmed. You can explore the call and prepare.</span>${go('guide','What to prepare →')}</div>`;
+    if (v.state.phase === 'closed') return `<div class="elo-status" role="status"><strong>Submissions are closed</strong><span class="elo-meta">Already submitted? Sign in to view your proposal.</span>${go('resume','View my proposals →')}</div>`;
+    return `<div class="elo-status" role="status"><strong>Call for proposals open</strong><span class="elo-meta">Deadline: 14 February 2027 · 23:59 Anywhere on Earth (UTC−12)</span>${go('dates','View in my time →')}</div>`;
+  }
+  function mobileStatus(v) {
+    const text = v.state.phase === 'open' ? 'Call open · Deadline: 14 February 2027, 23:59 AoE (UTC−12)' : v.state.phase === 'upcoming' ? 'Submissions are not open yet · You can prepare now.' : 'Submissions are closed · You can view existing proposals.';
+    return `<p class="elo-mobile-deadline">${text}</p>`;
+  }
+  function start(v, className='elo-btn', label='Start a proposal') {
+    if (v.state.phase === 'closed') return go('resume','View my proposals',className);
+    if (v.state.phase === 'upcoming') return go('guide','Prepare a proposal',className);
+    return go('signin',label,className);
+  }
+  const provisional = `<p class="elo-notice">ELO 2027 details are provisional. Submission formats and requirements are awaiting confirmation; consult the official CFP.</p>`;
+  const intro = `The Electronic Literature Organization’s conference and media arts festival, hosted by Universidad del Norte in Barranquilla, Colombia.`;
+  const facts = `<div class="elo-facts"><span>3–6 August 2027</span><span>Barranquilla, Colombia</span><span>Hybrid</span></div>`;
+  function companion(v) {
+    return `<section class="elo-hero"><p class="elo-kicker">ELO 2027 · Submission & review portal</p><h1>Your proposal to ELO 2027</h1>${mobileStatus(v)}<p class="elo-echo">Ecologies of Attention <span aria-hidden="true" lang="es">/ Ecologías de la atención</span></p><p class="elo-lede">Prepare, submit and track your proposal for the Electronic Literature Organization’s conference and media arts festival.</p>${facts}<div class="elo-actions">${go('guide','Prepare your proposal','elo-btn')}${v.state.phase === 'upcoming' ? '' : start(v,'elo-btn secondary')}</div><p class="elo-portal-label">Browse the guide without an account. Sign in when you’re ready to start a draft.</p></section>${status(v)}
+    <main class="elo-main elo-stack"><div class="elo-two"><section><div class="elo-section-title"><h2>Your path to a proposal</h2></div><ol class="elo-steps"><li><span class="elo-step-no">01</span><div>${official('Read the official CFP ↗')}<p class="elo-meta">Understand the theme and whether your work fits.</p></div></li><li><span class="elo-step-no">02</span><div>${go('guide','Choose a format and prepare')}<p class="elo-meta">See what your proposal needs before signing in.</p></div></li><li><span class="elo-step-no">03</span><div>${go(v.state.phase === 'open' ? 'signin' : 'guide',v.state.phase === 'open' ? 'Start a draft, then submit when ready' : 'Check when submissions are available')}<p class="elo-meta">Starting a draft does not submit your proposal.</p></div></li></ol></section><aside class="elo-panel"><h3>Looking for the full CFP?</h3><p>The conference website has the theme statement and the official call.</p>${official('Read the official CFP ↗','elo-textlink')}<p class="elo-meta">For attending and other conference information, continue on the conference website.</p></aside></div>${provisional}<div class="elo-mini-grid elo-small-divider"><section><h3>Continue a proposal</h3><p class="elo-copy elo-meta">Return to a draft or view a submitted proposal.</p>${go('resume','Author sign-in →','elo-textlink')}</section><section><h3>Invited to review?</h3><p class="elo-copy elo-meta">Use the email address on your reviewer invitation.</p>${go('reviewer','Reviewer sign-in →','elo-textlink')}</section><section><h3>Organizing the conference?</h3><p class="elo-copy elo-meta">Access the conferences you have permission to manage.</p>${go('reviewer','Organizer sign-in →','elo-textlink')}</section></div></main>`;
+  }
+  function conference(v) {
+    return `<section class="elo-hero"><p class="elo-kicker">Electronic Literature Organization · ELO 2027</p><h1>Ecologies of Attention</h1>${mobileStatus(v)}<p class="elo-echo" lang="es">Ecologías de la atención</p><p class="elo-lede">${intro}</p>${facts}<div class="elo-actions">${official('Read the official CFP ↗','elo-btn')}${start(v,'elo-btn secondary')}</div></section>${status(v)}
+    <div class="elo-pagebar" aria-label="Conference sections">${go('call','About ELO 2027')}${go('guide','Formats & preparation')}${go('dates','Key dates')}${official('Conference website ↗')}</div><main class="elo-main elo-stack"><section><div class="elo-section-title"><h2>A meeting of research and practice</h2></div><p class="elo-copy">Explore the conference’s theme, discover how to contribute, and prepare your proposal. The full theme statement and official CFP are on the conference website.</p></section><div class="elo-mini-grid"><section class="elo-panel"><h3>Understand the call</h3><p class="elo-meta">Read the theme and scope before choosing a submission format.</p>${official('Read the official CFP ↗','elo-textlink')}</section><section class="elo-panel"><h3>Plan a proposal</h3><p class="elo-meta">Compare formats and find the materials you’ll need.</p>${go('guide','See submission guidance →','elo-textlink')}</section><section class="elo-panel"><h3>Explore the conference</h3><p class="elo-meta">Find the organizers’ full conference information.</p>${official('Visit the conference site ↗','elo-textlink')}</section></div>${provisional}</main>`;
+  }
+  function pathways(v) {
+    return `<section class="elo-hero"><p class="elo-kicker">ELOchair · ELO 2027</p><h1>How would you like<br>to take part?</h1>${mobileStatus(v)}<p class="elo-lede">Ecologies of Attention — ${intro}</p>${facts}</section>${status(v)}<main class="elo-main elo-stack"><section><h2>Find your next step</h2><div class="elo-paths"><a href="#elo-call" data-go="call" class="cursor-interaction"><span class="elo-kicker">Explore</span><strong>I’m discovering<br>the conference</strong><span class="elo-meta">Understand the theme and find the official CFP.</span><span class="elo-path-action">Explore ELO 2027 →</span></a><a href="#elo-guide" data-go="guide" class="cursor-interaction"><span class="elo-kicker">Prepare</span><strong>I’m considering<br>a proposal</strong><span class="elo-meta">Compare formats, check dates and see what to prepare.</span><span class="elo-path-action">Plan my proposal →</span></a><a href="#elo-resume" data-go="resume" class="cursor-interaction"><span class="elo-kicker">Return</span><strong>I already have<br>a proposal</strong><span class="elo-meta">Sign in to continue a draft or view a submitted proposal.</span><span class="elo-path-action">Continue my proposal →</span></a></div></section>${ready(v)}<div class="elo-small-divider"><p>${official('Just visiting or planning to attend? Conference website ↗')}</p></div>${provisional}</main>`;
+  }
+  function ready(v) {
+    if (v.state.phase === 'upcoming') return `<section class="elo-ready"><div><h3>Prepare now, start when the call opens</h3><p class="elo-meta">Opening date to be confirmed. No account needed to read the guidance.</p></div></section>`;
+    if (v.state.phase === 'closed') return `<section class="elo-ready"><div class="elo-ready-copy"><h3>The submission window has closed</h3><p class="elo-meta">Sign in to view a proposal you have already submitted.</p></div>${go('resume','View my proposals','elo-btn')}</section>`;
+    return `<section class="elo-ready"><div class="elo-ready-copy"><h3>Ready to start a draft?</h3><p class="elo-meta">You can save your work and return before submitting.</p></div>${go('signin','Sign in to start a draft','elo-btn')}</section>`;
+  }
+  function guide(v) {
+    return `<main class="elo-main elo-stack"><div><div class="elo-roadmap"><span>Explore the call</span><strong>Prepare a proposal</strong><span>Start a draft</span></div><h1 class="elo-page-title">Prepare your ELO 2027 proposal</h1><p class="elo-copy">Find what to prepare before starting. You can read all of this without signing in.</p></div>${provisional}<section><div class="elo-section-title"><h2>Choose a submission format</h2></div><p class="elo-copy">The ELO 2027 formats are being confirmed for this portal. Use the official CFP for the current categories and requirements.</p><p>${official('Check the official submission formats ↗','elo-textlink')}</p><details class="elo-type"><summary>What to check for each format</summary><p>Check the proposal length, presentation duration, team size, required materials and review instructions. Requirements may differ between formats.</p></details><details class="elo-type"><summary>Working with other contributors</summary><p>Have your contributors’ contact details ready. Check the format’s team requirements before starting your draft.</p></details></section><div class="elo-two"><section><h2>Before you start</h2><ol><li>Read the theme and choose an appropriate format.</li><li>Check that format’s required materials and review instructions.</li><li>Prepare your proposal text and contributor details.</li><li>Check the deadline, then sign in to start a draft.</li></ol></section><aside class="elo-panel"><h3>Starting is not submitting</h3><p>Create a draft, save your work and return to it. You will review and explicitly submit it later.</p>${go('dates','Check key dates →','elo-textlink')}</aside></div>${ready(v)}</main>`;
+  }
+  function call(v) {
+    return `<main class="elo-main elo-stack"><div><p class="elo-kicker">About ELO 2027</p><h1 class="elo-page-title">Ecologies of Attention</h1><p class="elo-copy">${intro}</p></div><div class="elo-two"><section class="elo-stack"><div><h2>Is this the right place for your work?</h2><p class="elo-copy">Start with the conference theme and scope in the official call. Then use the submission guide here to prepare your proposal.</p></div><div class="elo-panel"><h3>One official call</h3><p>The organizers’ theme statement, topics and submission categories are published on the conference website.</p><div class="elo-actions">${official('Read the official CFP ↗','elo-btn')}</div><p class="elo-meta">Opens elo27.eliterature.org in a new tab.</p></div></section><aside><h3>After reading the CFP</h3><p class="elo-copy">Return here for preparation guidance and to start your draft.</p><div class="elo-actions">${go('guide','Prepare a proposal','elo-btn')}</div><p class="elo-copy elo-meta">No account needed to explore or prepare.</p></aside></div>${provisional}${ready(v)}</main>`;
+  }
+  function dates(v) {
+    return `<main class="elo-main elo-stack"><div><p class="elo-kicker">ELO 2027</p><h1 class="elo-page-title">Key dates</h1></div><div class="elo-two"><section class="elo-stack"><div><h2>Submission deadline</h2><p class="elo-copy">14 February 2027 · 23:59 Anywhere on Earth (UTC−12)</p><details class="elo-type"><summary>Show the deadline in my time zone</summary><p class="elo-local-time"></p><p class="elo-meta">The conference deadline above is authoritative.</p></details></div><div><h2>Conference</h2><p class="elo-copy">3–6 August 2027 · Barranquilla, Colombia</p><p class="elo-meta">3 August: Lit(e)Lat encounter · 4–6 August: conference</p></div><div><h3>Other milestones</h3><p class="elo-copy">Submission opening, notification and final-materials dates are awaiting confirmation.</p></div></section><aside class="elo-panel"><h3>Check the official call</h3><p>Conference details are provisional. Confirm current dates with the organizers.</p>${official('Read the official CFP ↗','elo-textlink')}</aside></div>${ready(v)}</main>`;
+  }
+  function signin(v, returning=false, reviewer=false) {
+    const target = reviewer ? 'Your invited reviewer or organizer workspace' : returning ? 'Your ELO 2027 proposals' : 'A new ELO 2027 draft';
+    if (!returning && v.state.phase !== 'open') return guide(v);
+    return `<main class="elo-main elo-signin elo-stack"><div><p class="elo-kicker">ELO 2027 · Ecologies of Attention</p><h1 class="elo-page-title">${reviewer ? 'Reviewer & organizer sign-in' : returning ? 'Continue your proposal' : 'Sign in to start a draft'}</h1><p class="elo-copy">${reviewer ? 'Use the email address on your invitation. Your access comes from the roles assigned to your account.' : returning ? 'Use the same email address you used for your proposal.' : 'Use your email address to sign in. You’ll start with a draft and submit it when you’re ready.'}</p><div class="elo-form"><label>Email address<input type="email" placeholder="you@example.org" aria-label="Email address — visual preview" readonly></label><button class="elo-btn" type="button" disabled>Email me a sign-in link</button><p class="elo-meta">We’ll email a sign-in link and a code. No password needed.</p></div></div><div class="elo-panel elo-inset"><h3>Where you’ll go next</h3><p>${target}. Your conference and next step stay with you after sign-in.</p>${reviewer ? '<p>One account can be used to submit proposals, review and organize. An invitation is required for reviewer or organizer access.</p>' : ''}</div><p>${go('guide','Back to the submission guide')}</p></main>`;
+  }
+  function render(v) {
+    const product = document.getElementById(`elo-${v.key}`);
+    product.dataset.device = v.state.device;
+    let content;
+    switch(v.state.screen) {
+      case 'guide': content=guide(v); break;
+      case 'call': content=call(v); break;
+      case 'dates': content=dates(v); break;
+      case 'signin': content=signin(v); break;
+      case 'resume': content=signin(v,true); break;
+      case 'reviewer': content=signin(v,true,true); break;
+      default: content=v.key==='companion' ? companion(v) : v.key==='conference' ? conference(v) : pathways(v);
+    }
+    product.innerHTML = top(v) + (v.state.screen==='home' ? '' : `<div class="elo-pagebar">${go('home','← ELO 2027 overview')}${official('Official CFP ↗')}</div>`) + content + footer();
+    const local = product.querySelector('.elo-local-time');
+    if (local) {
+      const fmt = new Intl.DateTimeFormat(undefined,{dateStyle:'full',timeStyle:'long'});
+      local.textContent = fmt.format(new Date('2027-02-14T23:59:00-12:00'));
+    }
+    for (const a of product.querySelectorAll('[data-go]')) {
+      if (a.dataset.go === v.state.screen && a.closest('.elo-top')) a.setAttribute('aria-current','page');
+    }
+    const heading = product.querySelector('h1');
+    if (heading) heading.setAttribute('aria-live','polite');
+  }
+  for (const v of variants) {
+    const product = document.getElementById(`elo-${v.key}`);
+    product.addEventListener('click',event => {
+      const link = event.target.closest('[data-go]');
+      if (!link || !product.contains(link)) return;
+      event.preventDefault();
+      v.state.screen=link.dataset.go;
+      render(v); persist();
+      const heading = product.querySelector('h1');
+      if (heading) { heading.tabIndex=-1; heading.focus(); }
+    });
+    render(v);
+    if (globalThis.Tweak) {
+      const tweak = new Tweak({container:product,onChange:() => {render(v);persist();}});
+      tweak.addSelect(v.state,'device',{label:'Preview width',options:[{label:'Desktop',value:'desktop'},{label:'Mobile',value:'mobile'}]});
+      tweak.addSelect(v.state,'phase',{label:'Call state',options:[{label:'Open',value:'open'},{label:'Not open yet',value:'upcoming'},{label:'Closed',value:'closed'}]});
+    }
+  }
+  root.addEventListener('elo:preview', event => {
+    const {device,phase,variant,screen} = event.detail;
+    for (const v of variants) {
+      if (['desktop','mobile'].includes(device)) v.state.device=device;
+      if (['open','upcoming','closed'].includes(phase)) v.state.phase=phase;
+      if (screen && validScreens.includes(screen)) v.state.screen=screen;
+      render(v);
+    }
+    for (const [i,section] of [...root.querySelectorAll('[data-variant]')].entries()) {
+      section.hidden = variant ? variants[i].key !== variant : i !== 0;
+    }
+  });
+  window.addEventListener('openai:set_globals',event => {
+    if (event.detail?.globals?.widgetState) {restore(event.detail.globals.widgetState);variants.forEach(render);}
+  });
+})();
+</script>
+
+<script>
+(() => {
+  const root = document.getElementById('elo-visitor-designs');
+  const concept = document.getElementById('study-concept');
+  const width = document.getElementById('study-width');
+  const phase = document.getElementById('study-phase');
+  const params = new URLSearchParams(location.search);
+  for (const [select,key] of [[concept,'concept'],[width,'width'],[phase,'state']]) {
+    if ([...select.options].some(o => o.value === params.get(key))) select.value=params.get(key);
+  }
+  function apply(reset=false) {
+    root.dispatchEvent(new CustomEvent('elo:preview',{detail:{variant:concept.value,device:width.value,phase:phase.value,screen:reset?'home':null}}));
+    const url = new URL(location.href);
+    url.searchParams.set('concept',concept.value);
+    url.searchParams.set('width',width.value);
+    url.searchParams.set('state',phase.value);
+    history.replaceState(null,'',url);
+  }
+  concept.addEventListener('change',() => apply(true));
+  width.addEventListener('change',() => apply());
+  phase.addEventListener('change',() => apply());
+  document.getElementById('study-overview').addEventListener('click',() => apply(true));
+  apply(true);
+})();
+</script>
+</body>
+</html>
