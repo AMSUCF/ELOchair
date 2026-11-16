@@ -20,6 +20,8 @@ Use the controls at the top to compare all three concepts, switch to a 360 px mo
 
 GitHub renders the structure sketches on this page. GitHub's file viewer displays the HTML source rather than executing it. GitHub Pages is currently disabled for this repository; committing this directory alone does not publish a website.
 
+For the existing server at jtm.io, follow [Publish the design preview](../../../deploy/preview.md). That workflow uses GitHub Actions secrets, so it does not require access to Codex environment secrets.
+
 ## Alternatives retained for comparison
 
 ### Conference front door
