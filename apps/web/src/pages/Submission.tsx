@@ -1,6 +1,7 @@
 import type { ConferenceConfig, CustomField, SelfIdKind, SubmissionType } from "@elochair/schema";
 import {
   countWords,
+  dressedAs,
   effectiveBlindMode,
   LIMITS,
   localize,
@@ -630,7 +631,7 @@ function Editor({
   const locked = busy || stale;
 
   return (
-    <article className="editor">
+    <article className="editor" data-dressed={dressedAs(config.slug)}>
       <PageHeading title={sub.title || t("editUntitled")}>
         {sub.title || t("editUntitled")}
       </PageHeading>

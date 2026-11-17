@@ -167,9 +167,12 @@ test("text on the band keeps 4.5:1 against the brightest point of the glow field
 }) => {
   await page.goto(`/en/c/${CALL}`);
   await expect(page.locator(".hero h1")).toBeVisible();
-  // The band's text colours, from the tokens.
+  // The band's text colours, from the tokens — set on .shell (see tokens.css), not :root, so an
+  // undressed conference's page doesn't inherit ELO 2027's palette.
   const colours = await page.evaluate(() => {
-    const style = getComputedStyle(document.documentElement);
+    const shell = document.querySelector(".shell");
+    if (!shell) throw new Error("no .shell element");
+    const style = getComputedStyle(shell);
     return ["--band-text", "--band-muted", "--band-accent", "--band-echo"].map(
       (name) => [name, style.getPropertyValue(name).trim()] as const,
     );
@@ -240,18 +243,45 @@ test("fonts and images come from the app's own origin, within the content securi
   page.on("console", (message) => {
     if (/Content Security Policy|Refused to/i.test(message.text())) refused.push(message.text());
   });
-  for (const path of [`/en/c/${CALL}`, "/es/", "/pt/sign-in"]) {
+  // Only pages wearing the identity (a dressed conference's own routes) should fetch its fonts.
+  // Generic chrome (home, sign-in) is plain for every conference now — see the next test.
+  // networkidle (not just fonts.ready) because the hero's one-time focus-in animation can delay
+  // when its heading is first painted, and so when its font is first requested.
+  for (const path of [`/en/c/${CALL}`, `/es/c/${CALL}`, `/en/c/${CALL}/submit`]) {
     await page.goto(path);
+    await page.waitForLoadState("networkidle");
     await page.evaluate(() => document.fonts.ready);
   }
   expect(elsewhere).toEqual([]);
   expect(refused).toEqual([]);
-  expect(fonts.length).toBeGreaterThan(0);
-  // The interface, heading and label faces really are in use, not their fallbacks.
-  const loaded = await page.evaluate(() =>
-    ["Schibsted Grotesk Variable", "Bricolage Grotesque Variable", "Unbounded"].map((family) =>
-      [...document.fonts].some((f) => f.family.includes(family) && f.status === "loaded"),
-    ),
+  // The interface, heading and wordmark faces were really requested, not just declared: checking
+  // the actual network requests avoids a `document.fonts` status race against the hero's one-time
+  // focus-in animation, which can delay when a glyph is first painted (and so first requested).
+  const requestedFamilies = ["schibsted-grotesk", "bricolage-grotesque", "unbounded"].map((slug) =>
+    fonts.some((url) => url.includes(slug)),
   );
-  expect(loaded).toEqual([true, true, true]);
+  expect(requestedFamilies).toEqual([true, true, true]);
+});
+
+test("a plain conference, and the app's own pages, wear no identity at all", async ({ page }) => {
+  const fonts: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (/\.woff2?$/.test(new URL(url).pathname)) fonts.push(url);
+  });
+
+  // elo2026 has no entry in dressedAs(): its conference page gets no hero, no band, no fonts.
+  await page.goto("/en/c/elo2026");
+  await expect(page.locator(".shell")).not.toHaveClass(/shell-hero/);
+  await expect(page.locator(".shell")).not.toHaveAttribute("data-dressed");
+  await expect(page.locator("article.conference")).toBeVisible();
+
+  // Home and generic chrome pages are plain too: no slug, so never dressed.
+  for (const path of [`/en/`, "/es/", "/pt/sign-in"]) {
+    await page.goto(path);
+    await expect(page.locator(".shell")).not.toHaveAttribute("data-dressed");
+  }
+
+  await page.evaluate(() => document.fonts.ready);
+  expect(fonts).toEqual([]);
 });

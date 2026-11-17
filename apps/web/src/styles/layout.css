@@ -10,6 +10,13 @@
   flex-direction: column;
   background: var(--band-bg);
   color: var(--band-text);
+  /*
+   * body (an ancestor of .shell — see base.css) sets font-family from --font-sans too, but that
+   * resolves against body's own scope, never .shell's identity override below: font-family is
+   * inherited as a computed value, not re-evaluated per custom-property change. Re-declaring it
+   * here, on .shell itself, is what makes a dressed page's interface font actually apply.
+   */
+  font-family: var(--font-sans);
 }
 
 /*

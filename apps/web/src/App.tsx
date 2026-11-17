@@ -1,3 +1,4 @@
+import { dressedAs } from "@elochair/schema/pure";
 import { useEffect, useRef } from "react";
 import {
   Link,
@@ -61,7 +62,11 @@ function pathIn(lang: string, pathname: string, search: string): string {
   return `/${lang}${withoutLang(pathname) || "/"}${search}`;
 }
 
-/** Pages that open with a hero on the band and render their own sheet: home and a conference. */
+/**
+ * Pages that open with a hero on the band and render their own sheet: home, and a conference
+ * that wears a distinct identity (see docs/design/visual-identity.md). An undressed conference's
+ * page renders with no hero/band at all, the same as every other plain page.
+ */
 const hasHero = (pathname: string) => /^\/(?:c\/[^/]+\/?)?$/.test(withoutLang(pathname) || "/");
 
 /** Slow glow fields and contour lines behind the header and hero. Decoration only. */
@@ -130,9 +135,12 @@ export function RootError() {
 
 function Shell() {
   const { lang, t } = useT();
+  const { slug } = useParams<{ slug?: string }>();
   const location = useLocation();
   const focusPending = useRef(false);
   const lastKey = useRef(location.key);
+  // slug is only set on /c/:slug routes; dressed is undefined on home and for a plain conference.
+  const dressed = slug ? dressedAs(slug) : undefined;
 
   // A route change (not the first load) asks the next page heading to take focus, so screen
   // reader and keyboard users land on the new content. Set during render, before child effects.
@@ -145,7 +153,9 @@ function Shell() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const hero = hasHero(location.pathname);
+  // A bare /c/:slug route only gets its hero when that conference has a distinct identity to
+  // wear; home keeps its hero regardless (slug is unset there, so `!slug` is true).
+  const hero = hasHero(location.pathname) && (!slug || Boolean(dressed));
   const crashed = hero ? (
     <div className="sheet">
       <Crashed />
@@ -156,7 +166,7 @@ function Shell() {
 
   return (
     <FocusPending.Provider value={focusPending}>
-      <div className={hero ? "shell shell-hero" : "shell"}>
+      <div className={hero ? "shell shell-hero" : "shell"} data-dressed={dressed}>
         <BandArt />
         <a className="skip-link" href="#main">
           {t("skipToContent")}

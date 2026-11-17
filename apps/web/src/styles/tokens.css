@@ -1,34 +1,18 @@
 /*
  * Tokens. Colours, fonts and shapes are named here and nowhere else.
  *
- * Two themes follow the system setting:
- * - paper (light): the conference site's light sections. Ink on paper, teal actions.
- * - forest (dark): its dark sections. Mist on forest, lime actions.
- * The band (header, hero and footer) is forest in both, as on the conference site.
+ * Shape and space are shared by every conference. Colours and fonts are not: the plain default
+ * below is what every conference gets unless it wears a distinct identity (see
+ * docs/design/visual-identity.md, and `dressedAs()` in packages/schema/src/dressing.ts). A
+ * dressed conference's page sets `data-dressed="<key>"` on its `.shell` (see Shell in App.tsx),
+ * which is why the identity overrides below are scoped to
+ * `.shell[data-dressed="elo2027"], .shell:has([data-dressed="elo2027"])` rather than `:root`:
+ * the attribute lands on `.shell` itself for most pages, but on a nested element (the submission
+ * editor, which has no slug in its URL) for the one page that resolves it from its own fetched
+ * config instead — `:has()` covers that case without a second selector block.
  */
 :root {
-  /* The conference palette, the same in both themes. */
-  --forest: #0e1f18;
-  --mist: #eef2ea;
-  --lime: #c9e59a;
-  --gold: #f0d98a;
-  --teal: #1d5e57;
-  --paper: #f3f5ee;
-  --ink: #17251e;
-  --rust: #9a3f22;
-  --taupe: #5b5146;
-
-  /* Type roles. */
-  --font-display:
-    "Bricolage Grotesque Variable", "Schibsted Grotesk Variable", system-ui, sans-serif;
-  --font-sans:
-    "Schibsted Grotesk Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
-    sans-serif;
-  --font-serif: "Brygada 1918 Variable", Georgia, "Times New Roman", serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font-mark: "Unbounded", "Bricolage Grotesque Variable", system-ui, sans-serif;
-
-  /* Shape and space. */
+  /* Shape and space: shared by every conference. */
   --radius-s: 10px;
   --radius: 16px;
   --radius-l: 24px;
@@ -42,6 +26,126 @@
   /* Respect notches and rounded corners (index.html sets viewport-fit=cover). */
   --pad-left: max(var(--gutter), env(safe-area-inset-left));
   --pad-right: max(var(--gutter), env(safe-area-inset-right));
+
+  /* Plain default palette and type, for every conference that wears no distinct identity. */
+  --bg: #f7f5ef;
+  --surface: #ffffff;
+  --sunken: #efece3;
+  --text: #1c1a2e;
+  --muted: #55526b;
+  --line: #d9d5c7;
+  --control-border: var(--muted);
+  --accent: #3b2f8f;
+  --accent-text: #ffffff;
+  --echo: var(--muted);
+  --label: var(--muted);
+  --numeral: var(--accent);
+  --notice-bg: #fff3cd;
+  --notice-text: #5c4400;
+  --focus: #0b6bcb;
+  --danger: #b3261e;
+  --danger-text: #ffffff;
+  --tone-good-bg: #d7ead1;
+  --tone-good-text: #1c3a1c;
+  --tone-warn-bg: #fde9b4;
+  --tone-warn-text: #5c4400;
+  --tone-info-bg: #cfe3fb;
+  --tone-info-text: #0b3a66;
+  --tone-quiet-bg: var(--sunken);
+  --tone-quiet-text: var(--muted);
+  --contour: transparent;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 10px 24px -16px rgb(0 0 0 / 0.18);
+
+  --font-display: system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-mark: var(--font-display);
+
+  /* The band (header, hero, footer): plain default is just the surface, no separate treatment. */
+  --band-bg: var(--surface);
+  --band-text: var(--text);
+  --band-muted: var(--muted);
+  --band-accent: var(--accent);
+  --band-accent-text: var(--accent-text);
+  --band-echo: var(--echo);
+  --band-line: var(--line);
+  --band-glass: var(--surface);
+  --band-contour: transparent;
+  --glow-green: transparent;
+  --glow-teal: transparent;
+  --glow-amber: transparent;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14132a;
+    --surface: #1d1b3a;
+    --sunken: #1a1836;
+    --text: #f1eee6;
+    --muted: #b9b5cf;
+    --line: #37345a;
+    --control-border: var(--muted);
+    --accent: #b8adff;
+    --accent-text: #14132a;
+    --echo: var(--muted);
+    --label: var(--muted);
+    --numeral: var(--accent);
+    --notice-bg: #3a3112;
+    --notice-text: #fbe7a6;
+    --focus: #7cc4ff;
+    --danger: #ffb4ab;
+    --danger-text: #14132a;
+    --tone-good-bg: #1d3a22;
+    --tone-good-text: #bfe6c4;
+    --tone-warn-bg: #3a3112;
+    --tone-warn-text: #fbe7a6;
+    --tone-info-bg: #1c3a52;
+    --tone-info-text: #bfe0ff;
+    --tone-quiet-bg: var(--sunken);
+    --tone-quiet-text: var(--muted);
+    --contour: transparent;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 32px -18px rgb(0 0 0 / 0.6);
+
+    --band-bg: var(--surface);
+    --band-text: var(--text);
+    --band-muted: var(--muted);
+    --band-accent: var(--accent);
+    --band-accent-text: var(--accent-text);
+    --band-echo: var(--echo);
+    --band-line: var(--line);
+    --band-glass: var(--surface);
+    --band-contour: transparent;
+  }
+}
+
+/*
+ * ELO 2027's identity: forest and paper, the two themes used on the published conference site
+ * (see docs/design/visual-identity.md for where each value comes from and what was measured).
+ */
+.shell[data-dressed="elo2027"],
+.shell:has([data-dressed="elo2027"]) {
+  /* The conference palette, the same in both themes. */
+  --forest: #0e1f18;
+  --mist: #eef2ea;
+  --lime: #c9e59a;
+  --gold: #f0d98a;
+  --teal: #1d5e57;
+  --paper: #f3f5ee;
+  --ink: #17251e;
+  --rust: #9a3f22;
+  --taupe: #5b5146;
+
+  --font-display:
+    "Bricolage Grotesque Variable", "Schibsted Grotesk Variable", system-ui, sans-serif;
+  --font-sans:
+    "Schibsted Grotesk Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
+    sans-serif;
+  --font-serif: "Brygada 1918 Variable", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-mark: "Unbounded", "Bricolage Grotesque Variable", system-ui, sans-serif;
 
   /* The band: forest in both themes. */
   --band-bg: var(--forest);
@@ -90,12 +194,11 @@
   --tone-quiet-text: var(--taupe);
   --contour: rgb(29 94 87 / 0.14);
   --shadow: 0 1px 2px rgb(16 38 29 / 0.05), 0 14px 32px -18px rgb(16 38 29 / 0.22);
-
-  color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  .shell[data-dressed="elo2027"],
+  .shell:has([data-dressed="elo2027"]) {
     /* Forest theme. */
     --bg: #12261d;
     --surface: #1a2c24;
