@@ -1,48 +1,60 @@
-# Visitor design concepts
+# ELO 2027 submission invitation
 
-The selected direction is **Submission companion**: ELOchair is the submission and review portal. [elo27.eliterature.org](https://elo27.eliterature.org/) remains the conference landing page and the home of the official CFP.
+The preview leads with **Ecologies of Attention / Ecologías de la atención** and an invitation to writers, artists and researchers. [elo27.eliterature.org](https://elo27.eliterature.org/) remains the conference landing page and the home of the official CFP; ELOchair helps people contribute.
 
-## Selected direction: Submission companion
+## Conference theme and bilingual interface
 
-![Submission companion structure sketch with proposal guidance and separate author, reviewer and organizer sign-in links](companion.svg)
+The page uses the conference's fixed forest palette, contour artwork, glass navigation, lime format selection, glass detail panel and metric tiles. These styles are extracted into [theme.css](theme.css) from the conference website's inline styling; the preview does not depend on the conference site serving a separate CSS file.
 
-The entry points describe what someone needs to do. Authors can prepare or start a proposal; invited reviewers and organizers can sign in directly. They use the same account system. The link someone chooses does not assign permissions, and someone can have more than one role.
+The actual Bricolage Grotesque, Schibsted Grotesk (roman and italic), JetBrains Mono, Brygada 1918 and Unbounded fonts are bundled locally with their SIL Open Font License files. This avoids fallback fonts and cross-origin font requests.
+
+The title restores the conference's cursor-following focus and blurred text treatment on pointer devices. Buttons, format choices, language controls and contribution links have hover and keyboard-focus feedback. Reduced-motion preferences disable the focus effect, movement and transition time; touch views keep the title sharp. Primary and secondary actions use aligned controls with stacked bilingual labels.
+
+**EN·ES is the default.** The language buttons also provide English-only and Spanish-only views, with appropriate primary typography in either language. Navigation, invitation, contribution groups, all eight formats, requirement descriptions, metrics, dates, local-time display, author/reviewer sign-in, footer and preview settings all have English and Spanish copy with language attributes. Curatorial pitches retain the separate email route.
+
+## Revised direction
+
+The [live preview](https://elo27.jtm.io/elochair-design-preview/) is the current visual reference.
+
+The opening view explains the theme and the people and work the call welcomes. **Start a proposal** is the main action, with the official CFP beside it and the deadline immediately below. Three compact groups show research presentations, art and performance, and workshops. Requirements sit on a separate page, rather than turning the invitation into a process checklist.
+
+Reviewer sign-in stays in the header. Returning authors and organizers have quieter links below the invitation. All entry points use the same account system; choosing a link does not assign permissions.
 
 The sign-in design preserves the intended next step: a proposal draft, existing proposals, or an invited workspace. This is proposed behavior; the production authentication flow has not been changed.
 
 ## Interactive preview
 
-Open [index.html](index.html) on a static web server, or download its raw contents and open the file in a browser. It is self-contained and does not require the API, a login, Codex, or the VM.
+Open [index.html](index.html) on a static web server together with `theme.css`, `copy.js`, `preview.js` and `assets/`. The preview does not require the API, a login, Codex, or the VM. The deployment includes the complete asset bundle.
 
-Use the controls at the top to compare all three concepts, switch to a 360 px mobile layout, and inspect upcoming, open and closed call states. The links to preparation, dates and sign-in work inside the preview. The official CFP link opens the existing conference website.
+The page opens directly on the revised invitation. The floating **Preview options / Opciones de vista previa** button stays at the bottom right. It opens a popover above the button without shifting or scrolling the conference page. Desktop uses the available browser width; Mobile constrains the preview to 360 px. Switching width preserves the current page and selected format. Escape, the close button or a click outside dismisses the controls.
 
-**This is a design study.** The call states are illustrative; dates and formats remain provisional. Sign-in is a visual endpoint. No email or account data is collected. The preview uses English copy; EN / ES / PT indicate language-switch placement. Production work must use the three typed message catalogs and reviewed translations.
+The format selector, previous/next buttons, mobile format dropdown, dates and sign-in paths work inside the preview. The official CFP link opens the existing conference website. The language handler is scoped to the language buttons so other controls do not rebuild the page when clicked.
 
-GitHub renders the structure sketches on this page. GitHub's file viewer displays the HTML source rather than executing it. GitHub Pages is currently disabled for this repository; committing this directory alone does not publish a website.
+Run `npm run test:preview` for browser regression checks covering layout stability, both width switches, format selection, call-state changes and phone-size controls. The suite uses Playwright's Chromium; set `PREVIEW_TEST_BROWSER` to an installed Chromium executable when needed. These tests serve only the static preview and need no app, database or sign-in.
+
+**This is a design study.** Call states are illustrative, and sign-in is a visual endpoint. No email or account data is collected. Published CFP requirements shown here do not change the app's conference configuration. The English/Spanish interface implements the requested conference-site language pairing; integration into the app must respect its typed message catalogs.
+
+The theme summary, first Latin American ELO conference context, submission languages and format requirements were checked against the [conference website source](https://github.com/XehReyes/elo27/blob/d0849861aaa6c8e225364fa3318b7d0870c7c5ff/index.html) on 2026-11-16, alongside [the repository's CFP format record](https://github.com/AMSUCF/ELOchair/issues/14). The summary is new copy based on that source, not a quotation. Curatorial pitches retain their separate email route.
+
+GitHub's file viewer displays the HTML source rather than executing it. GitHub Pages is currently disabled for this repository; committing this directory alone does not publish a website.
 
 For the existing server at jtm.io, follow [Publish the design preview](../../../deploy/preview.md). That workflow uses GitHub Actions secrets, so it does not require access to Codex environment secrets.
 
-## Alternatives retained for comparison
+## Earlier structure sketches
 
-### Conference front door
-
-![Conference front door structure sketch](conference.svg)
-
-Leads with the conference identity and official CFP. It has greater overlap with the existing conference website.
-
-### Visitor pathways
-
-![Visitor pathways structure sketch](pathways.svg)
-
-Makes exploring, preparing and returning explicit. The extra choice and amount of copy need testing with unfamiliar visitors.
+The earlier [invitation](companion.svg), [conference front door](conference.svg) and [visitor pathways](pathways.svg) sketches are archived records of the initial comparison. They predate the complete bilingual interface and conference-theme alignment; use the interactive preview to review the current design.
 
 ## Next usability checks
 
+- After a brief first view, describe what the conference is about and who should contribute.
+- Find a suitable contribution format and the main action for starting a proposal.
 - Find the official CFP and distinguish it from local submission guidance.
 - Find the required materials and interpret the deadline in the visitor's time zone.
 - Explain the difference between starting a draft and submitting a proposal.
 - Find reviewer sign-in without entering the author workflow.
 - Explain which email an invited reviewer should use and what grants access.
 - Check the same paths on a phone, with keyboard navigation, and across call states.
+- Switch EN, ES and EN·ES without losing the current page or chosen format.
+- Check that the published CSS, scripts, all six font files and artwork are served successfully.
 
-The structure sketches summarize the layouts; the HTML preview contains the interactive concepts. These are design proposals, not participant test results or a deployed authentication system.
+These are design proposals, not participant test results or a deployed authentication system.

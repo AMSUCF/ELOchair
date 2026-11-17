@@ -2,7 +2,7 @@
 
 Use GitHub Actions to keep the deployment key in GitHub. This does not require editing Codex environment secrets or giving the VM SSH access.
 
-The **Deploy design preview** workflow is started manually. It uploads only `index.html` and the three structure sketches from `docs/design/visitor-preview`. It does not rebuild the app, restart services, modify conference settings, or read the server's application secrets.
+The **Deploy design preview** workflow publishes preview-file changes on `main` automatically. It can also be started manually. It uploads the HTML, shared conference stylesheet, bilingual copy, scripts, self-hosted fonts, contour artwork, licenses and structure sketches from `docs/design/visitor-preview`. It does not rebuild the app, restart services, modify conference settings, or read the server's application secrets.
 
 ## Configure GitHub
 
@@ -12,6 +12,7 @@ In [AMSUCF/ELOchair → Settings → Secrets and variables → Actions](https://
 | --- | --- |
 | `DEPLOY_SSH_KEY` | A dedicated deployment private key, usable by the runner without a passphrase |
 | `DEPLOY_KNOWN_HOSTS` | The verified SSH `known_hosts` entry for jtm.io; for a nonstandard port, use its `[jtm.io]:port` entry |
+| `PREVIEW_BASIC_AUTH` | Optional. If `PREVIEW_URL` is behind HTTP Basic Auth, set this to `user:password` so the job's own verification request can still authenticate. Omit it if the preview path has no Basic Auth. |
 
 Under the **Variables** tab, add:
 
@@ -36,6 +37,6 @@ Keep the existing SMTP, database and app secrets on the server. Do not put the p
 3. Choose a branch containing the preview and workflow, then run it.
 4. Open the link in the successful job's summary.
 
-The job checks the configuration, verifies the SSH host key, uploads the four static files, and checks that `PREVIEW_URL` serves the exact uploaded HTML. It removes the temporary key when the script exits. No remote files are deleted. Rerun the workflow to publish later design revisions.
+The job checks the configuration, verifies the SSH host key, uploads the static preview and checks that every public file matches the uploaded file, including the CSS, scripts, fonts and artwork. It removes the temporary key when the script exits. No remote files are deleted. Later preview changes on `main` publish automatically; use the manual run to retry a deployment.
 
-If the workflow is absent from the Actions tab, it must first be present on the repository's default branch. No deployment happens merely by committing this workflow.
+Automatic runs are limited to changes under `docs/design/visitor-preview/`, its upload script, and this preview workflow on `main`. Pull requests do not deploy. The manual workflow must be present on the repository's default branch to appear in the Actions tab.

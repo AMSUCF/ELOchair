@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upload only the static design study, from a manually started GitHub Actions job.
+# Upload only the static design study from the preview GitHub Actions workflow.
 set -euo pipefail
 
 for setting in DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_HOST DEPLOY_USER DEPLOY_PATH PREVIEW_URL; do
@@ -60,27 +60,49 @@ Host elochair-preview
   ConnectTimeout 15
 EOF
 
-preview_files=(index.html companion.svg conference.svg pathways.svg)
+preview_files=(
+  index.html theme.css copy.js preview.js
+  companion.svg conference.svg pathways.svg
+  assets/contours-forest.svg assets/contours-paper.svg
+  assets/fonts/bricolage-grotesque-normal.woff2
+  assets/fonts/schibsted-grotesk-normal.woff2
+  assets/fonts/schibsted-grotesk-italic.woff2
+  assets/fonts/jetbrains-mono-normal.woff2
+  assets/fonts/brygada-1918-italic.woff2
+  assets/fonts/unbounded-800.woff2
+  assets/licenses/bricolage-grotesque.txt
+  assets/licenses/schibsted-grotesk.txt
+  assets/licenses/jetbrains-mono.txt
+  assets/licenses/brygada-1918.txt
+  assets/licenses/unbounded.txt
+)
 for preview_file in "${preview_files[@]}"; do
-  install -m 644 -- "$preview_source/$preview_file" "$preview_temp/$preview_file"
+  install -D -m 644 -- "$preview_source/$preview_file" "$preview_temp/$preview_file"
 done
 
 ssh -F "$preview_temp/ssh-config" elochair-preview \
-  "mkdir -p -- '$DEPLOY_PATH' && chmod 755 -- '$DEPLOY_PATH'"
+  "mkdir -p -- '$DEPLOY_PATH/assets/fonts' '$DEPLOY_PATH/assets/licenses' && chmod 755 -- '$DEPLOY_PATH' '$DEPLOY_PATH/assets' '$DEPLOY_PATH/assets/fonts' '$DEPLOY_PATH/assets/licenses'"
 for preview_file in "${preview_files[@]}"; do
   scp -F "$preview_temp/ssh-config" -p -- \
-    "$preview_temp/$preview_file" "elochair-preview:${DEPLOY_PATH%/}/"
+    "$preview_temp/$preview_file" "elochair-preview:${DEPLOY_PATH%/}/$preview_file"
 done
 
-curl --fail --silent --show-error --location \
-  --proto '=https' --proto-redir '=https' \
-  --retry 3 --retry-delay 2 --max-time 20 \
-  "${PREVIEW_URL}?preview_commit=${GITHUB_SHA:-manual}" \
-  --output "$preview_temp/served.html"
-if ! cmp -s "$preview_source/index.html" "$preview_temp/served.html"; then
-  printf 'Upload finished, but PREVIEW_URL did not serve the uploaded design preview.\n' >&2
-  exit 1
+curl_auth_args=()
+if [[ -n "${PREVIEW_BASIC_AUTH:-}" ]]; then
+  curl_auth_args=(--user "$PREVIEW_BASIC_AUTH")
 fi
+for preview_file in "${preview_files[@]}"; do
+  curl --fail --silent --show-error --location \
+    --proto '=https' --proto-redir '=https' \
+    --retry 3 --retry-delay 2 --max-time 20 \
+    "${curl_auth_args[@]}" \
+    "${PREVIEW_URL%/}/$preview_file?preview_commit=${GITHUB_SHA:-manual}" \
+    --output "$preview_temp/served-file"
+  if ! cmp -s "$preview_source/$preview_file" "$preview_temp/served-file"; then
+    printf 'Upload finished, but the public file did not match: %s\n' "$preview_file" >&2
+    exit 1
+  fi
+done
 
 printf 'Verified design preview: %s\n' "$PREVIEW_URL"
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then

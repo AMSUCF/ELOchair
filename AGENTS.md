@@ -92,6 +92,20 @@ Spec 02 has the details.
 - **Lists.** Lists, CSV exports and MCP tools all go through `querySubmissions()`, which projects first and filters afterwards.
 - **Errors.** Routes throw `Refusal(status, code)` for deliberate refusals.
 
+## Deploying to jtm.io
+
+Production (and the `elo27.jtm.io` eval instance) runs on jtm.io under a dedicated, unprivileged `elochair` system account — not under any other account on that host. If you don't have SSH access as `elochair`, use the static-preview path below instead of asking for it.
+
+**For a UI prototype or design study (no SSH needed, no app changes):**
+Put self-contained static files in `docs/design/visitor-preview/` (the exact file list is hardcoded in `deploy/preview.sh`'s `preview_files` array, so add new filenames there if you add files). Pushing to `main` with changes under `docs/design/visitor-preview/**`, `deploy/preview.sh`, or the workflow file auto-deploys via the **Deploy design preview** GitHub Actions workflow; it can also be run manually from the Actions tab (`workflow_dispatch`, exists on `main` only). It uploads just those files to a directory the production nginx serves directly, with no app rebuild: **https://elo27.jtm.io/elochair-design-preview/**, gated by HTTP Basic Auth at the nginx level (ask for the current credentials — don't put them in the repo or workflow). See `deploy/preview.md`. This is the right tool for "I want to show someone a prototype" — don't touch the real app for that.
+
+**For real app changes (needs SSH as `elochair`):**
+- Repo lives at `~/elochair` on jtm.io. **TODO once this branch is actually deployed:** confirm and record here which branch `git branch --show-current` reports there — as of this branch's creation, production was tracking `ccr-e6ee03db-qhfk2z` (not `main`), and this note needs updating the moment that changes. Don't assume `main` (or this branch) is live without checking.
+- Rebuild/redeploy: `cd ~/elochair/deploy && git pull --ff-only origin <branch> && docker compose -f docker-compose.yml -f docker-compose.local-test.yml up -d --build app`
+- **Only ever target the `app` service.** A bare `docker compose up -d` will also try to start the compose file's `caddy` service, which fights with the host's own nginx for ports 80/443 and fails. nginx (not the in-stack Caddy) already terminates TLS for this deployment.
+- Pushing to `main` is also meant to trigger an auto-deploy webhook (`deploy-webhook` pm2 process on the server, scoped to `up -d --build app` only) — as of 2026-11-16 this hasn't been confirmed working end-to-end, so don't rely on it; deploy manually over SSH until it's verified.
+- The `elochair` account has no sudo and is in the `docker` group only. It can fully manage the app/db containers but nothing else on the host.
+
 ## Testing notes
 
 - Server tests drive both listeners in-process with `app.request()` against an in-memory PGlite database. Use `apps/server/src/testkit.ts`.
