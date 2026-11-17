@@ -23,6 +23,7 @@ import { formatDateTime, viewerTimeZone } from "../format";
 import { cleanName, describedBy, ErrorSummary, FieldError, fieldId, nameRefusal } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
+import { brandingStyle } from "../theme";
 import { Localized, PageHeading } from "../ui";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
@@ -630,7 +631,7 @@ function Editor({
   const locked = busy || stale;
 
   return (
-    <article className="editor">
+    <article className="editor" data-theme={config.slug} style={brandingStyle(config.branding)}>
       <PageHeading title={sub.title || t("editUntitled")}>
         {sub.title || t("editUntitled")}
       </PageHeading>

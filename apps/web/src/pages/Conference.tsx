@@ -5,6 +5,7 @@ import type { ConferenceDetail, Me } from "../api";
 import { formatDateRange, formatDateTime, viewerTimeZone } from "../format";
 import { useT } from "../i18n";
 import { deadlineKey, modalityKey, reviewKey } from "../labels";
+import { brandingStyle } from "../theme";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -37,7 +38,7 @@ export function ConferencePage() {
   const fb = c.defaultLanguage;
 
   return (
-    <article className="conference">
+    <article className="conference" data-theme={c.slug} style={brandingStyle(c.branding)}>
       <PageHeading title={localize(c.title, lang, fb)}>
         <Localized text={c.title} fallback={fb} />
       </PageHeading>

@@ -36,6 +36,33 @@
   }
 }
 
+/*
+ * A conference can override the shared accent on its own page root by setting the
+ * --branding-* custom properties (see theme.ts). --accent-effective must stay a distinct
+ * property from --accent: redeclaring --accent with a fallback to var(--accent) on the same
+ * element is a cyclic reference (invalid at computed-value time), not "keep the old value".
+ * Kept separate per color scheme so OS dark-mode switching still works live, with no JS
+ * re-render. Conferences that don't set --branding-* leave --accent-effective unset, and every
+ * var(--accent-effective, var(--accent)) below falls back to the shared default.
+ */
+.conference,
+.editor,
+.start,
+.manage {
+  --accent-effective: var(--branding-accent-light);
+  --accent-text-effective: var(--branding-accent-text-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .conference,
+  .editor,
+  .start,
+  .manage {
+    --accent-effective: var(--branding-accent-dark);
+    --accent-text-effective: var(--branding-accent-text-dark);
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -107,7 +134,7 @@ h3 {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-effective, var(--accent));
   text-underline-offset: 3px;
 }
 
@@ -317,8 +344,8 @@ button,
   justify-content: center;
   padding: 8px 18px;
   border: 0;
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--accent-effective, var(--accent));
+  color: var(--accent-text-effective, var(--accent-text));
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
@@ -430,8 +457,8 @@ legend {
 button.secondary,
 .button.secondary {
   background: transparent;
-  color: var(--accent);
-  border: 2px solid var(--accent);
+  color: var(--accent-effective, var(--accent));
+  border: 2px solid var(--accent-effective, var(--accent));
 }
 
 button.danger {

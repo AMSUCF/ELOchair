@@ -29,10 +29,7 @@ window.ELO_PREVIEW_COPY = {
   due: ["Proposals due", "Fecha límite"],
   deadline: ["14 February 2027 · 23:59 AoE", "14 de febrero de 2027 · 23:59 AoE"],
   windowClosed: ["The submission window has closed.", "El plazo de envío ha terminado."],
-  bring: [
-    "Ways to contribute",
-    "Formas de participar",
-  ],
+  bring: ["Ways to contribute", "Formas de participar"],
   welcomeLanguages: ["Proposals in English or Spanish.", "Propuestas en inglés o español."],
   ideas: ["Talks & ideas", "Charlas e ideas"],
   ideasList: [
@@ -45,7 +42,10 @@ window.ELO_PREVIEW_COPY = {
     "Lecturas, performances y obras para la exposición.",
   ],
   workshops: ["Workshops", "Talleres"],
-  workshopList: ["Hands-on sessions for interaction and discussion.", "Sesiones prácticas de interacción y diálogo."],
+  workshopList: [
+    "Hands-on sessions for interaction and discussion.",
+    "Sesiones prácticas de interacción y diálogo.",
+  ],
   explore: ["Explore the formats", "Explorar los formatos"],
   requirements: ["See requirements", "Ver requisitos"],
   already: ["Already involved?", "¿Ya participas?"],

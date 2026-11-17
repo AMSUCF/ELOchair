@@ -10,6 +10,7 @@ import { Link, useParams } from "react-router";
 import { api, type ConferenceDetail } from "../api";
 import { useT } from "../i18n";
 import { type IssueCode, issueLabelKey, statusKey } from "../labels";
+import { brandingStyle } from "../theme";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -176,7 +177,7 @@ export function ManagePage() {
     return type ? localize(type.name, lang, config.defaultLanguage) : typeKey;
   };
   return (
-    <>
+    <div className="manage" data-theme={slug} style={brandingStyle(config.branding)}>
       <PageHeading title={t("manageTitle")}>{t("manageTitle")}</PageHeading>
       <p className="meta">
         <Localized text={config.title} fallback={config.defaultLanguage} />
@@ -270,7 +271,7 @@ export function ManagePage() {
           </p>
         </>
       )}
-    </>
+    </div>
   );
 }
 

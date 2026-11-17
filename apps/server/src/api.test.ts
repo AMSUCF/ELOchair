@@ -4,7 +4,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assignments, auditLog, contributions, people, submissions } from "./db/schema";
 import { type SandboxSummary, seedSandbox } from "./fixtures";
-import { createApiToken, revokeApiToken, saveConference } from "./repo";
+import { createApiToken, grantRole, revokeApiToken, saveConference } from "./repo";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
 let t: TestApp;
@@ -18,11 +18,13 @@ let everything: { names: string[]; emails: string[]; bios: string[]; content: st
 beforeAll(async () => {
   t = await makeTestApp();
   await saveConference(t.db, conferences.elo2026, "archived");
-  await saveConference(t.db, conferences.elo2027, "draft");
+  const elo2027Row = await saveConference(t.db, conferences.elo2027, "draft");
   s = await seedSandbox(t.db);
   chairCookie = await signIn(t, s.chairEmail);
   adminCookie = await signIn(t, s.adminEmail);
   const chairId = await personId(t, s.chairEmail);
+  // So the sandbox chair can also see the still-draft elo2027, to check its config over HTTP.
+  await grantRole(t.db, { conferenceId: elo2027Row.id, personId: chairId, role: "chair" });
   tokenM = (
     await createApiToken(t.db, {
       personId: chairId,
@@ -198,6 +200,13 @@ describe("conference configuration", () => {
     expect(res.json.config.submissionTypes.map((x: { key: string }) => x.key)).toContain(
       "exhibition",
     );
+  });
+
+  it("passes a conference's branding through untouched, and omits it when unset", async () => {
+    const themed = await call(t.public, "GET", "/api/conferences/elo2027", { cookie: chairCookie });
+    expect(themed.json.config.branding).toEqual(conferences.elo2027.branding);
+    const plain = await call(t.public, "GET", "/api/conferences/elo2026");
+    expect(plain.json.config.branding).toBeUndefined();
   });
 
   it("lets admins update the configuration, validates it, and audits the change", async () => {

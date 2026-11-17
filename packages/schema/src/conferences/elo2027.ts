@@ -12,6 +12,10 @@ export const elo2027: ConferenceConfigInput = {
   slug: "elo2027",
   year: 2027,
   placeholder: true,
+  branding: {
+    light: { accent: "#b1361f", accentText: "#ffffff" },
+    dark: { accent: "#ff9a80", accentText: "#14132a" },
+  },
   title: { en: "ELO 2027", es: "ELO 2027", pt: "ELO 2027" },
   theme: {
     en: "Theme to be announced.",

@@ -6,6 +6,7 @@ import { api, type ConferenceDetail, type Me, type MySubmission, type Role } fro
 import { ErrorSummary } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { modeKey, roleKey } from "../labels";
+import { brandingStyle } from "../theme";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -26,7 +27,7 @@ export function StartPage() {
   // The server's clock decides; a phone with a wrong clock must not hide or show the form.
   const open = conf.data.callOpen;
   return (
-    <>
+    <div className="start" data-theme={c.slug} style={brandingStyle(c.branding)}>
       <PageHeading title={t("startTitle")}>{t("startTitle")}</PageHeading>
       <p className="meta">
         <Localized text={c.title} fallback={c.defaultLanguage} />
@@ -40,7 +41,7 @@ export function StartPage() {
       ) : (
         <StartForm config={c} slug={slug ?? ""} />
       )}
-    </>
+    </div>
   );
 }
 

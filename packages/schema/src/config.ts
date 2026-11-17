@@ -154,6 +154,11 @@ export const SubmissionType = z.object({
 });
 export type SubmissionType = z.infer<typeof SubmissionType>;
 
+const HexColor = z.string().regex(/^#[0-9a-f]{6}$/i, "use a 6-digit hex color");
+
+/** A light/dark accent pair, independent of the shared app theme's own dark-mode tokens. */
+const BrandingPalette = z.object({ accent: HexColor, accentText: HexColor });
+
 const ConferenceConfigShape = z.object({
   slug: z.string().regex(/^[a-z0-9-]+$/, "use lowercase letters, digits and hyphens"),
   year: z.int().min(1999),
@@ -187,6 +192,8 @@ const ConferenceConfigShape = z.object({
   submissionTypes: z.array(SubmissionType).min(1),
   /** True while the content is a stand-in (e.g. dates not yet announced). The UI says so. */
   placeholder: z.boolean().default(false),
+  /** Per-conference accent color. Absent: the app's default theme, unchanged. */
+  branding: z.object({ light: BrandingPalette, dark: BrandingPalette }).optional(),
 });
 
 type Shape = z.infer<typeof ConferenceConfigShape>;

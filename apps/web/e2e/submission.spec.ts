@@ -184,6 +184,44 @@ async function invite(
   await expect(page.locator(".people > li")).toHaveCount(listed);
 }
 
+/** The custom property a conference's page root resolves to, feeding --accent/--accent-text's fallback. */
+async function accentOf(page: Page, selector: string) {
+  return page.locator(selector).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      accent: style.getPropertyValue("--accent-effective"),
+      text: style.getPropertyValue("--accent-text-effective"),
+    };
+  });
+}
+
+test("a themed conference overrides the accent color in both light and dark, an unthemed one does not", async ({
+  page,
+}) => {
+  await page.goto(`/en/c/${CALL}`);
+  await expect(accentOf(page, "article.conference")).resolves.toEqual({
+    accent: "#b1361f",
+    text: "#ffffff",
+  });
+  await expect(page.getByRole("link", { name: "Submit a proposal" })).toHaveCSS(
+    "background-color",
+    "rgb(177, 54, 31)",
+  );
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(accentOf(page, "article.conference")).resolves.toEqual({
+    accent: "#ff9a80",
+    text: "#14132a",
+  });
+  await page.emulateMedia({ colorScheme: "light" });
+
+  // elo2026 sets no branding, so the override is left unset (not "falls back to itself").
+  await page.goto("/en/c/elo2026");
+  await expect(accentOf(page, "article.conference")).resolves.toEqual({ accent: "", text: "" });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(accentOf(page, "article.conference")).resolves.toEqual({ accent: "", text: "" });
+  await page.emulateMedia({ colorScheme: "light" });
+});
+
 test("submit a talk from a phone: word count, self-identification, co-author, agreements, receipt", async ({
   page,
   request,
