@@ -14,7 +14,7 @@ window.ELO_PREVIEW_COPY = {
   closed: ["Submissions closed", "Convocatoria cerrada"],
   theme: ["Ecologies of Attention", "Ecologías de la atención"],
   invite: [
-    "We invite work that engages attention as a political, ecological and poetic condition — and the practices through which electronic literature trains, reshapes and resists the overload that keeps it fragmented.",
+    "We invite work that engages attention as a political, ecological and poetic condition, and the practices through which electronic literature trains, reshapes and resists the overload that keeps it fragmented.",
     "Invitamos propuestas que aborden la atención como condición política, ecológica y poética, y las prácticas con las que la literatura electrónica la entrena, la transforma y resiste la sobrecarga que la mantiene fragmentada.",
   ],
   eventDate: ["3–6 August 2027", "3–6 de agosto de 2027"],
@@ -56,8 +56,8 @@ window.ELO_PREVIEW_COPY = {
   back: ["Back to ELO 2027", "Volver a ELO 2027"],
   formatsTitle: ["Types of submissions", "Formatos"],
   formatIntro: [
-    "The theme is a frame for reflection, not a boundary — these are the formats it can take.",
-    "El tema es un marco para la reflexión, no un límite: estos son los formatos que puede tomar.",
+    "The theme is a frame for reflection, not a boundary. These are the formats it can take.",
+    "El tema es un marco para la reflexión, no un límite. Estos son los formatos que puede tomar.",
   ],
   format: ["Format", "Formato"],
   academic: ["Academic", "Académico"],
@@ -88,8 +88,8 @@ window.ELO_PREVIEW_COPY = {
   details: ["Conference details", "Detalles del congreso"],
   reviewerTitle: ["Reviewer & organizer sign-in", "Acceso de revisión y organización"],
   reviewerIntro: [
-    "Sign in with the email address from your invitation — your account's assigned roles determine what you can access.",
-    "Accede con el correo de tu invitación: los roles asignados a tu cuenta determinan lo que puedes ver.",
+    "Sign in with the email address from your invitation. Your account’s assigned roles determine what you can access.",
+    "Accede con el correo de tu invitación. Los roles asignados a tu cuenta determinan lo que puedes ver.",
   ],
   continueIntro: [
     "Use the email address associated with your proposal.",
@@ -97,8 +97,8 @@ window.ELO_PREVIEW_COPY = {
   ],
   startTitle: ["Start your proposal", "Inicia tu propuesta"],
   draftIntro: [
-    "Sign in to start a draft — your work is saved until you're ready to submit.",
-    "Accede para iniciar un borrador: tu trabajo se guarda hasta que estés listo para enviarlo.",
+    "Sign in to start a draft. Your work is saved until you’re ready to submit.",
+    "Accede para iniciar un borrador. Tu trabajo se guarda hasta que estés listo para enviarlo.",
   ],
   selectedFormat: ["Selected format", "Formato elegido"],
   email: ["Email address", "Correo electrónico"],
