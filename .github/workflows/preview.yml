@@ -1,6 +1,13 @@
 name: Deploy design preview
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/design/visitor-preview/**
+      - deploy/preview.sh
+      - .github/workflows/preview.yml
   workflow_dispatch:
 
 permissions:

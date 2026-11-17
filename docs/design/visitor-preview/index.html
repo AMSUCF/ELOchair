@@ -5,292 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
-  <title>ELO 2027 · Ecologies of Attention</title>
-  <style>
-    :root {
-      color-scheme: light dark;
-      --paper: light-dark(#f3f5ee, #12261d);
-      --surface: light-dark(#fbfcf8, #1a2c24);
-      --ink: light-dark(#17251e, #eef2ea);
-      --muted: light-dark(#5b5146, #bfcbc0);
-      --line: light-dark(#d3d9cd, #405849);
-      --accent: light-dark(#1d5e57, #c9e59a);
-      --on-accent: light-dark(#ffffff, #10261d);
-      --echo: light-dark(#9a3f22, #f0d98a);
-      --forest: #0e1f18;
-      --mist: #eef2ea;
-      --lime: #c9e59a;
-      --gold: #f0d98a;
-      --band-muted: #cdd8ce;
-      --band-line: #405849;
-      --art-line: #61865a;
-      --art-soft: #284732;
-      --display: 'Bricolage Grotesque', 'Trebuchet MS', sans-serif;
-      --sans: 'Schibsted Grotesk', system-ui, sans-serif;
-      --pill: 999px;
-      --radius: 16px;
-      --wide: 1120px;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 var(--sans); }
-    h1, h2, h3, p { margin: 0; }
-    h1, h2, h3 { font-family: var(--display); }
-    a { color: var(--accent); text-underline-offset: 4px; }
-    button, input, select { font: inherit; }
-    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
-    [hidden] { display: none; }
-    .frame { max-width: var(--wide); margin-inline: auto; }
-    .pad { padding-inline: 40px; }
-    .study { padding: 8px 24px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; font-size: 12px; border-bottom: 1px solid var(--line); }
-    .study span { margin-right: auto; }
-    .study a { display: inline-flex; align-items: center; min-height: 44px; }
-    .shell { max-width: 1440px; margin-inline: auto; container-type: inline-size; background: var(--paper); }
-    .shell[data-width="mobile"] { max-width: 360px; }
-    .site-header { color: var(--mist); background: var(--forest); }
-    .header-inner { min-height: 86px; display: flex; gap: 20px 28px; align-items: center; border-bottom: 1px solid var(--band-line); }
-    .brand { color: var(--mist); text-decoration: none; letter-spacing: -.6px; font: 700 22px/1.2 var(--display); display: inline-flex; align-items: center; min-height: 44px; white-space: nowrap; }
-    .brand span { color: var(--lime); }
-    .site-nav { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; }
-    .site-nav a { color: var(--mist); font-size: 13px; min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
-    .site-nav a:hover { text-decoration: underline; }
-    .language { font: 12px/1.4 ui-monospace, monospace; letter-spacing: .04em; color: var(--band-muted); white-space: nowrap; }
-    .language b { font-weight: 500; color: var(--lime); }
-    .eyebrow { font: 500 11px/1.6 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
-    .hero { background: var(--forest); color: var(--mist); position: relative; overflow: hidden; }
-    .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: center; gap: 24px; padding-block: 38px 44px; }
-    .hero .eyebrow { color: var(--lime); }
-    .hero h1 { font-size: clamp(52px, 6.8cqw, 82px); font-weight: 600; line-height: .99; letter-spacing: -.045em; margin-top: 16px; }
-    .hero .translation { color: var(--gold); font: italic 20px/1.4 Georgia, serif; margin-top: 12px; }
-    .hero .invite { max-width: 630px; font-size: 18px; line-height: 1.65; margin-top: 22px; }
-    .hero .event { color: var(--band-muted); margin-top: 18px; font-size: 14px; }
-    .event span { display: inline-block; }
-    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 24px; }
-    .button { color: var(--on-accent); background: var(--accent); border: 1px solid var(--accent); border-radius: var(--pill); min-height: 48px; padding: 11px 22px; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
-    .button:hover { text-decoration: underline; }
-    .hero .button { color: var(--forest); background: var(--lime); border-color: var(--lime); }
-    .hero .text-link { color: var(--mist); display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; }
-    .deadline { margin-top: 18px; font-size: 13px; color: var(--band-muted); }
-    .deadline a { color: var(--lime); min-height: 44px; display: inline-flex; align-items: center; }
-    .hero-art { width: 100%; color: var(--lime); }
-    .hero-art svg { display: block; width: 100%; height: auto; overflow: visible; }
-    .hero-art .contour { fill: none; stroke: var(--art-line); stroke-width: 1; }
-    .hero-art .soft { stroke: var(--art-soft); }
-    .hero-art .focus { fill: var(--lime); }
-    .hero-art text { fill: var(--mist); font: italic 31px Georgia, serif; }
-    .hero-art .whisper { fill: var(--band-muted); font: 11px ui-monospace, monospace; letter-spacing: 2px; }
-    .contributions { padding-block: 30px 26px; }
-    .section-intro { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
-    h2 { font-size: 27px; font-weight: 600; letter-spacing: -.6px; line-height: 1.25; }
-    .section-intro p { color: var(--muted); font-size: 13px; margin-left: auto; }
-    .formats { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr; gap: 24px; margin-top: 22px; }
-    .format-group { border-top: 1px solid var(--line); padding-top: 16px; }
-    .format-group h3 { font-size: 20px; line-height: 1.3; font-weight: 600; }
-    .format-group p { color: var(--muted); font-size: 14px; margin-top: 8px; }
-    .format-group a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; font-size: 13px; }
-    .returning { border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 0 22px; padding-block: 16px; font-size: 13px; }
-    .returning span { color: var(--muted); margin-right: auto; }
-    .returning a { min-height: 44px; display: inline-flex; align-items: center; }
-    .site-footer { border-top: 1px solid var(--line); padding-block: 20px; color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px 24px; }
-    .site-footer span { margin-right: auto; }
-    .site-footer a { display: inline-flex; align-items: center; min-height: 44px; }
-    .page { padding-block: 28px 40px; }
-    .back { min-height: 44px; display: inline-flex; align-items: center; font-size: 13px; }
-    .page h1 { font-size: 38px; line-height: 1.18; font-weight: 600; letter-spacing: -1px; margin-top: 16px; }
-    .page .intro { max-width: 680px; color: var(--muted); margin-top: 14px; }
-    .guide-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
-    .guide-head { margin-block: 26px 18px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
-    .guide-head .button { margin-left: auto; }
-    .requirements { border-top: 1px solid var(--line); }
-    .requirements summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; min-height: 64px; padding-block: 14px; list-style: none; }
-    .requirements summary::after { content: '+'; margin-left: auto; color: var(--accent); font-size: 24px; line-height: 1; }
-    .requirements[open] summary::after { content: '−'; }
-    .requirements summary h3 { font-size: 19px; font-weight: 600; }
-    .requirements summary span { font-size: 13px; color: var(--muted); }
-    .requirements ul { margin: 0; padding: 0 0 12px 20px; max-width: 720px; }
-    .requirements li { margin-bottom: 8px; }
-    .requirements .format-start { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: 12px; font-size: 14px; }
-    .aside-note { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 18px; color: var(--muted); font-size: 14px; }
-    .date-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 40px; margin-top: 30px; }
-    .date-grid h2 { font-size: 22px; }
-    .date-grid p { margin-top: 12px; }
-    .date-grid small { font-size: 13px; color: var(--muted); }
-    .date-grid summary { min-height: 44px; padding-block: 8px; color: var(--accent); }
-    .signin { max-width: 640px; padding-bottom: 40px; }
-    .signin form { display: grid; gap: 12px; max-width: 430px; margin-top: 28px; }
-    .signin label { font-size: 14px; }
-    .signin input { display: block; width: 100%; min-height: 48px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin-top: 5px; }
-    .signin button:disabled { opacity: .65; }
-    .signin .explain { font-size: 13px; color: var(--muted); }
-    .preview-options { margin: 0 auto; padding: 12px 24px 24px; max-width: var(--wide); font-size: 12px; color: var(--muted); }
-    .preview-options > summary { min-height: 44px; padding-block: 12px; }
-    .preview-options form { display: flex; flex-wrap: wrap; gap: 12px; margin-block: 12px; }
-    .preview-options label { display: grid; gap: 5px; }
-    .preview-options select, .preview-options button { padding: 8px 12px; min-height: 44px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
-    .preview-options button { align-self: end; }
-    .preview-options p { max-width: 760px; }
-    @container (max-width: 720px) {
-      .pad { padding-inline: 22px; }
-      .header-inner { min-height: 80px; flex-wrap: wrap; gap: 0 16px; padding-block: 12px; }
-      .brand { font-size: 20px; }
-      .site-nav { order: 3; width: 100%; gap: 0 20px; margin: 0; }
-      .site-nav a { font-size: 12px; }
-      .language { margin-left: auto; }
-      .hero-grid { display: block; padding-block: 28px 30px; }
-      .hero h1 { font-size: clamp(43px, 11.9cqw, 64px); }
-      .hero .translation { font-size: 16px; margin-top: 10px; }
-      .hero .invite { font-size: 16px; margin-top: 20px; }
-      .hero .event { font-size: 13px; margin-top: 16px; }
-      .hero-art { display: none; }
-      .actions { gap: 4px 18px; margin-top: 20px; }
-      .button { font-size: 14px; padding-inline: 18px; }
-      .hero .text-link { font-size: 13px; }
-      .deadline { font-size: 12px; margin-top: 10px; }
-      .contributions { padding-block: 26px 18px; }
-      h2 { font-size: 24px; }
-      .section-intro p { margin-left: 0; }
-      .formats { grid-template-columns: 1fr; gap: 10px; margin-top: 18px; }
-      .format-group { padding-top: 14px; }
-      .format-group h3 { font-size: 19px; }
-      .format-group p { margin-top: 4px; }
-      .format-group a { margin-top: 2px; }
-      .returning { gap: 0 20px; }
-      .returning span { width: 100%; }
-      .site-footer { display: block; }
-      .site-footer a { margin-top: 6px; }
-      .page h1 { font-size: 30px; }
-      .date-grid { grid-template-columns: 1fr; gap: 26px; }
-      .requirements summary span { order: 3; width: 100%; }
-      .guide-head .button { margin-left: 0; }
-    }
-    @media (max-width: 600px) {
-      .study { padding-inline: 16px; }
-      .preview-options form { display: grid; }
-      .preview-options label { max-width: 100%; }
-    }
-  </style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>ELO 2027 · Ecologies of Attention / Ecologías de la atención</title>
+  <link rel="preload" href="./assets/fonts/bricolage-grotesque-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/fonts/schibsted-grotesk-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./theme.css">
+  <script defer src="./copy.js"></script>
+  <script defer src="./preview.js"></script>
 </head>
 <body>
-  <div class="study"><span>Design preview · No data is sent.</span><a href="#preview-options">Preview options</a></div>
+  <div class="study" id="study"></div>
   <div class="shell" id="site" data-width="desktop">
-    <header class="site-header">
-      <div class="frame pad header-inner">
-        <a class="brand" href="#/home" aria-label="ELOchair home">ELO<span>chair</span></a>
-        <nav class="site-nav" aria-label="Main navigation">
-          <a href="#/guide">How to submit</a>
-          <a href="https://elo27.eliterature.org/" target="_blank" rel="noopener noreferrer">Conference ↗</a>
-          <a href="#/reviewer">Reviewer sign-in</a>
-        </nav>
-        <span class="language"><b>EN</b> · ES · PT</span>
+    <header class="site-header frame">
+      <div class="nav-pill">
+        <a class="brand" href="#/home">ELO<span>chair</span></a>
+        <nav class="site-nav" id="navigation" aria-label="Main navigation / Navegación principal"></nav>
+        <fieldset class="language-switch" id="languages"><legend id="language-legend" class="sr-only">Language / Idioma</legend>
+          <button type="button" data-language="en" lang="en" aria-label="English / Inglés" aria-pressed="false">EN</button>
+          <button type="button" data-language="es" lang="es" aria-label="Spanish / Español" aria-pressed="false">ES</button>
+          <button type="button" data-language="both" aria-label="English and Spanish / Inglés y español" aria-pressed="true">EN·ES</button>
+        </fieldset>
       </div>
     </header>
     <main id="page"></main>
-    <footer class="frame pad site-footer"><span>ELOchair · Electronic Literature Organization</span><a href="https://elo27.eliterature.org/" target="_blank" rel="noopener noreferrer">Conference website ↗</a></footer>
+    <footer class="frame site-footer" id="footer"></footer>
   </div>
-  <details class="preview-options" id="preview-options">
-    <summary>Preview options</summary>
-    <form aria-label="Design preview settings">
-      <label>Width<select id="preview-width"><option value="desktop">Desktop / responsive</option><option value="mobile">Mobile · 360 px</option></select></label>
-      <label>Illustrative call state<select id="preview-state"><option value="open">Open</option><option value="upcoming">Not open yet</option><option value="closed">Closed</option></select></label>
-      <button type="button" id="reset-preview">Return to invitation</button>
-    </form>
-    <p>English design study. EN / ES / PT show language-switch placement. Forms do not send data. The call state is illustrative; the live portal’s format configuration is separate from the published CFP summarized here.</p>
-  </details>
-  <script>
-    (() => {
-      const page = document.getElementById('page');
-      const site = document.getElementById('site');
-      const widthControl = document.getElementById('preview-width');
-      const stateControl = document.getElementById('preview-state');
-      const params = new URLSearchParams(location.search);
-      const state = {
-        phase: ['open', 'upcoming', 'closed'].includes(params.get('state')) ? params.get('state') : 'open',
-        width: params.get('width') === 'mobile' ? 'mobile' : 'desktop'
-      };
-      const formats = [
-        { key: 'papers', name: 'Papers', short: '300-word abstract · 15 minutes', needs: ['A 300-word abstract and a 250-word bio for each speaker.', 'Experimental and research-creation writing is encouraged. Full papers may later be considered for published proceedings.'] },
-        { key: 'lightning', name: 'Lightning talks', short: '150-word abstract · 5 minutes', needs: ['A 150-word abstract and a 250-word bio for each speaker.'] },
-        { key: 'panels', name: 'Panels', short: 'A group of papers or lightning talks', needs: ['Three to four 15-minute papers, or five to six 5-minute lightning talks, with a 150-word abstract for each.', 'A 150-word rationale for the panel and a 250-word bio for each speaker.'] },
-        { key: 'artist-talks', name: 'Artist talks', short: '300 words · 15 minutes', needs: ['A 300-word proposal and a 250-word bio.', 'Discuss your own work. To read or perform the work itself, choose a reading or performance instead.'] },
-        { key: 'performances', name: 'Readings & performances', short: '300-word abstract · Technical needs', needs: ['A 300-word abstract for each reading or performance, any technical requirements, and a 250-word bio.', 'A link to the work, detailed outline or images is strongly encouraged.'] },
-        { key: 'exhibition', name: 'Exhibition works', short: '300-word abstract · Work for a continuous exhibition', needs: ['A 300-word abstract for each artwork and a 200–300 word bio for each artist.', 'Consider how the work sustains attention over time and across repeated encounters. Works remain available throughout the conference.'] },
-        { key: 'workshops', name: 'Workshops', short: '1 hour · 15–30 participants', needs: ['Describe your hands-on workshop, its goals and the expected number of participants (15–30).', 'Specify the tools and room conditions you will need.'] }
-      ];
-      const official = (label, css = '') => `<a class="${css}" href="https://elo27.eliterature.org/" target="_blank" rel="noopener noreferrer">${label}</a>`;
-      const start = (label = 'Start a proposal', format = '') => state.phase === 'closed'
-        ? '<a class="button" href="#/resume">View my proposals</a>'
-        : state.phase === 'upcoming'
-          ? '<a class="button" href="#/guide">Prepare a proposal</a>'
-          : `<a class="button" href="#/start${format ? `/${format}` : ''}">${label} →</a>`;
-      const back = '<a class="back" href="#/home">← ELO 2027</a>';
-      const art = `<div class="hero-art" aria-hidden="true"><svg viewBox="0 0 300 350" focusable="false"><g class="contour"><ellipse cx="151" cy="166" rx="131" ry="161" transform="rotate(-18 151 166)"/><ellipse cx="151" cy="166" rx="112" ry="141" transform="rotate(-18 151 166)"/><ellipse cx="151" cy="166" rx="92" ry="120" transform="rotate(-18 151 166)"/><ellipse cx="151" cy="166" rx="72" ry="98" transform="rotate(-18 151 166)"/><ellipse cx="151" cy="166" rx="52" ry="76" transform="rotate(-18 151 166)"/><ellipse cx="151" cy="166" rx="32" ry="53" transform="rotate(-18 151 166)"/><path class="soft" d="M-10 284C67 222 203 255 311 306M-10 302C67 240 203 273 311 324M-10 320C67 258 203 291 311 342"/></g><circle class="focus" cx="151" cy="166" r="7"/><text x="19" y="101">read</text><text x="174" y="247">notice</text><text class="whisper" x="64" y="335">ECOLOGIES OF ATTENTION</text></svg></div>`;
-      function home() {
-        const callLabel = state.phase === 'open' ? 'Call for proposals' : state.phase === 'upcoming' ? 'Call opening soon' : 'Submissions closed';
-        const deadline = state.phase === 'closed'
-          ? 'The submission window has closed.'
-          : 'Proposals due <a href="#/dates">14 February 2027 · 23:59 AoE</a>';
-        return `<section class="hero"><div class="frame pad hero-grid"><div><p class="eyebrow">ELO 2027 · ${callLabel}</p><h1>Ecologies<br>of Attention</h1><p class="translation" lang="es" aria-hidden="true">Ecologías de la atención</p><p class="invite">A call to writers, artists and researchers: explore how electronic literature can reclaim attention as a poetic, political and ecological practice.</p><p class="event"><span>3–6 August 2027</span> · <span>Barranquilla, Colombia</span><br>Universidad del Norte · ELO’s first conference in Latin America</p><div class="actions">${start()}${official('Read the CFP ↗', 'text-link')}</div><p class="deadline">${deadline}</p></div>${art}</div></section>
-          <section class="frame pad contributions" aria-labelledby="contribute"><div class="section-intro"><h2 id="contribute">Bring your research. Bring your practice.</h2><p>Proposals in English or Spanish.</p></div><div class="formats"><section class="format-group"><h3>Talks & ideas</h3><p>Papers, lightning talks, panels and artist talks.</p><a href="#/guide/papers">Explore these formats →</a></section><section class="format-group"><h3>Art & performance</h3><p>Readings, performances and exhibition works.</p><a href="#/guide/performances">Explore these formats →</a></section><section class="format-group"><h3>Workshops</h3><p>Make, discuss and learn together.</p><a href="#/guide/workshops">See workshop requirements →</a></section></div></section>
-          <div class="frame pad returning"><span>Already involved?</span><a href="#/resume">Continue a proposal</a><a href="#/reviewer">Reviewer / organizer sign-in</a></div>`;
-      }
-      function guide(selected) {
-        return `<section class="frame pad page">${back}<h1>What will you bring?</h1><p class="intro">Choose a format to see what to prepare. You can explore without signing in.</p><div class="guide-head"><h2>Submission formats</h2>${start()}</div>${formats.map(f => `<details class="requirements"${f.key === (selected || 'papers') ? ' open' : ''}><summary><h3>${f.name}</h3><span>${f.short}</span></summary><ul>${f.needs.map(n => `<li>${n}</li>`).join('')}</ul>${state.phase === 'open' ? `<a class="format-start" href="#/start/${f.key}">Start a ${f.key === 'artist-talks' ? 'talk' : f.key === 'exhibition' ? 'work' : f.key === 'performances' ? 'reading / performance' : f.name.toLowerCase().replace(/s$/, '')} proposal →</a>` : ''}</details>`).join('')}<p class="aside-note">Curatorial pitches follow a separate email route. ${official('See the official CFP ↗')} for that route and the full call.</p><p class="guide-note">Requirements summarized from the published CFP. Final portal configuration is pending.</p></section>`;
-      }
-      function dates() {
-        return `<section class="frame pad page">${back}<h1>Key dates</h1><div class="date-grid"><section><h2>Proposal deadline</h2><p>14 February 2027 · 23:59</p><small>Anywhere on Earth · UTC−12</small><details><summary>Show in my time zone</summary><p id="local-deadline"></p></details></section><section><h2>Meet in Barranquilla</h2><p>3–6 August 2027 · Universidad del Norte</p><small>3 August: Lit(e)Lat encounter<br>4–6 August: ELO conference</small></section></div><div class="actions">${start()}${official('Conference details ↗')}</div></section>`;
-      }
-      function signin(kind, selected) {
-        const format = formats.find(f => f.key === selected);
-        const reviewer = kind === 'reviewer';
-        const returning = kind === 'resume';
-        if (!reviewer && !returning && state.phase !== 'open') return guide(selected);
-        const title = reviewer ? 'Reviewer & organizer sign-in' : returning ? 'Continue your proposal' : 'Start your proposal';
-        const intro = reviewer ? 'Use the email address on your invitation. Access follows the roles assigned to your account.' : returning ? 'Use the email address associated with your proposal.' : `Sign in to create ${format ? `a draft for ${format.name.toLowerCase()}` : 'a draft'}. Save your work and submit when you’re ready.`;
-        return `<section class="frame pad page"><div class="signin">${back}<p class="eyebrow">ELO 2027 · Ecologies of Attention</p><h1>${title}</h1><p class="intro">${intro}</p><form aria-label="Sign-in visual preview"><label>Email address<input type="email" placeholder="you@example.org" readonly></label><button class="button" type="button" disabled>Email me a sign-in link</button><p class="explain">A sign-in link and code. No password needed.</p></form><p class="aside-note">${reviewer ? 'One account can submit, review and organize. Reviewer and organizer access requires an invitation.' : returning ? 'After sign-in, return to your ELO 2027 proposals.' : 'After sign-in, return here to start your ELO 2027 draft.'}</p></div></section>`;
-      }
-      function route(focus = false) {
-        const parts = location.hash.replace(/^#\/?/, '').split('/');
-        const screen = ['home', 'guide', 'dates', 'start', 'resume', 'reviewer'].includes(parts[0]) ? parts[0] : 'home';
-        const selected = formats.some(f => f.key === parts[1]) ? parts[1] : '';
-        page.innerHTML = screen === 'home' ? home() : screen === 'guide' ? guide(selected) : screen === 'dates' ? dates() : signin(screen, selected);
-        const local = document.getElementById('local-deadline');
-        if (local) local.textContent = new Intl.DateTimeFormat(undefined, {dateStyle:'full',timeStyle:'long'}).format(new Date('2027-02-14T23:59:00-12:00'));
-        const heading = page.querySelector('h1');
-        document.title = `${screen === 'home' ? 'Ecologies of Attention' : heading.textContent} · ELO 2027`;
-        if (focus) { heading.tabIndex = -1; heading.focus({preventScroll:true}); site.scrollIntoView({block:'start'}); }
-        for (const link of document.querySelectorAll('.site-nav a')) {
-          if (link.hash === `#/${screen}`) link.setAttribute('aria-current','page');
-          else link.removeAttribute('aria-current');
-        }
-      }
-      function applySettings() {
-        site.dataset.width = state.width;
-        widthControl.value = state.width;
-        stateControl.value = state.phase;
-        const url = new URL(location.href);
-        url.searchParams.delete('concept');
-        url.searchParams.set('width',state.width);
-        url.searchParams.set('state',state.phase);
-        history.replaceState(null,'',url);
-        route();
-      }
-      widthControl.addEventListener('change', () => {state.width = widthControl.value; applySettings();});
-      stateControl.addEventListener('change', () => {state.phase = stateControl.value; applySettings();});
-      document.getElementById('reset-preview').addEventListener('click', () => {
-        if (location.hash === '#/home') {route(true);return;}
-        location.hash = '/home';
-      });
-      document.querySelector('.study a').addEventListener('click', event => {
-        event.preventDefault();
-        const controls = document.getElementById('preview-options');
-        controls.open = true;
-        controls.scrollIntoView({block:'start'});
-        controls.querySelector('summary').focus({preventScroll:true});
-      });
-      document.addEventListener('submit', event => event.preventDefault());
-      window.addEventListener('hashchange', () => route(true));
-      applySettings();
-    })();
-  </script>
+  <details class="frame preview-options" id="preview-options"></details>
+  <p class="sr-only" id="language-status" role="status"></p>
 </body>
 </html>

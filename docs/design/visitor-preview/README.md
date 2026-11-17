@@ -1,10 +1,18 @@
 # ELO 2027 submission invitation
 
-The preview now leads with **Ecologies of Attention** and an invitation to writers, artists and researchers. [elo27.eliterature.org](https://elo27.eliterature.org/) remains the conference landing page and the home of the official CFP; ELOchair helps people contribute.
+The preview leads with **Ecologies of Attention / Ecologías de la atención** and an invitation to writers, artists and researchers. [elo27.eliterature.org](https://elo27.eliterature.org/) remains the conference landing page and the home of the official CFP; ELOchair helps people contribute.
+
+## Conference theme and bilingual interface
+
+The page uses the conference's fixed forest palette, contour artwork, glass navigation, lime format selection, glass detail panel and metric tiles. These styles are extracted into [theme.css](theme.css) from the conference website's inline styling; the preview does not depend on the conference site serving a separate CSS file.
+
+The actual Bricolage Grotesque, Schibsted Grotesk (roman and italic), JetBrains Mono, Brygada 1918 and Unbounded fonts are bundled locally with their SIL Open Font License files. This avoids fallback fonts and cross-origin font requests.
+
+**EN·ES is the default.** The language buttons also provide English-only and Spanish-only views, with appropriate primary typography in either language. Navigation, invitation, contribution groups, all eight formats, requirement descriptions, metrics, dates, local-time display, author/reviewer sign-in, footer and preview settings all have English and Spanish copy with language attributes. Curatorial pitches retain the separate email route.
 
 ## Revised direction
 
-![Invitation layout with the conference theme, a primary Start a proposal action, contribution formats and reviewer sign-in](companion.svg)
+The [live preview](https://elo27.jtm.io/elochair-design-preview/) is the current visual reference.
 
 The opening view explains the theme and the people and work the call welcomes. **Start a proposal** is the main action, with the official CFP beside it and the deadline immediately below. Three compact groups show research presentations, art and performance, and workshops. Requirements sit on a separate page, rather than turning the invitation into a process checklist.
 
@@ -14,33 +22,21 @@ The sign-in design preserves the intended next step: a proposal draft, existing 
 
 ## Interactive preview
 
-Open [index.html](index.html) on a static web server, or download its raw contents and open the file in a browser. It is self-contained and does not require the API, a login, Codex, or the VM.
+Open [index.html](index.html) on a static web server together with `theme.css`, `copy.js`, `preview.js` and `assets/`. The preview does not require the API, a login, Codex, or the VM. The deployment includes the complete asset bundle.
 
-The page opens directly on the revised invitation. **Preview options** opens the width and call-state controls at the bottom; they are collapsed by default. The preparation guide, per-format requirements, dates and sign-in paths work inside the preview. The official CFP link opens the existing conference website.
+The page opens directly on the revised invitation. **Preview options / Opciones de vista previa** opens the width and call-state controls at the bottom; they are collapsed by default. The format selector, previous/next buttons, mobile format dropdown, dates and sign-in paths work inside the preview. The official CFP link opens the existing conference website.
 
-**This is a design study.** Call states are illustrative, and sign-in is a visual endpoint. No email or account data is collected. The preview uses English copy; EN / ES / PT indicate language-switch placement. Production work must use the three typed message catalogs and reviewed translations. Published CFP requirements shown here do not change the app's conference configuration.
+**This is a design study.** Call states are illustrative, and sign-in is a visual endpoint. No email or account data is collected. Published CFP requirements shown here do not change the app's conference configuration. The English/Spanish interface implements the requested conference-site language pairing; integration into the app must respect its typed message catalogs.
 
 The theme summary, first Latin American ELO conference context, submission languages and format requirements were checked against the [conference website source](https://github.com/XehReyes/elo27/blob/d0849861aaa6c8e225364fa3318b7d0870c7c5ff/index.html) on 2026-11-16, alongside [the repository's CFP format record](https://github.com/AMSUCF/ELOchair/issues/14). The summary is new copy based on that source, not a quotation. Curatorial pitches retain their separate email route.
 
-GitHub renders the structure sketches on this page. GitHub's file viewer displays the HTML source rather than executing it. GitHub Pages is currently disabled for this repository; committing this directory alone does not publish a website.
+GitHub's file viewer displays the HTML source rather than executing it. GitHub Pages is currently disabled for this repository; committing this directory alone does not publish a website.
 
 For the existing server at jtm.io, follow [Publish the design preview](../../../deploy/preview.md). That workflow uses GitHub Actions secrets, so it does not require access to Codex environment secrets.
 
 ## Earlier structure sketches
 
-The two sketches below document the earlier comparison; the interactive page now focuses on the selected direction.
-
-### Conference front door
-
-![Conference front door structure sketch](conference.svg)
-
-Leads with the conference identity and official CFP. It has greater overlap with the existing conference website.
-
-### Visitor pathways
-
-![Visitor pathways structure sketch](pathways.svg)
-
-Makes exploring, preparing and returning explicit. The extra choice and amount of copy need testing with unfamiliar visitors.
+The earlier [invitation](companion.svg), [conference front door](conference.svg) and [visitor pathways](pathways.svg) sketches are archived records of the initial comparison. They predate the complete bilingual interface and conference-theme alignment; use the interactive preview to review the current design.
 
 ## Next usability checks
 
@@ -52,5 +48,7 @@ Makes exploring, preparing and returning explicit. The extra choice and amount o
 - Find reviewer sign-in without entering the author workflow.
 - Explain which email an invited reviewer should use and what grants access.
 - Check the same paths on a phone, with keyboard navigation, and across call states.
+- Switch EN, ES and EN·ES without losing the current page or chosen format.
+- Check that the published CSS, scripts, all six font files and artwork are served successfully.
 
-The structure sketches summarize the layouts; the HTML preview contains the interactive concepts. These are design proposals, not participant test results or a deployed authentication system.
+These are design proposals, not participant test results or a deployed authentication system.
