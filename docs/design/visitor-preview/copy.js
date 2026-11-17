@@ -14,8 +14,8 @@ window.ELO_PREVIEW_COPY = {
   closed: ["Submissions closed", "Convocatoria cerrada"],
   theme: ["Ecologies of Attention", "Ecologías de la atención"],
   invite: [
-    "A call to writers, artists and researchers: explore how electronic literature can reclaim attention as a poetic, political and ecological practice.",
-    "Una invitación a escritores, artistas e investigadores: explorar cómo la literatura electrónica puede recuperar la atención como práctica poética, política y ecológica.",
+    "We invite work that engages attention as a political, ecological and poetic condition — and the practices through which electronic literature trains, reshapes and resists the overload that keeps it fragmented.",
+    "Invitamos propuestas que aborden la atención como condición política, ecológica y poética, y las prácticas con las que la literatura electrónica la entrena, la transforma y resiste la sobrecarga que la mantiene fragmentada.",
   ],
   eventDate: ["3–6 August 2027", "3–6 de agosto de 2027"],
   firstLatin: [
@@ -30,8 +30,8 @@ window.ELO_PREVIEW_COPY = {
   deadline: ["14 February 2027 · 23:59 AoE", "14 de febrero de 2027 · 23:59 AoE"],
   windowClosed: ["The submission window has closed.", "El plazo de envío ha terminado."],
   bring: [
-    "Bring your research. Bring your practice.",
-    "Comparte tu investigación. Comparte tu práctica.",
+    "Ways to contribute",
+    "Formas de participar",
   ],
   welcomeLanguages: ["Proposals in English or Spanish.", "Propuestas en inglés o español."],
   ideas: ["Talks & ideas", "Charlas e ideas"],
@@ -45,7 +45,7 @@ window.ELO_PREVIEW_COPY = {
     "Lecturas, performances y obras para la exposición.",
   ],
   workshops: ["Workshops", "Talleres"],
-  workshopList: ["Make, discuss and learn together.", "Crear, dialogar y aprender en comunidad."],
+  workshopList: ["Hands-on sessions for interaction and discussion.", "Sesiones prácticas de interacción y diálogo."],
   explore: ["Explore the formats", "Explorar los formatos"],
   requirements: ["See requirements", "Ver requisitos"],
   already: ["Already involved?", "¿Ya participas?"],
@@ -56,8 +56,8 @@ window.ELO_PREVIEW_COPY = {
   back: ["Back to ELO 2027", "Volver a ELO 2027"],
   formatsTitle: ["Types of submissions", "Formatos"],
   formatIntro: [
-    "Choose a format. Explore the requirements.",
-    "Elige un formato. Consulta los requisitos.",
+    "The theme is a frame for reflection, not a boundary — these are the formats it can take.",
+    "El tema es un marco para la reflexión, no un límite: estos son los formatos que puede tomar.",
   ],
   format: ["Format", "Formato"],
   academic: ["Academic", "Académico"],
@@ -88,8 +88,8 @@ window.ELO_PREVIEW_COPY = {
   details: ["Conference details", "Detalles del congreso"],
   reviewerTitle: ["Reviewer & organizer sign-in", "Acceso de revisión y organización"],
   reviewerIntro: [
-    "Use the email address on your invitation. Access follows the roles assigned to your account.",
-    "Usa el correo de tu invitación. El acceso depende de los roles asignados a tu cuenta.",
+    "Sign in with the email address from your invitation — your account's assigned roles determine what you can access.",
+    "Accede con el correo de tu invitación: los roles asignados a tu cuenta determinan lo que puedes ver.",
   ],
   continueIntro: [
     "Use the email address associated with your proposal.",
@@ -97,8 +97,8 @@ window.ELO_PREVIEW_COPY = {
   ],
   startTitle: ["Start your proposal", "Inicia tu propuesta"],
   draftIntro: [
-    "Sign in to create a draft. Save your work and submit when you’re ready.",
-    "Accede para crear un borrador. Guarda tu trabajo y envíalo cuando esté listo.",
+    "Sign in to start a draft — your work is saved until you're ready to submit.",
+    "Accede para iniciar un borrador: tu trabajo se guarda hasta que estés listo para enviarlo.",
   ],
   selectedFormat: ["Selected format", "Formato elegido"],
   email: ["Email address", "Correo electrónico"],
@@ -227,8 +227,8 @@ window.ELO_PREVIEW_FORMATS = [
       ["200–300", "bio"],
     ],
     description: [
-      "A 300-word abstract per artwork and a 200–300 word bio per artist. Works remain available throughout the conference. Consider how the work sustains attention over time and across repeated encounters.",
-      "Un resumen de 300 palabras por obra y una biografía de 200–300 palabras por artista. Las obras estarán disponibles durante todo el congreso. Considera cómo la obra sostiene la atención a lo largo del tiempo y en encuentros repetidos.",
+      "A 300-word abstract per artwork and a 200–300 word bio per artist. Works remain available throughout the conference.",
+      "Un resumen de 300 palabras por obra y una biografía de 200–300 palabras por artista. Las obras estarán disponibles durante todo el congreso.",
     ],
   },
   {
@@ -238,8 +238,8 @@ window.ELO_PREVIEW_FORMATS = [
     stats: [],
     email: true,
     description: [
-      "Have a vision for curating existing electronic literature or inviting new works around Ecologies of Attention? Curatorial pitches follow a separate email route. The contact address will be announced on the conference website.",
-      "¿Tienes una visión para curar obras de literatura electrónica o convocar nuevas obras sobre Ecologías de la atención? Las propuestas curatoriales siguen una vía de correo independiente. El contacto se anunciará en el sitio del congreso.",
+      "Curatorial pitches for curating existing electronic literature or commissioning new work around Ecologies of Attention follow a separate email route. The contact address will be announced on the conference website.",
+      "Las propuestas curatoriales para curar obras existentes de literatura electrónica o encargar nuevas obras sobre Ecologías de la atención siguen una vía de correo independiente. El contacto se anunciará en el sitio del congreso.",
     ],
   },
 ];
