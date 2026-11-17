@@ -26,7 +26,11 @@ The sign-in design preserves the intended next step: a proposal draft, existing 
 
 Open [index.html](index.html) on a static web server together with `theme.css`, `copy.js`, `preview.js` and `assets/`. The preview does not require the API, a login, Codex, or the VM. The deployment includes the complete asset bundle.
 
-The page opens directly on the revised invitation. **Preview options / Opciones de vista previa** opens the width and call-state controls at the bottom; they are collapsed by default. The format selector, previous/next buttons, mobile format dropdown, dates and sign-in paths work inside the preview. The official CFP link opens the existing conference website.
+The page opens directly on the revised invitation. The floating **Preview options / Opciones de vista previa** button stays at the bottom right. It opens a popover above the button without shifting or scrolling the conference page. Desktop uses the available browser width; Mobile constrains the preview to 360 px. Switching width preserves the current page and selected format. Escape, the close button or a click outside dismisses the controls.
+
+The format selector, previous/next buttons, mobile format dropdown, dates and sign-in paths work inside the preview. The official CFP link opens the existing conference website. The language handler is scoped to the language buttons so other controls do not rebuild the page when clicked.
+
+Run `npm run test:preview` for browser regression checks covering layout stability, both width switches, format selection, call-state changes and phone-size controls. The suite uses Playwright's Chromium; set `PREVIEW_TEST_BROWSER` to an installed Chromium executable when needed. These tests serve only the static preview and need no app, database or sign-in.
 
 **This is a design study.** Call states are illustrative, and sign-in is a visual endpoint. No email or account data is collected. Published CFP requirements shown here do not change the app's conference configuration. The English/Spanish interface implements the requested conference-site language pairing; integration into the app must respect its typed message catalogs.
 

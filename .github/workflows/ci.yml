@@ -25,5 +25,7 @@ jobs:
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
         working-directory: apps/web
+      - name: Static preview controls at desktop and phone sizes
+        run: npm run test:preview
       - name: End-to-end tests at phone size (with axe accessibility checks)
         run: npm run e2e

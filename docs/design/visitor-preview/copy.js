@@ -2,6 +2,7 @@
 window.ELO_PREVIEW_COPY = {
   preview: ["Design preview · No data is sent.", "Vista previa · No se envían datos."],
   options: ["Preview options", "Opciones de vista previa"],
+  closeOptions: ["Close preview options", "Cerrar opciones de vista previa"],
   mainNav: ["Main navigation", "Navegación principal"],
   submit: ["Submit", "Enviar"],
   conference: ["Conference", "Congreso"],
@@ -120,7 +121,7 @@ window.ELO_PREVIEW_COPY = {
   ],
   settings: ["Design preview settings", "Ajustes de la vista previa"],
   width: ["Width", "Anchura"],
-  desktop: ["Desktop / responsive", "Escritorio / adaptable"],
+  desktop: ["Desktop", "Escritorio"],
   mobile: ["Mobile · 360 px", "Móvil · 360 px"],
   callState: ["Illustrative call state", "Estado simulado de la convocatoria"],
   stateOpen: ["Open", "Abierta"],

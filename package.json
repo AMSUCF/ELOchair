@@ -17,6 +17,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc -p packages/schema && tsc -p packages/policy && tsc -p apps/server && tsc -p apps/web",
     "test": "vitest run",
+    "test:preview": "playwright test --config deploy/preview.playwright.config.ts",
     "dev": "npm run dev -w @elochair/server",
     "dev:web": "npm run dev -w @elochair/web",
     "build": "npm run build -w @elochair/web",

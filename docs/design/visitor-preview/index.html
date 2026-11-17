@@ -9,12 +9,11 @@
   <title>ELO 2027 · Ecologies of Attention / Ecologías de la atención</title>
   <link rel="preload" href="./assets/fonts/bricolage-grotesque-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/schibsted-grotesk-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="./theme.css?v=2">
-  <script defer src="./copy.js"></script>
-  <script defer src="./preview.js?v=2"></script>
+  <link rel="stylesheet" href="./theme.css?v=3">
+  <script defer src="./copy.js?v=3"></script>
+  <script defer src="./preview.js?v=3"></script>
 </head>
 <body>
-  <div class="study" id="study"></div>
   <div class="shell" id="site" data-width="desktop">
     <header class="site-header frame">
       <div class="nav-pill">
@@ -30,7 +29,10 @@
     <main id="page"></main>
     <footer class="frame site-footer" id="footer"></footer>
   </div>
-  <details class="frame preview-options" id="preview-options"></details>
+  <aside class="preview-tools" aria-label="Design preview settings / Ajustes de la vista previa">
+    <button type="button" class="preview-toggle" id="preview-toggle" popovertarget="preview-options" aria-haspopup="dialog" aria-expanded="false" aria-controls="preview-options">Preview options / Opciones de vista previa</button>
+    <section class="preview-options" id="preview-options" popover role="dialog" aria-labelledby="preview-title"></section>
+  </aside>
   <p class="sr-only" id="language-status" role="status"></p>
 </body>
 </html>

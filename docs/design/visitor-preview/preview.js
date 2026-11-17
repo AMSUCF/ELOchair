@@ -4,6 +4,7 @@
   const page = document.getElementById("page");
   const site = document.getElementById("site");
   const controls = document.getElementById("preview-options");
+  const previewToggle = document.getElementById("preview-toggle");
   const params = new URLSearchParams(location.search);
   const state = {
     phase: ["open", "upcoming", "closed"].includes(params.get("state"))
@@ -96,17 +97,17 @@
     document.documentElement.lang = state.language === "es" ? "es" : "en";
     document.body.dataset.language = state.language;
     site.dataset.width = state.width;
-    document.getElementById("study").innerHTML =
-      `<span>${t("preview")}</span><a href="#preview-options" data-options>${t("options")}</a>`;
+    document.querySelector(".preview-tools").setAttribute("aria-label", plain(copy.settings));
+    previewToggle.innerHTML = `<span class="preview-tool-icon" aria-hidden="true"></span>${t("options", "stack")}`;
     const nav = document.getElementById("navigation");
     nav.setAttribute("aria-label", plain(copy.mainNav));
     nav.innerHTML = `${go("guide", "submit")}${official("conference", "", "top")}${go("reviewer", "reviewers")}`;
     document.getElementById("language-legend").textContent = plain(copy.languages);
-    for (const button of document.querySelectorAll("[data-language]"))
+    for (const button of document.querySelectorAll("#languages button[data-language]"))
       button.setAttribute("aria-pressed", String(button.dataset.language === state.language));
     document.getElementById("footer").innerHTML =
       `<span>ELOchair · ${t("organization")}</span>${official("website")}`;
-    controls.innerHTML = `<summary>${t("options")}</summary><form aria-label="${label("settings")}"><label>${t("width")}<select id="preview-width"><option value="desktop"${state.width === "desktop" ? " selected" : ""}>${label("desktop")}</option><option value="mobile"${state.width === "mobile" ? " selected" : ""}>${label("mobile")}</option></select></label><label>${t("callState")}<select id="preview-state">${["open", "upcoming", "closed"].map((phase, i) => `<option value="${phase}"${phase === state.phase ? " selected" : ""}>${label(["stateOpen", "stateUpcoming", "stateClosed"][i])}</option>`).join("")}</select></label><button type="button" id="reset-preview">${t("reset", "stack")}</button></form><p>${t("previewNote", "stack")}</p>`;
+    controls.innerHTML = `<div class="preview-options-heading"><h2 id="preview-title">${t("options", "stack")}</h2><button type="button" class="preview-close" popovertarget="preview-options" popovertargetaction="hide" aria-label="${label("closeOptions")}">×</button></div><p class="preview-note">${t("preview", "stack")}</p><form aria-label="${label("settings")}"><fieldset class="preview-width"><legend>${t("width")}</legend><div class="preview-width-buttons">${["desktop", "mobile"].map((width) => `<button type="button" data-preview-width="${width}" aria-pressed="${state.width === width}">${t(width, "stack")}</button>`).join("")}</div></fieldset><label class="preview-state">${t("callState", "stack")}<select id="preview-state">${["open", "upcoming", "closed"].map((phase, i) => `<option value="${phase}"${phase === state.phase ? " selected" : ""}>${label(["stateOpen", "stateUpcoming", "stateClosed"][i])}</option>`).join("")}</select></label><button type="button" id="reset-preview">${t("reset", "stack")}</button></form>`;
   }
   function saveSettings() {
     const url = new URL(location.href);
@@ -203,7 +204,7 @@
     target?.focus({ preventScroll: true });
   }
   document.addEventListener("click", (event) => {
-    const language = event.target.closest("[data-language]");
+    const language = event.target.closest("#languages button[data-language]");
     if (language) {
       state.language = language.dataset.language;
       saveSettings();
@@ -226,14 +227,17 @@
       chooseFormat(formats[next].key, step.dataset.step === "1" ? "next" : "previous");
       return;
     }
-    if (event.target.closest("[data-options]")) {
-      event.preventDefault();
-      controls.open = true;
-      controls.scrollIntoView({ block: "start" });
-      controls.querySelector("summary").focus({ preventScroll: true });
+    const width = event.target.closest("button[data-preview-width]");
+    if (width) {
+      state.width = width.dataset.previewWidth;
+      site.dataset.width = state.width;
+      saveSettings();
+      for (const button of controls.querySelectorAll("[data-preview-width]"))
+        button.setAttribute("aria-pressed", String(button.dataset.previewWidth === state.width));
       return;
     }
     if (event.target.closest("#reset-preview")) {
+      controls.hidePopover();
       if (location.hash === "#/home") render(true);
       else location.hash = "/home";
     }
@@ -243,14 +247,16 @@
       chooseFormat(event.target.value, "select");
       return;
     }
-    if (event.target.id === "preview-width") state.width = event.target.value;
-    else if (event.target.id === "preview-state") state.phase = event.target.value;
+    if (event.target.id === "preview-state") state.phase = event.target.value;
     else return;
     saveSettings();
     render();
     document.getElementById(event.target.id)?.focus({ preventScroll: true });
   });
   document.addEventListener("submit", (event) => event.preventDefault());
+  controls.addEventListener("toggle", (event) => {
+    previewToggle.setAttribute("aria-expanded", String(event.newState === "open"));
+  });
   window.addEventListener("hashchange", () => render(true));
   saveSettings();
   render();
