@@ -14,4 +14,10 @@ describe("dressedAs", () => {
     expect(dressedAs("elo2026")).toBeUndefined();
     expect(dressedAs("nope")).toBeUndefined();
   });
+
+  it("is undefined for slugs that collide with Object.prototype property names", () => {
+    expect(dressedAs("constructor")).toBeUndefined();
+    expect(dressedAs("toString")).toBeUndefined();
+    expect(dressedAs("hasOwnProperty")).toBeUndefined();
+  });
 });

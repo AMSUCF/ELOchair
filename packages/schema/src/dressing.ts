@@ -5,13 +5,13 @@
  * server-fetched, never bundled into the client, and this lookup needs to stay that way too —
  * it only ever returns a key, never config data.
  */
-const DRESSED: Record<string, string> = {
-  elo2027: "elo2027",
+const DRESSED = new Map<string, string>([
+  ["elo2027", "elo2027"],
   // apps/server/src/fixtures.ts's seedOpenCall() clones elo2027 under this slug for dev/e2e use.
-  "elo2027-open": "elo2027",
-};
+  ["elo2027-open", "elo2027"],
+]);
 
 /** The identity key a conference's pages should wear, if any. Pure; safe for the browser bundle. */
 export function dressedAs(slug: string): string | undefined {
-  return DRESSED[slug];
+  return DRESSED.get(slug);
 }
