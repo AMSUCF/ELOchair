@@ -8,6 +8,8 @@ The page uses the conference's fixed forest palette, contour artwork, glass navi
 
 The actual Bricolage Grotesque, Schibsted Grotesk (roman and italic), JetBrains Mono, Brygada 1918 and Unbounded fonts are bundled locally with their SIL Open Font License files. This avoids fallback fonts and cross-origin font requests.
 
+The title restores the conference's cursor-following focus and blurred text treatment on pointer devices. Buttons, format choices, language controls and contribution links have hover and keyboard-focus feedback. Reduced-motion preferences disable the focus effect, movement and transition time; touch views keep the title sharp. Primary and secondary actions use aligned controls with stacked bilingual labels.
+
 **EN·ES is the default.** The language buttons also provide English-only and Spanish-only views, with appropriate primary typography in either language. Navigation, invitation, contribution groups, all eight formats, requirement descriptions, metrics, dates, local-time display, author/reviewer sign-in, footer and preview settings all have English and Spanish copy with language attributes. Curatorial pitches retain the separate email route.
 
 ## Revised direction

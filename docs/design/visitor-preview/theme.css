@@ -78,6 +78,7 @@
   --mono: "JetBrains Mono", monospace;
   --serif: "Brygada 1918", serif;
   --mark: "Unbounded", sans-serif;
+  --interaction-duration: 250ms;
 }
 * {
   box-sizing: border-box;
@@ -110,6 +111,14 @@ a:hover {
   text-decoration: underline;
   text-underline-offset: 4px;
 }
+:where(a, button, .contribution) {
+  transition:
+    color var(--interaction-duration) ease,
+    background-color var(--interaction-duration) ease,
+    border-color var(--interaction-duration) ease,
+    box-shadow var(--interaction-duration) ease,
+    transform var(--interaction-duration) ease;
+}
 button,
 input,
 select {
@@ -120,6 +129,11 @@ a,
 summary,
 select {
   touch-action: manipulation;
+}
+button:not(:disabled),
+summary,
+select {
+  cursor: pointer;
 }
 a:focus-visible,
 button:focus-visible,
@@ -316,13 +330,16 @@ summary:focus-visible {
   align-items: center;
   margin-top: 22px;
 }
-.hero h1 {
+.hero h1,
+.attention-blur {
+  font-family: var(--display);
+  font-variation-settings: "opsz" 96;
   font-weight: 700;
   font-size: clamp(64px, 7.8cqw, 114px);
   line-height: 0.85;
   letter-spacing: -0.055em;
 }
-.hero h1 .light {
+.attention-title .light {
   color: var(--lime);
   font-weight: 300;
 }
@@ -331,9 +348,20 @@ summary:focus-visible {
   color: var(--gold);
   margin-top: 22px;
 }
-.hero-es-only {
+.hero-es-only :is(h1, .attention-blur) {
   font-weight: 300;
   color: var(--lime);
+}
+.attention-title {
+  position: relative;
+}
+.attention-blur {
+  position: absolute;
+  inset: 0;
+  filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
 }
 .hero-mobile-actions {
   display: none;
@@ -387,10 +415,17 @@ summary:focus-visible {
   gap: 10px 16px;
   margin-top: 24px;
 }
+.hero-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   min-height: 48px;
   padding: 12px 20px;
   border-radius: var(--pill);
@@ -402,12 +437,24 @@ summary:focus-visible {
   line-height: 1.3;
   text-align: left;
 }
+.button > .pair {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.hero-actions .button {
+  justify-content: space-between;
+  padding: 14px 18px;
+}
 .button .es {
   color: var(--ink);
 }
-.button:hover {
+.button:where(:not(:disabled)):is(:hover, :focus-visible) {
   color: var(--ink);
   background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 28px rgb(240 217 138 / 0.22);
+  text-decoration: none;
 }
 .button.secondary {
   background: rgb(255 255 255 / 0.06);
@@ -417,11 +464,19 @@ summary:focus-visible {
 .button:where(.secondary) .es {
   color: var(--muted);
 }
+.button.secondary:is(:hover, :focus-visible) {
+  color: var(--mist);
+  background: rgb(255 255 255 / 0.14);
+  border-color: rgb(201 229 154 / 0.6);
+  box-shadow: 0 0 28px rgb(201 229 154 / 0.12);
+}
 .text-link {
   display: inline-flex;
   align-items: center;
+  gap: 10px;
   min-height: 44px;
   font-size: 13px;
+  line-height: 1.35;
 }
 .deadline {
   font-size: 12px;
@@ -746,6 +801,15 @@ summary:focus-visible {
 .paper-section .button {
   color: var(--ink);
 }
+.paper-section .button.secondary {
+  color: var(--teal);
+  border-color: rgb(29 94 87 / 0.4);
+  background: rgb(29 94 87 / 0.04);
+}
+.paper-section .button.secondary:is(:hover, :focus-visible) {
+  background: rgb(29 94 87 / 0.12);
+  border-color: var(--teal);
+}
 .date-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -898,7 +962,8 @@ summary:focus-visible {
     gap: 24px;
     margin-top: 18px;
   }
-  .hero h1 {
+  .hero h1,
+  .attention-blur {
     font-size: clamp(60px, 16.5cqw, 96px);
   }
   .hero-title-es {
@@ -909,7 +974,7 @@ summary:focus-visible {
     display: flex;
     margin-top: 22px;
   }
-  :where(.hero-card .actions) > .button {
+  :where(.hero-card .actions) > .button:first-child {
     display: none;
   }
   .hero .event {
@@ -1028,8 +1093,14 @@ body[data-language="es"] .parallel-copy > [lang="es"] {
 }
 .external-mark {
   display: inline-block;
+  flex: none;
   transform: rotate(-45deg);
-  margin-left: 4px;
+  margin-left: 6px;
+  line-height: 1;
+}
+.action-mark {
+  flex: none;
+  line-height: 1;
 }
 .deadline {
   display: grid;
@@ -1037,4 +1108,51 @@ body[data-language="es"] .parallel-copy > [lang="es"] {
 }
 .section-head .pair:has(.en):has(.es) > .es::before {
   content: "/ ";
+}
+
+.brand:is(:hover, :focus-visible),
+.site-nav a:is(:hover, :focus-visible) {
+  color: var(--lime);
+  text-decoration: none;
+}
+.site-nav a:is(:hover, :focus-visible) .es {
+  color: var(--gold);
+}
+.language-switch button:where([aria-pressed="false"]):is(:hover, :focus-visible) {
+  color: var(--lime);
+  background: rgb(255 255 255 / 0.12);
+}
+.format-choice:where([aria-pressed="false"]):is(:hover, :focus-visible) {
+  background: rgb(255 255 255 / 0.12);
+  border-color: rgb(201 229 154 / 0.6);
+  box-shadow: 0 0 30px rgb(201 229 154 / 0.12);
+}
+.contribution:has(a:is(:hover, :focus-visible)) {
+  background: rgb(201 229 154 / 0.08);
+  border-color: rgb(201 229 154 / 0.6);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.2);
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .hero.is-attending h1 {
+    mask-image: radial-gradient(
+      circle clamp(180px, 22cqw, 360px) at var(--attention-x, 50%) var(--attention-y, 50%),
+      black 35%,
+      rgb(0 0 0 / 0.12) 100%
+    );
+  }
+  .hero.is-attending .attention-blur {
+    opacity: 0.5;
+  }
+  .button:where(:not(:disabled)):hover,
+  .format-choice:where([aria-pressed="false"]):hover {
+    transform: translateY(-2px);
+  }
+  .contribution:has(a:hover) {
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --interaction-duration: 0s;
+  }
 }

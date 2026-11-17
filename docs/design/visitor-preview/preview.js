@@ -39,21 +39,23 @@
       .map((i) => `<p lang="${i ? "es" : "en"}">${escapeHtml(values[i])}</p>`)
       .join("")}</div>`;
   const official = (key, css = "text-link", section = "submit") =>
-    `<a class="${css}" href="https://elo27.eliterature.org/#${section}" target="_blank" rel="noopener noreferrer">${t(key)} <span class="external-mark" aria-hidden="true">→</span></a>`;
+    `<a class="${css}" href="https://elo27.eliterature.org/#${section}" target="_blank" rel="noopener noreferrer">${t(key, "stack")}<span class="external-mark" aria-hidden="true">→</span></a>`;
   const go = (screen, key, css = "") => `<a class="${css}" href="#/${screen}">${t(key)}</a>`;
   function start(key = "start", css = "button", selected = "") {
     if (state.phase === "closed") return go("resume", "myProposals", css);
     if (state.phase === "upcoming") return go("guide", "prepare", css);
-    return `<a class="${css}" href="#/start${selected ? `/${selected}` : ""}">${t(key, "stack")} →</a>`;
+    return `<a class="${css}" href="#/start${selected ? `/${selected}` : ""}">${t(key, "stack")}<span class="action-mark" aria-hidden="true">→</span></a>`;
   }
   const back = () => `<a class="back" href="#/home">← ${t("back")}</a>`;
   function sectionHead(key, number, heading = "h2") {
     return `<div class="section-head"><${heading}>${t(key)}</${heading}><span class="section-number" aria-hidden="true">${number}</span></div>`;
   }
   function title() {
-    if (state.language === "es")
-      return '<h1 class="hero-es-only" lang="es">Ecologías<br>de la atención</h1>';
-    return `<h1 lang="en">Ecologies<br><span class="light">of Attention</span></h1>${state.language === "both" ? '<p class="hero-title-es" lang="es">Ecologías de la atención</p>' : ""}`;
+    const spanish = state.language === "es";
+    const heading = spanish
+      ? 'Ecologías<br><span class="light">de la atención</span>'
+      : 'Ecologies<br><span class="light">of Attention</span>';
+    return `<div class="attention-title${spanish ? " hero-es-only" : ""}"><span class="attention-blur" aria-hidden="true">${heading}</span><h1 lang="${spanish ? "es" : "en"}">${heading}</h1></div>${state.language === "both" ? '<p class="hero-title-es" lang="es">Ecologías de la atención</p>' : ""}`;
   }
   function home() {
     const status =
@@ -62,7 +64,7 @@
       state.phase === "closed"
         ? t("windowClosed")
         : `${t("due")}<a href="#/dates">${t("deadline")}</a>`;
-    return `<section class="frame hero"><p class="eyebrow">ELO 2027 · ${t(status)}</p><div class="hero-grid"><div>${title()}<div class="hero-mobile-actions">${start()}</div><div class="event"><p>${t("eventDate")}</p><p>Barranquilla, Colombia<br>Universidad del Norte<br>${t("firstLatin")}</p></div></div><div class="glass hero-card">${parallel(copy.invite)}<div class="actions">${start()}${official("cfp")}</div><p class="deadline">${deadline}</p></div></div></section>
+    return `<section class="frame hero"><p class="eyebrow">ELO 2027 · ${t(status)}</p><div class="hero-grid"><div>${title()}<div class="hero-mobile-actions">${start()}</div><div class="event"><p>${t("eventDate")}</p><p>Barranquilla, Colombia<br>Universidad del Norte<br>${t("firstLatin")}</p></div></div><div class="glass hero-card">${parallel(copy.invite)}<div class="actions hero-actions">${start()}${official("cfp", "button secondary")}</div><p class="deadline">${deadline}</p></div></div></section>
       <section class="frame contributions">${sectionHead("bring", "01")}<p class="welcome">${t("welcomeLanguages")}</p><div class="contribution-grid"><section class="contribution"><h3>${t("ideas")}</h3><p>${t("ideasList")}</p><a href="#/guide/papers">${t("explore")} →</a></section><section class="contribution"><h3>${t("art")}</h3><p>${t("artList")}</p><a href="#/guide/performances">${t("explore")} →</a></section><section class="contribution"><h3>${t("workshops")}</h3><p>${t("workshopList")}</p><a href="#/guide/workshops">${t("requirements")} →</a></section></div></section>
       <div class="frame returning"><span>${t("already")}</span>${go("resume", "continue")}${go("reviewer", "organizers")}</div>`;
   }
@@ -79,7 +81,7 @@
     const local = ["en", "es"].map((lang) =>
       new Intl.DateTimeFormat(lang, { dateStyle: "full", timeStyle: "long" }).format(localDate),
     );
-    return `<section class="frame page">${back()}${sectionHead("datesTitle", "03", "h1")}<div class="paper-section"><div class="date-grid"><section><h2>${t("deadlineTitle")}</h2><p>${t("deadline")}</p><small>${t("aoe")}</small><details><summary>${t("localTime")}</summary><p>${pair(local)}</p></details></section><section><h2>${t("meet")}</h2><p>${t("eventDate")}<br>Universidad del Norte</p><small>${t("encounter")}<br>${t("conferenceDates")}</small></section></div><div class="actions">${start()}${official("details")}</div></div></section>`;
+    return `<section class="frame page">${back()}${sectionHead("datesTitle", "03", "h1")}<div class="paper-section"><div class="date-grid"><section><h2>${t("deadlineTitle")}</h2><p>${t("deadline")}</p><small>${t("aoe")}</small><details><summary>${t("localTime")}</summary><p>${pair(local)}</p></details></section><section><h2>${t("meet")}</h2><p>${t("eventDate")}<br>Universidad del Norte</p><small>${t("encounter")}<br>${t("conferenceDates")}</small></section></div><div class="actions">${start()}${official("details", "button secondary")}</div></div></section>`;
   }
   function signin(kind) {
     const format = formats.find((f) => f.key === state.format);
@@ -114,6 +116,45 @@
     url.searchParams.set("state", state.phase);
     history.replaceState(null, "", url);
   }
+  const attentionQuery = window.matchMedia(
+    "(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)",
+  );
+  let releaseAttention = () => {};
+  function bindAttention() {
+    releaseAttention();
+    const hero = page.querySelector(".hero");
+    const heading = hero?.querySelector(".attention-title");
+    if (!hero || !heading) return;
+    let frame = 0;
+    let pointer;
+    const reset = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      hero.classList.remove("is-attending");
+    };
+    const move = (event) => {
+      if (!attentionQuery.matches || event.pointerType === "touch") return;
+      pointer = { x: event.clientX, y: event.clientY };
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (!attentionQuery.matches) return;
+        const bounds = heading.getBoundingClientRect();
+        heading.style.setProperty("--attention-x", `${pointer.x - bounds.left}px`);
+        heading.style.setProperty("--attention-y", `${pointer.y - bounds.top}px`);
+        hero.classList.add("is-attending");
+      });
+    };
+    hero.addEventListener("pointermove", move);
+    hero.addEventListener("pointerleave", reset);
+    attentionQuery.addEventListener("change", reset);
+    releaseAttention = () => {
+      reset();
+      hero.removeEventListener("pointermove", move);
+      hero.removeEventListener("pointerleave", reset);
+      attentionQuery.removeEventListener("change", reset);
+    };
+  }
   function render(focus = false) {
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const screen = ["home", "guide", "dates", "start", "resume", "reviewer"].includes(parts[0])
@@ -129,6 +170,7 @@
           : screen === "dates"
             ? dates()
             : signin(screen);
+    bindAttention();
     const headingText =
       [...page.querySelector("h1").querySelectorAll("[lang]")]
         .map((part) => part.textContent)
