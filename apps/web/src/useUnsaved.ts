@@ -4,7 +4,6 @@ import {
   clearUnsaved,
   forgetPerson,
   openUnsaved,
-  SIGN_OUTS_KEY,
   type UnsavedValues,
 } from "./unsaved";
 
@@ -12,14 +11,17 @@ import {
 const DELAY_MS = 400;
 
 /**
- * Sign-outs in this tab. The count every tab shares is kept in the store (unsaved.ts); this one
- * also ends the forms of this tab where the store could not take the new count.
+ * Each person's sign-outs in this tab. The count every tab shares is kept in the store, for
+ * each person apart (unsaved.ts); this one also ends that person's forms in this tab where the
+ * store could not take the new count.
  */
-let signOutsHere = 0;
+const signOutsHere = new Map<string, number>();
+const signOutsHereOf = (personId: string | null) =>
+  personId === null ? 0 : (signOutsHere.get(personId) ?? 0);
 
 /** On sign-out: remove everything this person left unsaved in this browser, in every tab. */
 export function forgetUnsaved(personId: string) {
-  signOutsHere += 1;
+  signOutsHere.set(personId, signOutsHereOf(personId) + 1);
   forgetPerson(browserStore(), personId);
 }
 
@@ -29,8 +31,9 @@ export function forgetUnsaved(personId: string) {
  * are now (none removes the buffer), with the saved values they were made on where the record
  * has no versions. `drop` ends it: the record can no longer be edited.
  *
- * A sign-out in this browser, in this tab or any other, ends it too: what is waiting to be
- * written is dropped, and nothing is written after it.
+ * A sign-out of this person in this browser, in this tab or any other, ends it too: what is
+ * waiting to be written is dropped, and nothing is written after it. Someone else signing out
+ * of the same browser does not: this person's text goes on being kept.
  */
 export function useUnsaved(personId: string | null, scope: string) {
   const [buffer] = useState(() => (personId ? openUnsaved(browserStore(), personId, scope) : null));
@@ -40,7 +43,7 @@ export function useUnsaved(personId: string | null, scope: string) {
     bases?: UnsavedValues;
   } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const signOutsAtStart = useRef(signOutsHere);
+  const signOutsAtStart = useRef(signOutsHereOf(personId));
 
   const end = useCallback(() => {
     buffer?.end();
@@ -53,10 +56,11 @@ export function useUnsaved(personId: string | null, scope: string) {
     const next = pending.current;
     pending.current = null;
     if (!next || !buffer) return;
-    if (signOutsAtStart.current !== signOutsHere) end();
-    // The store's count of sign-outs is read again in here, immediately before the write.
+    if (signOutsAtStart.current !== signOutsHereOf(personId)) end();
+    // The store's count of this person's sign-outs is read again in here, immediately before
+    // the write.
     else if (!buffer.write(next.version, next.values, next.bases)) end();
-  }, [buffer, end]);
+  }, [buffer, end, personId]);
 
   const drop = useCallback(() => {
     end();
@@ -78,11 +82,12 @@ export function useUnsaved(personId: string | null, scope: string) {
     const hidden = () => {
       if (document.visibilityState === "hidden") flush();
     };
-    // Another tab changed the store. If it counted a sign-out (or the store was emptied), what
-    // waits here to be written is dropped at once, and not only at the next attempt to write.
+    // Another tab changed the store. If it counted a sign-out of this person, or emptied the
+    // store, what waits here to be written is dropped at once, and not only at the next attempt
+    // to write. Anything else it did there, another person's sign-out included, is not ours.
     const stored = (event: StorageEvent) => {
-      if (event.key !== null && event.key !== SIGN_OUTS_KEY) return;
-      if (buffer?.signedOut()) end();
+      if (event.storageArea !== null && event.storageArea !== browserStore()) return;
+      if (buffer?.changedElsewhere(event.key)) end();
     };
     document.addEventListener("visibilitychange", hidden);
     window.addEventListener("pagehide", flush);

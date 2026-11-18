@@ -6,8 +6,14 @@
  * Buffers are unpublished work and personal data, possibly on a shared computer:
  * - each is kept under the signed-in person's id, so another account never sees it;
  * - it goes on save, on discard and on sign-out, and expires after 30 days;
- * - a sign-out ends the buffers of every tab, not only of the tab it happened in (signOutCount);
+ * - a person's sign-out ends that person's buffers in every tab, not only in the tab it
+ *   happened in, and nobody else's (signOutsOf);
  * - it holds what this person typed, never data the server sent about other people.
+ *
+ * One thing outlasts a sign-out: a count of that person's sign-outs with the time of the last,
+ * kept under the person's id. It is how a form still open in another tab learns of the
+ * sign-out. It holds an opaque id and numbers, no text, and it goes 30 days after that person
+ * last signed out of this browser or opened a form in it (expireUnsaved).
  *
  * Storage that is missing, full or blocked is never an error: the form works without a buffer.
  */
@@ -38,10 +44,16 @@ export type Store = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" |
 const PREFIX = "elochair:unsaved:1:";
 export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /**
- * Where the browser counts sign-outs. One key for the whole app: it names nobody and holds no
- * text, only a number that every tab can read.
+ * Where the browser counts sign-outs: one key for each person, so that one person's sign-out
+ * says nothing about anyone else's forms. The prefix is not the buffers': a person's buffers go
+ * by their prefix on sign-out, and the count has to stay.
  */
-export const SIGN_OUTS_KEY = "elochair:sign-outs";
+const SIGN_OUTS_PREFIX = "elochair:sign-outs:1:";
+/** The key of a person's count. A tab hears of a write to it by another tab (the storage event). */
+export const signOutsKey = (personId: string) =>
+  `${SIGN_OUTS_PREFIX}${encodeURIComponent(personId)}`;
+/** Beside a count: when a form was last opened under it (see expireSignOuts). No id holds ":". */
+const SEEN = ":seen";
 
 const personPrefix = (personId: string) => `${PREFIX}${encodeURIComponent(personId)}:`;
 const keyOf = (personId: string, scope: string) => `${personPrefix(personId)}${scope}`;
@@ -97,29 +109,69 @@ function parse(raw: string | null): Unsaved | null {
 
 const expired = (found: Unsaved, now: number) => now - found.at > MAX_AGE_MS;
 
-/**
- * How many sign-outs this browser has counted. A form remembers the count it opened with and
- * writes nothing once the count has moved: the store is shared by every tab, so a sign-out in
- * one tab reaches the forms that are still open in the others. Anything that is not a count
- * (nothing yet, a blocked store, a key somebody edited) reads as 0.
- */
-export function signOutCount(store: Store | null): number {
-  if (!store) return 0;
+/** A person's sign-outs in this browser: how many, and when the last one was. */
+export type SignOuts = { count: number; at: number };
+
+/** A stored count, or null when it is not one (nothing yet, or a key somebody edited). */
+function parseSignOuts(raw: string | null): SignOuts | null {
+  if (raw === null) return null;
+  let data: unknown;
   try {
-    const raw = store.getItem(SIGN_OUTS_KEY);
-    return raw !== null && /^\d{1,15}$/.test(raw) ? Number(raw) : 0;
+    data = JSON.parse(raw);
   } catch {
-    return 0;
+    return null;
+  }
+  if (!isRecord(data)) return null;
+  const { count, at } = data;
+  if (!Number.isSafeInteger(count) || (count as number) < 1) return null;
+  if (!Number.isSafeInteger(at) || (at as number) < 0) return null;
+  return { count: count as number, at: at as number };
+}
+
+/**
+ * This person's sign-outs in this browser, or null when it has none on record. A form remembers
+ * what it opened under and writes nothing once that has moved: the store is shared by every
+ * tab, so a sign-out in one tab reaches that person's forms in the others. Only that person's:
+ * someone else signing out of the same browser moves another count. Anything that is not a
+ * count (a blocked store, a key somebody edited) reads as none.
+ */
+export function signOutsOf(store: Store | null, personId: string): SignOuts | null {
+  if (!store) return null;
+  try {
+    return parseSignOuts(store.getItem(signOutsKey(personId)));
+  } catch {
+    return null;
   }
 }
 
-/** Count one more sign-out. False when the store refused the new count (it is full). */
-function countSignOut(store: Store): boolean {
+/** How many times this person has signed out of this browser, as far as it has on record. */
+export const signOutCount = (store: Store | null, personId: string): number =>
+  signOutsOf(store, personId)?.count ?? 0;
+
+/** Whether a person's sign-outs are no longer what a form opened under. */
+const moved = (now: SignOuts | null, since: SignOuts | null) =>
+  now?.count !== since?.count || now?.at !== since?.at;
+
+/** Count one more sign-out of this person. False when the store refused it (it is full). */
+function countSignOut(store: Store, personId: string, now: number): boolean {
   try {
-    store.setItem(SIGN_OUTS_KEY, String(signOutCount(store) + 1));
+    const next: SignOuts = { count: signOutCount(store, personId) + 1, at: now };
+    store.setItem(signOutsKey(personId), JSON.stringify(next));
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Note that a form was opened under this person's count now. Its own key, written without
+ * reading: the count itself is only ever written by a sign-out, so no note can undo one.
+ */
+function markSeen(store: Store, personId: string, now: number): void {
+  try {
+    store.setItem(`${signOutsKey(personId)}${SEEN}`, String(now));
+  } catch {
+    // Full or blocked: the count may go early, which can only end a form, never keep one going.
   }
 }
 
@@ -147,10 +199,11 @@ export function readUnsaved(
 /**
  * Keep `values` as this person's unsaved changes in `scope`; none left removes the buffer.
  *
- * `since` is the sign-out count the form opened with (signOutCount). Once the count has moved,
- * nothing is written and the answer is false: someone signed out in this browser, and the form
- * must stop keeping text. The count is read just before the write and again just after it, and a
- * buffer that a sign-out overtook is taken out again: two tabs cannot lock the store between them.
+ * `since` is what this person's sign-outs were when the form opened (signOutsOf; null for none).
+ * Once they have moved, nothing is written and the answer is false: this person signed out of
+ * this browser, and the form must stop keeping text. They are read just before the write and
+ * again just after it, and a buffer that a sign-out overtook is taken out again: two tabs
+ * cannot lock the store between them. Without `since` (not a form) nothing is watched.
  */
 export function writeUnsaved(
   store: Store | null,
@@ -159,11 +212,11 @@ export function writeUnsaved(
   version: number | null,
   values: UnsavedValues,
   now = Date.now(),
-  more: { since?: number; bases?: UnsavedValues } = {},
+  more: { since?: SignOuts | null; bases?: UnsavedValues } = {},
 ): boolean {
   if (!store) return true;
   const { since, bases } = more;
-  const signedOut = () => since !== undefined && signOutCount(store) !== since;
+  const signedOut = () => since !== undefined && moved(signOutsOf(store, personId), since);
   if (signedOut()) return false;
   try {
     const key = keyOf(personId, scope);
@@ -213,12 +266,13 @@ function keysWith(store: Store, prefix: string): string[] {
 }
 
 /**
- * On sign-out: count it, and remove everything this person left unsaved in this browser. The
- * count comes first, so that from then on no form still open in another tab writes its text
- * back (writeUnsaved). A full store may refuse the count until the buffers are gone: it is then
- * counted afterwards, and the buffers are removed once more for a write that came in between.
+ * On sign-out: count it for this person, and remove everything this person left unsaved in this
+ * browser. The count comes first, so that from then on no form of theirs still open in another
+ * tab writes its text back (writeUnsaved). A full store may refuse the count until the buffers
+ * are gone: it is then counted afterwards, and the buffers are removed once more for a write
+ * that came in between. Nobody else's count or buffers are touched.
  */
-export function forgetPerson(store: Store | null, personId: string): void {
+export function forgetPerson(store: Store | null, personId: string, now = Date.now()): void {
   if (!store) return;
   const remove = () => {
     try {
@@ -227,16 +281,17 @@ export function forgetPerson(store: Store | null, personId: string): void {
       // Blocked storage: nothing was kept.
     }
   };
-  const counted = countSignOut(store);
+  const counted = countSignOut(store, personId, now);
   remove();
-  if (!counted && countSignOut(store)) remove();
+  if (!counted && countSignOut(store, personId, now)) remove();
 }
 
 /**
  * One form's buffer for as long as the form is open: what an earlier visit left (`found`), and
- * the writing of what is unsaved now. It ends, for good, when someone signs out in this browser
- * (in any tab) or when the form says its record can no longer be edited. Once ended it writes
- * nothing. The page wraps this in useUnsaved.
+ * the writing of what is unsaved now. It ends, for good, when its person signs out of this
+ * browser (in any tab), when the store is emptied, or when the form says its record can no
+ * longer be edited. Someone else's sign-out does not end it. Once ended it writes nothing. The
+ * page wraps this in useUnsaved.
  */
 export function openUnsaved(
   store: Store | null,
@@ -244,10 +299,13 @@ export function openUnsaved(
   scope: string,
   now = Date.now(),
 ) {
-  // Read together: the buffer, and the sign-out count it is read under.
-  const since = signOutCount(store);
+  // Read together: the buffer, and the sign-outs it is read under.
+  const since = signOutsOf(store, personId);
+  // A count with a form open under it is in use: it does not go while that form may write.
+  if (store && since) markSeen(store, personId, now);
   const found = readUnsaved(store, personId, scope, now);
   let ended = false;
+  const signedOut = () => moved(signOutsOf(store, personId), since);
   return {
     found,
     /** Keep the changes as they are now (none removes the buffer). False once the buffer has ended. */
@@ -258,14 +316,29 @@ export function openUnsaved(
       at = Date.now(),
     ): boolean {
       if (ended) return false;
-      if (!writeUnsaved(store, personId, scope, version, values, at, { since, bases })) {
+      // A count is kept for 30 days (expireSignOuts). A form open for longer could have missed
+      // a sign-out whose count is gone again, so it stops there, as its buffer would.
+      const tooOld = store !== null && at - now > MAX_AGE_MS;
+      if (tooOld || !writeUnsaved(store, personId, scope, version, values, at, { since, bases })) {
         ended = true;
       }
       return !ended;
     },
-    /** Asked when the store changed under another tab: has a sign-out ended this buffer? */
+    /** Has a sign-out of this person, in any tab, ended this buffer? */
     signedOut(): boolean {
-      if (!ended && signOutCount(store) !== since) ended = true;
+      if (!ended && signedOut()) ended = true;
+      return ended;
+    },
+    /**
+     * Told that another tab changed the store under `key` (null when it emptied the store): has
+     * that ended this buffer? An emptied store ends it, whoever emptied it: nothing goes back
+     * into it from a form that was open. So does a sign-out of this person. Nothing else does,
+     * another person's sign-out included.
+     */
+    changedElsewhere(key: string | null): boolean {
+      if (!ended && (key === null || (key === signOutsKey(personId) && signedOut()))) {
+        ended = true;
+      }
       return ended;
     },
     /** The record can no longer be edited, or this tab signed out: nothing more is written. */
@@ -306,8 +379,43 @@ export function sortUnsaved(found: Unsaved | null, saved: UnsavedValues): Sorted
 }
 
 /**
+ * A person's count goes 30 days after that person last signed out of this browser or opened a
+ * form in it, whichever is later, and so does anything under the counts' prefix that is not a
+ * count. That is as long as a buffer lives, and as long as an open form writes (openUnsaved):
+ * a form that could still write was opened, and so noted, within those 30 days, and its count
+ * stays. A time ahead of the clock (it was wrong when the time was written) is not one to
+ * count from: the count is noted as seen now, and goes 30 days from now. A count is never
+ * rewritten here, only removed.
+ */
+function expireSignOuts(store: Store, now: number): void {
+  for (const key of keysWith(store, SIGN_OUTS_PREFIX)) {
+    if (key.endsWith(SEEN)) {
+      // A note of a form opened under a count that is gone notes nothing.
+      if (store.getItem(key.slice(0, -SEEN.length)) === null) store.removeItem(key);
+      continue;
+    }
+    const raw = store.getItem(key);
+    const counted = parseSignOuts(raw);
+    if (counted) {
+      const seenRaw = store.getItem(`${key}${SEEN}`);
+      let seen = seenRaw !== null && /^\d{1,15}$/.test(seenRaw) ? Number(seenRaw) : null;
+      if ((seen ?? counted.at) > now) {
+        seen = now;
+        store.setItem(`${key}${SEEN}`, String(now));
+      }
+      const last = Math.max(counted.at > now ? 0 : counted.at, seen ?? 0);
+      if (now - last <= MAX_AGE_MS) continue;
+    }
+    // Only what was just read: a sign-out that another tab counts in this instant stays.
+    if (store.getItem(key) === raw) store.removeItem(key);
+    store.removeItem(`${key}${SEEN}`);
+  }
+}
+
+/**
  * When the app starts: remove buffers older than 30 days, and anything under our prefix that is
  * not a buffer. A time in the future (the clock was wrong when it was written) counts from now.
+ * Then the counts of sign-outs that are no longer needed (expireSignOuts).
  */
 export function expireUnsaved(store: Store | null, now = Date.now()): void {
   if (!store) return;
@@ -317,6 +425,7 @@ export function expireUnsaved(store: Store | null, now = Date.now()): void {
       if (!found || expired(found, now)) store.removeItem(key);
       else if (found.at > now) store.setItem(key, JSON.stringify({ ...found, at: now }));
     }
+    expireSignOuts(store, now);
   } catch {
     // Blocked storage: nothing was kept.
   }

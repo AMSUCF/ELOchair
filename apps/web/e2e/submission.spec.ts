@@ -190,6 +190,10 @@ const RESTORED = "Your unsaved changes were restored from this device. Review th
 const unsavedKeys = (page: Page) =>
   page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("elochair:unsaved:")));
 
+/** Everything this browser's store holds for the app, keys and values, as one text. */
+const wholeStore = (page: Page) =>
+  page.evaluate(() => JSON.stringify(Object.entries(localStorage)));
+
 /**
  * Collects what a screen reader would announce: text that arrives in a live region which was
  * already on the page. (A region that is rendered together with its text is not announced.)
@@ -882,6 +886,11 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   // profile and nothing of hers.
   await bio.fill("Ana writes poems for machines, and for people.");
   await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  // She also left her profile open in a second tab, with the same unsaved text in it.
+  const left = await page.context().newPage();
+  await left.goto("/en/me");
+  const leftBio = left.getByLabel("Bio in English");
+  await expect(leftBio).toHaveValue("Ana writes poems for machines, and for people.");
   const anaSession = await page.context().cookies();
   await page.context().clearCookies();
   await signIn(page, request, bruno);
@@ -897,17 +906,29 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(page)).toHaveLength(1);
+  expect(await wholeStore(page)).not.toContain("Bruno builds");
+
+  // Bruno's sign-out was his alone. Ana never signed out, and the tab she left open goes on
+  // keeping what is typed in it.
+  await leftBio.fill("Ana writes poems for machines, for people, and for herself.");
+  await expect.poll(() => wholeStore(left)).toContain("and for herself.");
+  expect(await unsavedKeys(left)).toHaveLength(1);
+  await left.close();
 
   // Ana is back on her session (it was forgotten, never ended; signing in again would be one
   // more of the sign-in links the server rations). Her text is restored and nothing of Bruno's
   // is, and her own sign-out leaves nothing in the browser.
   await page.context().addCookies(anaSession);
   await page.goto("/en/me");
-  await expect(bio).toHaveValue("Ana writes poems for machines, and for people.");
+  await expect(bio).toHaveValue("Ana writes poems for machines, for people, and for herself.");
   await expect(restored).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(page)).toEqual([]);
+  // What stays after a sign-out is a count of sign-outs for each of them: no word of theirs.
+  const kept = await wholeStore(page);
+  expect(kept).not.toContain("poems");
+  expect(kept).not.toContain("machines");
 });
 
 const CONFLICT =
