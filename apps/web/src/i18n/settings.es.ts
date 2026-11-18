@@ -101,6 +101,8 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   issue_settings_date: "Escribe una fecha.",
   issue_settings_datetime: "Escribe una fecha, una hora y una diferencia como -05:00.",
   issue_settings_min_over_max: "No puede ser mayor que el valor máximo que tiene al lado.",
+  issue_settings_no_whole_number:
+    "No hay ningún número entero entre este valor y el máximo que tiene al lado, así que nadie podría responder.",
   issue_settings_deadline_order: "No puede ser anterior al plazo de arriba.",
   issue_settings_dates_order: "El último día no puede ser anterior al primero.",
   issue_settings_final_before_conference:

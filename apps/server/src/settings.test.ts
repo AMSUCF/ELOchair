@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditLog } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { createApiToken, getConference, grantRole, saveConference } from "./repo";
-import { configToken, reviewConfig } from "./services/settings";
+import { configIssues, configToken, reviewConfig } from "./services/settings";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
 /*
@@ -435,6 +435,26 @@ describe("reviewing before saving", () => {
       { path: "submissionTypes.talk.abstract.minWords", code: "min_over_max" },
       { path: "title.en", code: "default_language_required" },
     ]);
+  });
+
+  it("names a whole-number field with no whole number between its ends, beside the smallest", () => {
+    // The fixture call has no number field: the settings screen changes one where a call has it.
+    const input = structuredClone(fixtureCall);
+    const type = input.submissionTypes[0];
+    if (!type) throw new Error("the fixture call has no format");
+    type.fields = [
+      ...(type.fields ?? []),
+      { key: "seats", label: { en: "Seats" }, kind: "number", integer: true, min: 15.1, max: 15.9 },
+    ];
+    const parsed = ConferenceConfig.safeParse(input);
+    if (parsed.success) throw new Error("the configuration should be refused");
+    expect(configIssues(parsed.error, input).map(({ path, code }) => ({ path, code }))).toEqual([
+      { path: `submissionTypes.${type.key}.fields.seats.min`, code: "no_whole_number" },
+    ]);
+    // A whole number between the ends, and the same configuration is fine.
+    const seats = type.fields.at(-1);
+    if (seats) seats.max = 16;
+    expect(ConferenceConfig.safeParse(input).success).toBe(true);
   });
 
   it("warns when a change closes the call now or moves a deadline into the past", async () => {

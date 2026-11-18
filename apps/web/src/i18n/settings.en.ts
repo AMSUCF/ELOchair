@@ -99,6 +99,8 @@ export const settingsEn = {
   issue_settings_date: "Enter a date.",
   issue_settings_datetime: "Enter a date, a time and an offset such as -05:00.",
   issue_settings_min_over_max: "This must not be more than the largest value beside it.",
+  issue_settings_no_whole_number:
+    "There is no whole number between this and the largest value beside it, so nobody could answer.",
   issue_settings_deadline_order: "This must not be before the deadline above it.",
   issue_settings_dates_order: "The last day must not be before the first day.",
   issue_settings_final_before_conference:

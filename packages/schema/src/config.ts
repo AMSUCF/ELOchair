@@ -218,6 +218,7 @@ type Shape = z.infer<typeof ConferenceConfigShape>;
 export type ConfigIssueCode =
   | "default_language_required"
   | "min_over_max"
+  | "no_whole_number"
   | "deadline_order"
   | "dates_order"
   | "final_before_conference";
@@ -358,7 +359,10 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
         f.min <= f.max &&
         Math.ceil(f.min) > Math.floor(f.max)
       ) {
-        issue(fat, "a whole-number field needs a whole number between min and max");
+        issue(fat, "a whole-number field needs a whole number between min and max", {
+          code: "no_whole_number",
+          leaf: "min",
+        });
       }
       const hasOptions = (f.options?.length ?? 0) > 0;
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {
