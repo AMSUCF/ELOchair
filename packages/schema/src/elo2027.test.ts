@@ -305,6 +305,40 @@ describe("a number field for whole numbers", () => {
       ["submissionTypes.4.fields.0: integer is for number fields"],
     );
   });
+
+  const problems = (field: Record<string, unknown>): string[] => {
+    const r = parsed(field);
+    return r.success ? [] : r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+  };
+
+  it("needs a whole number between its ends, or nobody could answer", () => {
+    expect(problems({ min: 15.1, max: 15.9 })).toEqual([
+      "submissionTypes.4.fields.0: a whole-number field needs a whole number between min and max",
+    ]);
+    expect(problems({ min: 0.2, max: 0.8 })).toHaveLength(1);
+    // One whole number is enough, at an end or between the ends.
+    expect(problems({ min: 15, max: 15 })).toEqual([]);
+    expect(problems({ min: 14.5, max: 15.5 })).toEqual([]);
+    expect(problems({ min: 15.1, max: 16 })).toEqual([]);
+    const narrow = parsed({ min: 14.5, max: 15.5 });
+    if (!narrow.success) throw new Error("the configuration should parse");
+    expect(withPeople(narrow.data, 15)).toEqual([]);
+    expect(withPeople(narrow.data, 14.6)).toEqual(["not_integer"]);
+  });
+
+  it("with one end only always has a whole number to offer", () => {
+    expect(problems({ min: 15.1, max: undefined })).toEqual([]);
+    expect(problems({ min: undefined, max: 15.9 })).toEqual([]);
+  });
+
+  it("is the only kind of field that rule applies to: a fraction may sit between close ends", () => {
+    expect(problems({ integer: undefined, min: 15.1, max: 15.9 })).toEqual([]);
+    expect(problems({ integer: false, min: 15.1, max: 15.9 })).toEqual([]);
+    // Ends the wrong way round are reported as that, once.
+    expect(problems({ min: 15.9, max: 15.1 })).toEqual([
+      "submissionTypes.4.fields.0: min must not exceed max",
+    ]);
+  });
 });
 
 describe("formats handled outside the portal", () => {

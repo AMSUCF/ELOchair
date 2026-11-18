@@ -129,7 +129,7 @@ The call was published in November 2026 at <https://elo27.eliterature.org/>. `pa
 - **Submissions are in English or Spanish** (`languages`). The interface is also in Portuguese.
 - **No minimum length.** The call gives only maxima, so its formats have no `minWords`. An abstract must still be there: an empty one is refused with `required`, not `too_few_words`. The interface says "up to 300 words". A format that does set `minWords` behaves as before.
 - **A number field may have a range** (`min`, `max` on the field). Outside it, submitting is refused with `out_of_range`.
-- **A number field may take whole numbers only** (`integer` on the field, as the workshop's participants do). A fraction is refused with `not_integer`.
+- **A number field may take whole numbers only** (`integer` on the field, as the workshop's participants do). A fraction is refused with `not_integer`. A configuration whose whole-number field has no whole number between its two ends (15.1 to 15.9) is refused: nobody could answer it.
 - **Where the call is silent, earlier defaults stand** until the organisers say otherwise: three anonymized reviews for the call's "academic" formats and two with names visible for its "artistic" ones; team sizes (a panel may have up to 24 people: six talks of up to four authors each, so that co-authors are never refused); panels not counting toward the cap of two; one bio limit of 300 words for the whole conference (the call asks for 250, and 200–300 for the exhibition: [issue #17](https://github.com/AMSUCF/ELOchair/issues/17)).
 - **Panels** hold their papers' abstracts in one required field until submissions can carry them as separate items ([issue #15](https://github.com/AMSUCF/ELOchair/issues/15)).
 
