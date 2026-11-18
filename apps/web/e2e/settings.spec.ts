@@ -264,6 +264,42 @@ test.describe("conference settings", () => {
     await expect(listedFormat(chair)).toContainText("300 words at most");
   });
 
+  test("a whole-number field must keep a whole number between its smallest and largest", async () => {
+    await openSettings(chair);
+    await chair.locator("summary", { hasText: "Workshop" }).click();
+    const workshop = chair
+      .locator("details")
+      .filter({ has: chair.locator("summary", { hasText: "Workshop" }) });
+    const smallest = workshop.getByLabel("Smallest number");
+    const largest = workshop.getByLabel("Largest number");
+    await expect(smallest).toHaveValue("15");
+    await expect(largest).toHaveValue("30");
+
+    // Whole numbers only, from 15.1 to 15.9: nobody could answer. It is said beside the value.
+    await smallest.fill("15.1");
+    await largest.fill("15.9");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    const explained =
+      "There is no whole number between this and the largest value beside it, so nobody could answer.";
+    await expect(summary).toContainText(explained);
+    await expect(workshop.locator(".field-error")).toHaveText(explained);
+    await expect(smallest).toHaveAttribute("aria-invalid", "true");
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // With a whole number between them the change can be reviewed. Taken back, nothing changed.
+    await largest.fill("16");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await smallest.fill("15");
+    await largest.fill("30");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+  });
+
   test("settings that someone else changed meanwhile are reloaded, and what was typed stays", async () => {
     test.slow();
     await openSettings(chair);
