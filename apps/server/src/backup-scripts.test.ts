@@ -3,7 +3,7 @@
  * `npm run check` covers the retention policy and the backup's failure paths. The round trip
  * against Postgres, and the policy under dash/mawk and busybox, are in deploy/test/backup-e2e.sh.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -28,6 +28,8 @@ const PATH = process.env.PATH ?? "";
 
 /** Neither script is for Windows; elsewhere a missing shell is a failure, not a skip. */
 const posix = process.platform !== "win32";
+/** backup.sh locks only where flock is installed (the postgres image has it; macOS does not). */
+const hasFlock = posix && spawnSync("flock", ["--version"]).status === 0;
 
 interface Keep {
   hourly: number;
@@ -368,6 +370,8 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
         ...env,
       },
       encoding: "utf8",
+      // A command that waits for a lock it has no business waiting for fails here, not hangs.
+      timeout: 20_000,
     });
     if (r.error) throw r.error;
     return { status: r.status, out: r.stdout, err: r.stderr };
@@ -498,6 +502,68 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
     expect(present()).toEqual(old);
     expect(backup(["prune"], keepEnv({ ...OFF, hourly: 2 })).status).toBe(0);
     expect(present()).toEqual(old.slice(0, 2));
+  });
+
+  it.skipIf(!hasFlock)(
+    "a prune run by hand waits for a dump or a restore that holds the directory; a dry run does not",
+    async () => {
+      const old = Array.from({ length: 4 }, (_, i) => ago(i * 3600));
+      touch(...old);
+      const keep = keepEnv({ ...OFF, hourly: 1 });
+      const held = join(dir, "held");
+      const release = join(dir, "release");
+      // Stands in for a dump in progress: it holds the directory's lock until it is told to let go.
+      const holder = spawn("flock", [
+        backups,
+        "sh",
+        "-c",
+        `touch "${held}"; while [ ! -e "${release}" ]; do sleep 0.05; done`,
+      ]);
+      const holderGone = new Promise((resolve) => holder.on("exit", resolve));
+      try {
+        while (!existsSync(held)) await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // A dry run only reads: it answers at once, lock or no lock.
+        const dry = backup(["prune", "--dry-run"], keep);
+        expect(dry.status).toBe(0);
+        expect(dry.out.trim().split("\n")).toHaveLength(3);
+        expect(present()).toEqual(old);
+
+        const pruning = spawn("bash", [BACKUP, "prune"], {
+          env: {
+            PATH: `${join(dir, "bin")}:${PATH}`,
+            BACKUP_DIR: backups,
+            BACKUP_TEST_NOW: String(NOW),
+            ...keep,
+          },
+        });
+        let ended = false;
+        const status = new Promise<number | null>((resolve) =>
+          pruning.on("exit", (code) => {
+            ended = true;
+            resolve(code);
+          }),
+        );
+        // Long enough for an unlocked prune to have finished many times over.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(ended).toBe(false);
+        expect(present()).toEqual(old);
+
+        writeFileSync(release, "");
+        expect(await status).toBe(0);
+        expect(present()).toEqual(old.slice(0, 1));
+      } finally {
+        writeFileSync(release, "");
+        await holderGone;
+      }
+    },
+    20_000,
+  );
+
+  it("prunes nothing, and waits for nothing, where there is no backup directory yet", () => {
+    const r = backup(["prune"], { BACKUP_DIR: join(dir, "not-there") });
+    expect(r.status).toBe(0);
+    expect(existsSync(join(dir, "not-there"))).toBe(false);
   });
 
   it("removes a .partial left over for more than a day, going by its name and not its file time", () => {

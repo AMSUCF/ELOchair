@@ -143,9 +143,11 @@ prune() {
   return "$rc"
 }
 
-# One backup at a time, across containers too: the lock is on the directory itself.
+# One dump, restore or prune at a time, across containers too: the lock is on the directory itself.
 lock_dir() {
   command -v flock >/dev/null 2>&1 || return 0
+  # A directory that is not there has nothing in it to work on, and nothing to wait for.
+  [ -d "$DIR" ] || return 0
   exec 9<"$DIR"
   local waited=0
   until flock -n 9; do
@@ -354,6 +356,10 @@ case "${1:-}" in
   healthy) healthy ;;
   prune)
     shift
+    # A prune run by hand deletes, so it takes the lock that a dump and a restore take, and waits
+    # for them. The lock is taken here and not in prune(): a dump prunes while it already holds
+    # it. --dry-run only reads, so it waits for nobody.
+    if [ "${1:-}" != --dry-run ]; then lock_dir || exit 1; fi
     prune "$@"
     ;;
   restore)
