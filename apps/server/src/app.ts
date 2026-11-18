@@ -159,7 +159,9 @@ export function createApp(deps: Deps, exposure: Exposure) {
     onError: (c) => c.json({ error: "too_large" }, 413),
   });
   app.use("/api/*", (c, next) =>
-    /^\/api\/conferences\/[^/]+\/config$/.test(c.req.path) ? large(c, next) : small(c, next),
+    /^\/api\/conferences\/[^/]+\/config(\/preview)?$/.test(c.req.path)
+      ? large(c, next)
+      : small(c, next),
   );
 
   app.use("/api/*", resolveViewer(deps, exposure), csrf(deps), auditAgents());

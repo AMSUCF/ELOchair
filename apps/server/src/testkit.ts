@@ -42,6 +42,8 @@ type ReqOpts = {
   token?: string;
   origin?: string | null;
   contentType?: string;
+  /** The configuration a save is based on (configToken), sent as If-Match. */
+  ifMatch?: string;
 };
 
 export async function call(app: Hono<AppEnv>, method: string, path: string, opts: ReqOpts = {}) {
@@ -49,6 +51,7 @@ export async function call(app: Hono<AppEnv>, method: string, path: string, opts
   if (opts.origin !== null) headers.origin = opts.origin ?? ORIGIN;
   if (opts.cookie) headers.cookie = opts.cookie;
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  if (opts.ifMatch) headers["if-match"] = `"${opts.ifMatch}"`;
   if (opts.body !== undefined) headers["content-type"] = opts.contentType ?? "application/json";
   const res = await app.request(path, {
     method,

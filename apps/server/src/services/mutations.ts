@@ -18,7 +18,7 @@ import { eq } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { Db } from "../db/client";
-import { submissions } from "../db/schema";
+import { conferences, submissions } from "../db/schema";
 import { deliverPending, enqueueMail, type MailMessage } from "../mail";
 import { type ConferenceRow, loadSubmission } from "../repo";
 import { RateLimited, Refusal } from "../routes/common";
@@ -50,11 +50,21 @@ export async function mutateSubmission<T>(
   const result = await deps.db
     .transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
-      await tx
-        .select({ id: submissions.id })
+      const [locked] = await tx
+        .select({ conferenceId: submissions.conferenceId })
         .from(submissions)
         .where(eq(submissions.id, submissionId))
         .for("update");
+      // A configuration save checks submitted work against the new rules while it holds the
+      // conference's row. Sharing that row here makes the two wait for each other, so this
+      // change is checked against the configuration in force when it commits.
+      if (locked) {
+        await tx
+          .select({ id: conferences.id })
+          .from(conferences)
+          .where(eq(conferences.id, locked.conferenceId))
+          .for("share");
+      }
       const loaded = await loadSubmission(tx, submissionId);
       if (!loaded || submissionAccess(viewer, loaded.rec) === "none") {
         throw new Refusal(404, "not_found");
