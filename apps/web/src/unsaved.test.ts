@@ -187,6 +187,20 @@ describe("expiry after 30 days", () => {
     expireUnsaved(store, NOW + MAX_AGE_MS + 1);
     expect(store.items.size).toBe(0);
   });
+
+  it("does not put a signed-out person's text back while it puts a buffer's time right", () => {
+    const store = new MemoryStore();
+    writeUnsaved(store, ANA, "submission:1", 2, { title: "One" }, Date.UTC(2099, 0, 1));
+    writeUnsaved(store, BRUNO, "profile", null, { pronouns: "he" }, NOW);
+    // Another tab signs Ana out at the very moment the buffer is written back.
+    store.beforeSet = () => forgetPerson(store, ANA, NOW);
+    expireUnsaved(store, NOW);
+    expect(readUnsaved(store, ANA, "submission:1", NOW)).toBeNull();
+    expect([...store.items.keys()].filter((key) => key.includes(ANA))).toEqual([
+      `elochair:sign-outs:1:${ANA}`,
+    ]);
+    expect(readUnsaved(store, BRUNO, "profile", NOW)?.values).toEqual({ pronouns: "he" });
+  });
 });
 
 describe("malformed data", () => {

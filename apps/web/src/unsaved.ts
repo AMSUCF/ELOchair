@@ -404,16 +404,30 @@ function expireTokens(store: Store, now: number): void {
 
 /**
  * When the app starts: remove buffers older than 30 days, and anything under our prefix that is
- * not a buffer. A time in the future (the clock was wrong when it was written) counts from now.
- * Then the tokens that are no longer needed (expireTokens).
+ * not a buffer. A time in the future (the clock was wrong when it was written) counts from now:
+ * the buffer is written back with its time put right. That is a write of a person's text, so it
+ * is made as a form makes one (writeUnsaved): the person's token is read just before and just
+ * after, and a buffer that a sign-out overtook is taken out again. Then the tokens that are no
+ * longer needed (expireTokens).
  */
 export function expireUnsaved(store: Store | null, now = Date.now()): void {
   if (!store) return;
   try {
     for (const key of keysWith(store, PREFIX)) {
-      const found = parse(store.getItem(key));
-      if (!found || expired(found, now)) store.removeItem(key);
-      else if (found.at > now) store.setItem(key, JSON.stringify({ ...found, at: now }));
+      const raw = store.getItem(key);
+      const found = parse(raw);
+      if (!found || expired(found, now)) {
+        // Only what was just read: text a form writes there in this instant stays.
+        if (store.getItem(key) === raw) store.removeItem(key);
+        continue;
+      }
+      if (found.at <= now) continue;
+      // The key is the buffers' prefix, the person's id as the keys have it, ":" and the scope.
+      const token = `${TOKENS_PREFIX}${key.slice(PREFIX.length).split(":", 1)[0]}`;
+      const before = store.getItem(token);
+      if (store.getItem(key) !== raw) continue;
+      store.setItem(key, JSON.stringify({ ...found, at: now }));
+      if (store.getItem(token) !== before) store.removeItem(key);
     }
     expireTokens(store, now);
   } catch {
