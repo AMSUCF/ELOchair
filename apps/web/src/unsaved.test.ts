@@ -7,10 +7,9 @@ import {
   openUnsaved,
   readUnsaved,
   type Store,
-  signOutCount,
-  signOutsKey,
-  signOutsOf,
   sortUnsaved,
+  tokenKey,
+  tokenOf,
   writeUnsaved,
 } from "./unsaved";
 
@@ -62,14 +61,17 @@ const ANA = "0b7c5a52-0000-4000-8000-000000000001";
 const BRUNO = "0b7c5a52-0000-4000-8000-000000000002";
 const NOW = Date.UTC(2027, 0, 20, 12);
 const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
 const VALUES = { title: "Poems that read", "fields.needs": null, topicKeys: ["a", "b"] };
 
-/** The buffers in the store, by key: everything but the counts of sign-outs. */
+/** The buffers in the store, by key: everything but the people's tokens. */
 const bufferKeys = (store: MemoryStore) =>
   [...store.items.keys()].filter((k) => !k.startsWith("elochair:sign-outs:"));
-/** What the store keeps about sign-outs, by key: the counts, and the notes beside them. */
-const signOutKeys = (store: MemoryStore) =>
+/** The people's tokens in the store, by key. */
+const tokenKeys = (store: MemoryStore) =>
   [...store.items.keys()].filter((k) => k.startsWith("elochair:sign-outs:")).sort();
+/** A token as the store holds it, for tests that put one there by hand. */
+const stored = (digit: string, at: number) => `${digit.repeat(32)}:${at}`;
 
 /** The one key in the store (tests that write a single buffer). */
 function onlyKey(store: MemoryStore) {
@@ -280,59 +282,81 @@ describe("storage that cannot be used", () => {
 });
 
 describe("a sign-out reaches every tab", () => {
-  it("counts each person's sign-outs under that person's own key, in numbers and no text", () => {
+  it("keeps a token for each person under that person's own key: random digits and a time, no text", () => {
     const store = new MemoryStore();
-    expect(signOutCount(store, ANA)).toBe(0);
-    expect(signOutsOf(store, ANA)).toBeNull();
-    writeUnsaved(store, ANA, "profile", null, { "bios.en": "Ana writes poems." }, NOW);
-    forgetPerson(store, ANA, NOW);
-    expect(signOutsOf(store, ANA)).toEqual({ count: 1, at: NOW });
-    expect([...store.items.entries()]).toEqual([
-      [signOutsKey(ANA), JSON.stringify({ count: 1, at: NOW })],
-    ]);
-    // Bruno's sign-out is counted under his id, and leaves hers as it was.
-    forgetPerson(store, BRUNO, NOW + 5);
-    expect(signOutsOf(store, BRUNO)).toEqual({ count: 1, at: NOW + 5 });
-    expect(signOutsOf(store, ANA)).toEqual({ count: 1, at: NOW });
-    forgetPerson(store, ANA, NOW + 9);
-    expect(signOutsOf(store, ANA)).toEqual({ count: 2, at: NOW + 9 });
-    expect(signOutCount(store, BRUNO)).toBe(1);
-    // A person's buffers go by their prefix on sign-out: the count is not under it.
-    expect(signOutsKey(ANA).startsWith("elochair:unsaved:")).toBe(false);
-    expect(signOutKeys(store)).toEqual([signOutsKey(ANA), signOutsKey(BRUNO)].sort());
+    expect(tokenOf(store, ANA)).toBeNull();
+    const form = openUnsaved(store, ANA, "profile", NOW);
+    const first = tokenOf(store, ANA);
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(store.items.get(tokenKey(ANA))).toBe(`${first}:${NOW}`);
+    form.write(null, { "bios.en": "Ana writes poems." }, undefined, NOW);
+
+    // Her sign-out removes what she left unsaved and puts a new token in the place of hers.
+    forgetPerson(store, ANA, NOW + 5);
+    const second = tokenOf(store, ANA);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+    expect([...store.items.entries()]).toEqual([[tokenKey(ANA), `${second}:${NOW + 5}`]]);
+    // Bruno's sign-out puts one under his id, and leaves hers as it was.
+    forgetPerson(store, BRUNO, NOW + 6);
+    expect(tokenOf(store, BRUNO)).toMatch(/^[0-9a-f]{32}$/);
+    expect(tokenOf(store, BRUNO)).not.toBe(second);
+    expect(tokenOf(store, ANA)).toBe(second);
+    // A person's buffers go by their prefix on sign-out: the token is not under it.
+    expect(tokenKey(ANA).startsWith("elochair:unsaved:")).toBe(false);
+    expect(tokenKeys(store)).toEqual([tokenKey(ANA), tokenKey(BRUNO)].sort());
   });
 
-  it("reads anything that is not a count as none, and never throws", () => {
+  it("makes a new token every time, never one it made before", () => {
     const store = new MemoryStore();
+    const made = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      forgetPerson(store, ANA, NOW);
+      made.add(tokenOf(store, ANA) ?? "");
+    }
+    expect(made.size).toBe(200);
+    expect(made.has("")).toBe(false);
+  });
+
+  it("reads anything that is not a token as none, and never throws", () => {
+    const store = new MemoryStore();
+    const a = "a".repeat(32);
     for (const raw of [
       "",
       "1",
       "two",
       "null",
-      "[1,2]",
-      '{"count":1}',
-      '{"at":5}',
-      '{"count":0,"at":5}',
-      '{"count":-1,"at":5}',
-      '{"count":1.5,"at":5}',
-      '{"count":"1","at":5}',
-      '{"count":1,"at":-5}',
-      '{"count":1,"at":"5"}',
-      '{"count":1e30,"at":5}',
+      '{"count":1,"at":5}',
+      "abc:5",
+      `${"a".repeat(31)}:5`,
+      `${"a".repeat(33)}:5`,
+      `${"g".repeat(32)}:5`,
+      `${"A".repeat(32)}:5`,
+      a,
+      `${a}:`,
+      `${a}:five`,
+      `${a}:-5`,
+      `${a}:5.5`,
+      `${a}:5:6`,
+      ` ${a}:5`,
+      `${a}:5\n`,
+      `${a}:${"9".repeat(16)}`,
     ]) {
-      store.items.set(signOutsKey(ANA), raw);
-      expect(signOutsOf(store, ANA)).toBeNull();
-      expect(signOutCount(store, ANA)).toBe(0);
+      store.items.set(tokenKey(ANA), raw);
+      expect(tokenOf(store, ANA)).toBeNull();
     }
+    store.items.set(tokenKey(ANA), `${a}:5`);
+    expect(tokenOf(store, ANA)).toBe(a);
     store.refuse = "everything";
-    expect(signOutsOf(store, ANA)).toBeNull();
-    expect(signOutCount(null, ANA)).toBe(0);
+    expect(tokenOf(store, ANA)).toBeNull();
+    expect(tokenOf(null, ANA)).toBeNull();
   });
 
   it("ends the buffer of a form that is still open in another tab", () => {
     // One store, as two tabs of one browser share it. Tab A has the profile open and dirty.
     const store = new MemoryStore();
     const tabA = openUnsaved(store, ANA, "profile", NOW);
+    const opened = store.items.get(tokenKey(ANA)) as string;
     expect(tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW)).toBe(true);
     expect(bufferKeys(store)).toHaveLength(1);
 
@@ -342,10 +366,13 @@ describe("a sign-out reaches every tab", () => {
     expect(bufferKeys(store)).toEqual([]);
     expect(tabA.write(null, { "bios.en": "Ana writes poems" }, undefined, NOW + 1)).toBe(false);
     expect(bufferKeys(store)).toEqual([]);
-    // It has ended for good: also when the count is back where it was, or the text is cleared.
-    store.items.delete(signOutsKey(ANA));
+    // It has ended for good: also when the token is gone, when the one it opened under is back
+    // in the store (nothing here would put it there), or when the text is cleared.
+    store.items.delete(tokenKey(ANA));
     expect(tabA.write(null, { "bios.en": "Ana" }, undefined, NOW + 2)).toBe(false);
-    expect(tabA.write(null, {}, undefined, NOW + 3)).toBe(false);
+    store.items.set(tokenKey(ANA), opened);
+    expect(tabA.write(null, { "bios.en": "Ana" }, undefined, NOW + 3)).toBe(false);
+    expect(tabA.write(null, {}, undefined, NOW + 4)).toBe(false);
     expect(bufferKeys(store)).toEqual([]);
   });
 
@@ -363,22 +390,45 @@ describe("a sign-out reaches every tab", () => {
     expect(proposal.write(3, { title: "Two" }, undefined, NOW + 1)).toBe(false);
     expect(bufferKeys(store)).toEqual([]);
 
-    // Bruno signs in after her, in the same browser: his forms start from the new count.
+    // Bruno signs in after her, in the same browser: his forms open under his own token.
     const next = openUnsaved(store, BRUNO, "profile", NOW + 2);
     expect(next.found).toBeNull();
     expect(next.write(null, { pronouns: "he" }, undefined, NOW + 2)).toBe(true);
     expect(readUnsaved(store, BRUNO, "profile", NOW + 2)?.values).toEqual({ pronouns: "he" });
     expect(readUnsaved(store, ANA, "profile", NOW + 2)).toBeNull();
+    // And she is back later: a form of hers opened after her sign-out keeps text again.
+    const back = openUnsaved(store, ANA, "profile", NOW + 3);
+    expect(back.write(null, { pronouns: "she/her" }, undefined, NOW + 3)).toBe(true);
+    expect(profile.write(null, { pronouns: "she" }, undefined, NOW + 4)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", NOW + 4)?.values).toEqual({ pronouns: "she/her" });
   });
 
   it("takes back a write that a sign-out overtook", () => {
     const store = new MemoryStore();
     const tabA = openUnsaved(store, ANA, "profile", NOW);
-    // Tab A has looked at the count and is about to write; in that instant tab B signs out.
+    const opened = tokenOf(store, ANA);
+    // Tab A has looked at the token and is about to write; in that instant tab B signs out.
     store.beforeSet = () => forgetPerson(store, ANA);
     expect(tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW)).toBe(false);
     expect(bufferKeys(store)).toEqual([]);
-    expect(signOutCount(store, ANA)).toBe(1);
+    expect(tokenOf(store, ANA)).not.toBeNull();
+    expect(tokenOf(store, ANA)).not.toBe(opened);
+  });
+
+  it("removes a write that lands in the middle of the sign-out", () => {
+    const store = new MemoryStore();
+    const tabA = openUnsaved(store, ANA, "profile", NOW);
+    // The sign-out has removed her buffers and is about to put the new token in. In that
+    // instant tab A, still under the old one, writes.
+    store.beforeSet = (key) => {
+      expect(key).toBe(tokenKey(ANA));
+      expect(tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW)).toBe(true);
+      expect(bufferKeys(store)).toHaveLength(1);
+    };
+    forgetPerson(store, ANA, NOW + 1);
+    expect(bufferKeys(store)).toEqual([]);
+    expect(tabA.write(null, { "bios.en": "Ana writes poems" }, undefined, NOW + 2)).toBe(false);
+    expect(bufferKeys(store)).toEqual([]);
   });
 
   it("writes nothing for a form that the record ended (deleted, withdrawn)", () => {
@@ -386,29 +436,134 @@ describe("a sign-out reaches every tab", () => {
     const editor = openUnsaved(store, ANA, "submission:1", NOW);
     editor.end();
     expect(editor.write(2, { title: "One" }, undefined, NOW)).toBe(false);
-    expect(store.items.size).toBe(0);
+    expect(bufferKeys(store)).toEqual([]);
   });
 
-  it("counts the sign-out in a full store once the buffers are gone", () => {
+  it("makes room for the new token in a full store by removing the buffers first", () => {
     const store = new MemoryStore();
     store.items.set("theme", "dark");
     const tabA = openUnsaved(store, ANA, "profile", NOW);
     tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW);
+    // Her token is not in the store (something else removed it), and the store is full.
+    store.items.delete(tokenKey(ANA));
     store.room = 2;
     forgetPerson(store, ANA);
-    expect(signOutCount(store, ANA)).toBe(1);
+    expect(tokenOf(store, ANA)).not.toBeNull();
     expect(bufferKeys(store)).toEqual(["theme"]);
     expect(tabA.write(null, { "bios.en": "Ana writes poems" }, undefined, NOW + 1)).toBe(false);
     expect(bufferKeys(store)).toEqual(["theme"]);
   });
 
-  it("gives back what an earlier visit left, read with the count it is valid under", () => {
+  it("removes the token where the store takes no new one at sign-out, which ends her forms too", () => {
+    const store = new MemoryStore();
+    const tabA = openUnsaved(store, ANA, "profile", NOW);
+    tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW);
+    // The store is full for good: it takes no write at all, only removals.
+    store.refuse = "writes";
+    forgetPerson(store, ANA);
+    expect(store.items.size).toBe(0);
+    // There is room again later. Her form, still open in the other tab, writes nothing.
+    store.refuse = "nothing";
+    expect(tabA.write(null, { "bios.en": "Ana writes poems" }, undefined, NOW + 1)).toBe(false);
+    expect(store.items.size).toBe(0);
+  });
+
+  it("gives back what an earlier visit left, read under the token it is valid under", () => {
     const store = new MemoryStore();
     writeUnsaved(store, ANA, "submission:1", 4, VALUES, NOW);
     const editor = openUnsaved(store, ANA, "submission:1", NOW + DAY);
     expect(editor.found).toEqual({ version: 4, at: NOW, values: VALUES });
     expect(openUnsaved(null, ANA, "submission:1", NOW).found).toBeNull();
     expect(openUnsaved(null, ANA, "submission:1", NOW).write(4, VALUES)).toBe(true);
+  });
+});
+
+describe("a form writes only under the token it opened with", () => {
+  it("takes the token that is there as it is, and never writes it again", () => {
+    const store = new MemoryStore();
+    openUnsaved(store, ANA, "profile", NOW);
+    const raw = store.items.get(tokenKey(ANA));
+    // Another form of hers, a day later: the same token, its time untouched. Writing an old
+    // token back, even for its time alone, could undo a sign-out that came in between.
+    const second = openUnsaved(store, ANA, "submission:1", NOW + DAY);
+    expect(store.items.get(tokenKey(ANA))).toBe(raw);
+    expect(tokenKeys(store)).toEqual([tokenKey(ANA)]);
+    expect(second.write(2, { title: "One" }, undefined, NOW + DAY)).toBe(true);
+    expect(store.items.get(tokenKey(ANA))).toBe(raw);
+  });
+
+  it("does not undo a sign-out that happens while a form is opening", () => {
+    const store = new MemoryStore();
+    const old = openUnsaved(store, ANA, "profile", NOW);
+    // A second form opens while she signs out in another tab. No write of the opening form
+    // can come after the sign-out's: it writes nothing where a token is there.
+    store.beforeSet = () => {
+      throw new Error("opening a form under a token that is there wrote to the store");
+    };
+    openUnsaved(store, ANA, "submission:1", NOW + 1);
+    store.beforeSet = null;
+    forgetPerson(store, ANA, NOW + 2);
+    expect(old.write(null, { pronouns: "she" }, undefined, NOW + 3)).toBe(false);
+    expect(bufferKeys(store)).toEqual([]);
+  });
+
+  it("makes a new token where there is none, and where what is there is not one", () => {
+    const store = new MemoryStore();
+    store.items.set(tokenKey(ANA), '{"count":1,"at":5}');
+    const form = openUnsaved(store, ANA, "profile", NOW);
+    expect(store.items.get(tokenKey(ANA))).toBe(`${tokenOf(store, ANA)}:${NOW}`);
+    expect(form.write(null, { pronouns: "she" }, undefined, NOW)).toBe(true);
+  });
+
+  it("keeps nothing for a form that could get no token", () => {
+    const store = new MemoryStore();
+    writeUnsaved(store, ANA, "profile", null, { pronouns: "she" }, NOW);
+    // The store is full: it gives back what is there and takes nothing new.
+    store.refuse = "writes";
+    const form = openUnsaved(store, ANA, "profile", NOW + 1);
+    expect(form.found?.values).toEqual({ pronouns: "she" });
+    store.refuse = "nothing";
+    // With no token to hold, the form could not tell a sign-out: it writes nothing, for good.
+    expect(form.write(null, { pronouns: "she/her" }, undefined, NOW + 2)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", NOW + 2)?.values).toEqual({ pronouns: "she" });
+    expect(tokenKeys(store)).toEqual([]);
+  });
+
+  it("ends when the store was emptied, with or without word of it", () => {
+    const store = new MemoryStore();
+    const form = openUnsaved(store, ANA, "profile", NOW);
+    form.write(null, { pronouns: "she" }, undefined, NOW);
+    // The browser's "clear site data", while this tab was asleep: no storage event reached it.
+    store.items.clear();
+    expect(form.write(null, { pronouns: "she/her" }, undefined, NOW + 1)).toBe(false);
+    expect(store.items.size).toBe(0);
+    // And for good: a form of hers opened later, under a new token, does not bring it back.
+    const later = openUnsaved(store, ANA, "submission:1", NOW + 2);
+    expect(later.write(2, { title: "One" }, undefined, NOW + 2)).toBe(true);
+    expect(form.write(null, { pronouns: "she" }, undefined, NOW + 3)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", NOW + 3)).toBeNull();
+  });
+
+  it("ends when what is under its person's key is no longer a token", () => {
+    const store = new MemoryStore();
+    const form = openUnsaved(store, ANA, "profile", NOW);
+    form.write(null, { pronouns: "she" }, undefined, NOW);
+    store.items.set(tokenKey(ANA), "not a token");
+    expect(form.signedOut()).toBe(true);
+    expect(form.write(null, { pronouns: "she/her" }, undefined, NOW + 1)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", NOW + 1)?.values).toEqual({ pronouns: "she" });
+  });
+
+  it("ends when another token is there, whatever its time says", () => {
+    const store = new MemoryStore();
+    const form = openUnsaved(store, ANA, "profile", NOW);
+    const opened = tokenOf(store, ANA) as string;
+    // The same token with another time is still the one it opened under.
+    store.items.set(tokenKey(ANA), `${opened}:${NOW - 400 * DAY}`);
+    expect(form.write(null, { pronouns: "she" }, undefined, NOW)).toBe(true);
+    // Another token is not, with the very time of the first.
+    store.items.set(tokenKey(ANA), stored("b", NOW));
+    expect(form.write(null, { pronouns: "she/her" }, undefined, NOW + 1)).toBe(false);
   });
 });
 
@@ -429,7 +584,7 @@ describe("one person's sign-out is not another's", () => {
 
     // Bruno never signed out: his form goes on keeping what he types, and gives it back.
     expect(bruno.signedOut()).toBe(false);
-    expect(bruno.changedElsewhere(signOutsKey(ANA))).toBe(false);
+    expect(bruno.changedElsewhere(tokenKey(ANA))).toBe(false);
     expect(bruno.write(1, { displayName: "Bruno, a second draft" }, undefined, NOW + 2)).toBe(true);
     expect(readUnsaved(store, BRUNO, "profile", NOW + 2)?.values).toEqual({
       displayName: "Bruno, a second draft",
@@ -437,7 +592,7 @@ describe("one person's sign-out is not another's", () => {
 
     // His own sign-out ends it, as before.
     forgetPerson(store, BRUNO, NOW + 3);
-    expect(bruno.changedElsewhere(signOutsKey(BRUNO))).toBe(true);
+    expect(bruno.changedElsewhere(tokenKey(BRUNO))).toBe(true);
     expect(bruno.write(1, { displayName: "Bruno, a third" }, undefined, NOW + 4)).toBe(false);
     expect(bufferKeys(store)).toEqual([]);
   });
@@ -446,10 +601,10 @@ describe("one person's sign-out is not another's", () => {
     const store = new MemoryStore();
     const form = openUnsaved(store, ANA, "profile", NOW);
     form.write(null, { pronouns: "she" }, undefined, NOW);
-    // Another tab wrote something of its own, a buffer of hers, or her count with no sign-out.
+    // Another tab wrote something of its own, a buffer of hers, or opened a form of hers.
     expect(form.changedElsewhere("theme")).toBe(false);
     expect(form.changedElsewhere(`elochair:unsaved:1:${ANA}:submission:1`)).toBe(false);
-    expect(form.changedElsewhere(signOutsKey(ANA))).toBe(false);
+    expect(form.changedElsewhere(tokenKey(ANA))).toBe(false);
     expect(form.write(null, { pronouns: "she/her" }, undefined, NOW + 1)).toBe(true);
     // It emptied the store (the browser's "clear site data"): nothing of hers goes back in.
     store.items.clear();
@@ -457,114 +612,131 @@ describe("one person's sign-out is not another's", () => {
     expect(form.write(null, { pronouns: "she" }, undefined, NOW + 2)).toBe(false);
     expect(store.items.size).toBe(0);
   });
-
-  it("sees a sign-out whose count reads the same as the one the form opened under", () => {
-    // The count she opened under went (it was removed), and her next sign-out counts 1 again.
-    const store = new MemoryStore();
-    forgetPerson(store, ANA, NOW);
-    const form = openUnsaved(store, ANA, "profile", NOW + 1);
-    store.items.delete(signOutsKey(ANA));
-    forgetPerson(store, ANA, NOW + 2);
-    expect(signOutCount(store, ANA)).toBe(1);
-    expect(form.write(null, { pronouns: "she" }, undefined, NOW + 3)).toBe(false);
-    expect(bufferKeys(store)).toEqual([]);
-  });
-
-  it("leaves nothing of a person behind for opening a form, and one note beside a count", () => {
-    const store = new MemoryStore();
-    openUnsaved(store, ANA, "profile", NOW);
-    expect(store.items.size).toBe(0);
-    forgetPerson(store, ANA, NOW);
-    openUnsaved(store, ANA, "profile", NOW + DAY);
-    expect(signOutKeys(store)).toEqual([signOutsKey(ANA), `${signOutsKey(ANA)}:seen`]);
-    expect(store.items.get(`${signOutsKey(ANA)}:seen`)).toBe(String(NOW + DAY));
-    // The note is beside the count, never in it: the count is as the sign-out wrote it.
-    expect(signOutsOf(store, ANA)).toEqual({ count: 1, at: NOW });
-  });
 });
 
-describe("a count of sign-outs does not stay for ever", () => {
-  it("goes 30 days after the sign-out, with nothing else of the store", () => {
+describe("a token does not stay for ever, and its going never lets a form write", () => {
+  it("goes 30 days after it was made, with nothing else of the store", () => {
     const store = new MemoryStore();
     store.items.set("theme", "dark");
     forgetPerson(store, ANA, NOW);
     forgetPerson(store, BRUNO, NOW + 2 * DAY);
     expireUnsaved(store, NOW + MAX_AGE_MS);
-    expect(signOutKeys(store)).toEqual([signOutsKey(ANA), signOutsKey(BRUNO)].sort());
+    expect(tokenKeys(store)).toEqual([tokenKey(ANA), tokenKey(BRUNO)].sort());
     expireUnsaved(store, NOW + MAX_AGE_MS + 1);
-    expect(signOutKeys(store)).toEqual([signOutsKey(BRUNO)]);
+    expect(tokenKeys(store)).toEqual([tokenKey(BRUNO)]);
     expireUnsaved(store, NOW + 2 * DAY + MAX_AGE_MS + 1);
     expect([...store.items.keys()]).toEqual(["theme"]);
   });
 
-  it("stays while a form opened under it may still write, and is never rewritten", () => {
-    const store = new MemoryStore();
-    forgetPerson(store, ANA, NOW);
-    const counted = store.items.get(signOutsKey(ANA));
-    // She is back 29 days later and opens a form. Another tab starts the app two days on.
-    const form = openUnsaved(store, ANA, "profile", NOW + 29 * DAY);
-    expireUnsaved(store, NOW + 31 * DAY);
-    expect(store.items.get(signOutsKey(ANA))).toBe(counted);
-    expect(form.signedOut()).toBe(false);
-    expect(form.write(null, { pronouns: "she" }, undefined, NOW + 31 * DAY)).toBe(true);
-    // 30 days after that form was opened the count goes, and the note beside it.
-    expireUnsaved(store, NOW + 59 * DAY + 1);
-    expect(signOutKeys(store)).toEqual([]);
-  });
-
-  it("stops a form that has been open for longer than a count is kept", () => {
-    // Opened with no sign-out on record. She signs out elsewhere a day later, and this tab
-    // hears nothing (it was asleep). 30 days on the count is gone again: that it reads as it
-    // did when the form opened is no proof that she never signed out.
+  it("stays past 30 days while that person has unsaved text here, and is never rewritten", () => {
     const store = new MemoryStore();
     const form = openUnsaved(store, ANA, "profile", NOW);
-    forgetPerson(store, ANA, NOW + DAY);
-    expireUnsaved(store, NOW + DAY + MAX_AGE_MS + 1);
-    expect(signOutsOf(store, ANA)).toBeNull();
-    expect(form.write(null, { pronouns: "she" }, undefined, NOW + DAY + MAX_AGE_MS + 2)).toBe(
-      false,
-    );
-    expect(store.items.size).toBe(0);
+    const raw = store.items.get(tokenKey(ANA));
+    expect(form.write(null, { pronouns: "she" }, undefined, NOW + 20 * DAY)).toBe(true);
+    // Bruno's token is as old as hers, and he left nothing unsaved.
+    openUnsaved(store, BRUNO, "profile", NOW);
 
-    // A form writes for 30 days from when it was opened, and then no more, for good.
-    const other = openUnsaved(store, BRUNO, "profile", NOW);
-    expect(other.write(null, { pronouns: "he" }, undefined, NOW + MAX_AGE_MS)).toBe(true);
-    expect(other.write(null, { pronouns: "he/him" }, undefined, NOW + MAX_AGE_MS + 1)).toBe(false);
-    expect(other.write(null, { pronouns: "he/him" }, undefined, NOW + 1)).toBe(false);
-    expect(readUnsaved(store, BRUNO, "profile", NOW + MAX_AGE_MS)?.values).toEqual({
-      pronouns: "he",
-    });
+    expireUnsaved(store, NOW + 31 * DAY);
+    expect(tokenKeys(store)).toEqual([tokenKey(ANA)]);
+    expect(store.items.get(tokenKey(ANA))).toBe(raw);
+    expect(form.write(null, { pronouns: "she/her" }, undefined, NOW + 31 * DAY)).toBe(true);
+
+    // She saves: nothing unsaved is left, and the token goes the next time the app starts. A
+    // form that was open through that keeps nothing from then on.
+    expect(form.write(null, {}, undefined, NOW + 32 * DAY)).toBe(true);
+    expireUnsaved(store, NOW + 32 * DAY);
+    expect(store.items.size).toBe(0);
+    expect(form.write(null, { pronouns: "they" }, undefined, NOW + 33 * DAY)).toBe(false);
+    expect(store.items.size).toBe(0);
   });
 
-  it("removes what is not a count, and a note left without one", () => {
+  it("does not let a signed-out form write once a clock put right has aged the token away", () => {
+    // The clock was at 2099 when Ana opened the form and signed out in another tab. It is put
+    // right, and the app starts twice, 30 days and a millisecond apart.
     const store = new MemoryStore();
-    store.items.set(signOutsKey(ANA), "not a count");
-    store.items.set(`${signOutsKey(ANA)}:seen`, String(NOW));
-    store.items.set(`${signOutsKey(BRUNO)}:seen`, String(NOW));
+    const wrong = Date.UTC(2099, 0, 1);
+    const right = Date.UTC(2026, 0, 1);
+    const form = openUnsaved(store, ANA, "profile", wrong);
+    forgetPerson(store, ANA, wrong);
+    expireUnsaved(store, right);
+    expireUnsaved(store, right + MAX_AGE_MS + 1);
+    expect(tokenOf(store, ANA)).toBeNull();
+    const at = right + MAX_AGE_MS + 2;
+    expect(form.write(null, { "bios.en": "Ana secret draft" }, undefined, at)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", at)).toBeNull();
+    expect(store.items.size).toBe(0);
+  });
+
+  it("does not let it write after a clock was put back by an hour, either", () => {
+    // The clock was an hour fast when the form opened, and right when she signed out a minute
+    // later. By its own times the form is younger than the token's 30 days when that goes.
+    const store = new MemoryStore();
+    const form = openUnsaved(store, ANA, "profile", NOW + HOUR);
+    forgetPerson(store, ANA, NOW + 60_000);
+    const gone = NOW + 60_000 + MAX_AGE_MS + 1;
+    expireUnsaved(store, gone);
+    expect(tokenOf(store, ANA)).toBeNull();
+    expect(form.write(null, { "bios.en": "Ana secret draft" }, undefined, gone + 1)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", gone + 1)).toBeNull();
+    expect(store.items.size).toBe(0);
+  });
+
+  it("keeps a form ended when its token went and a new form of that person made another", () => {
+    const store = new MemoryStore();
+    const old = openUnsaved(store, ANA, "profile", NOW);
+    forgetPerson(store, ANA, NOW + DAY);
+    expireUnsaved(store, NOW + DAY + MAX_AGE_MS + 1);
+    expect(tokenKeys(store)).toEqual([]);
+    // She is back, and a new form of hers makes a new token: not the one the old form holds.
+    const next = openUnsaved(store, ANA, "submission:1", NOW + 40 * DAY);
+    expect(next.write(2, { title: "One" }, undefined, NOW + 40 * DAY)).toBe(true);
+    expect(old.signedOut()).toBe(true);
+    expect(old.write(null, { pronouns: "she" }, undefined, NOW + 40 * DAY)).toBe(false);
+    expect(readUnsaved(store, ANA, "profile", NOW + 40 * DAY)).toBeNull();
+  });
+
+  it("removes what is not a token", () => {
+    const store = new MemoryStore();
+    store.items.set(tokenKey(ANA), "not a token");
+    store.items.set(`${tokenKey(BRUNO)}:seen`, String(NOW));
     store.items.set("theme", "dark");
     expireUnsaved(store, NOW);
     expect([...store.items.keys()]).toEqual(["theme"]);
   });
 
-  it("counts a time ahead of the clock from the moment it is noticed", () => {
+  it("removes a token whose time is ahead of the clock, and never puts its time right", () => {
     const store = new MemoryStore();
     const wrong = Date.UTC(2099, 0, 1);
-    forgetPerson(store, ANA, wrong);
-    const counted = store.items.get(signOutsKey(ANA));
+    // A moment ahead is two tabs a moment apart: it stays.
+    store.items.set(tokenKey(BRUNO), stored("b", NOW + 60_000));
+    // Years ahead is a clock that was wrong. With unsaved text of hers here it stays, as it is.
+    const form = openUnsaved(store, ANA, "profile", wrong);
+    const raw = store.items.get(tokenKey(ANA));
+    form.write(null, { pronouns: "she" }, undefined, wrong);
     expireUnsaved(store, NOW);
-    expect(store.items.get(signOutsKey(ANA))).toBe(counted);
-    expect(store.items.get(`${signOutsKey(ANA)}:seen`)).toBe(String(NOW));
-    expireUnsaved(store, NOW + MAX_AGE_MS);
-    expect(store.items.get(signOutsKey(ANA))).toBe(counted);
-    expireUnsaved(store, NOW + MAX_AGE_MS + 1);
-    expect(signOutKeys(store)).toEqual([]);
-    // A note written under the wrong clock is put right the same way.
-    forgetPerson(store, BRUNO, NOW);
-    store.items.set(`${signOutsKey(BRUNO)}:seen`, String(wrong));
-    expireUnsaved(store, NOW + 40 * DAY);
-    expect(store.items.get(`${signOutsKey(BRUNO)}:seen`)).toBe(String(NOW + 40 * DAY));
-    expireUnsaved(store, NOW + 70 * DAY + 1);
-    expect(signOutKeys(store)).toEqual([]);
+    expect(store.items.get(tokenKey(ANA))).toBe(raw);
+    expect(store.items.get(tokenKey(BRUNO))).toBe(stored("b", NOW + 60_000));
+    expect(form.write(null, { pronouns: "she/her" }, undefined, NOW)).toBe(true);
+    // Without it, the token goes at once.
+    form.write(null, {}, undefined, NOW);
+    expireUnsaved(store, NOW);
+    expect(tokenKeys(store)).toEqual([tokenKey(BRUNO)]);
+  });
+
+  it("leaves a token that a sign-out puts there while the old one is being removed", () => {
+    const store = new MemoryStore();
+    store.items.set("theme", "dark");
+    forgetPerson(store, ANA, NOW);
+    // The app starts in one tab 31 days on; in that instant she signs out in another.
+    const get = store.getItem.bind(store);
+    let reads = 0;
+    store.getItem = (key: string) => {
+      const value = get(key);
+      if (key === tokenKey(ANA) && ++reads === 1) forgetPerson(store, ANA, NOW + 31 * DAY);
+      return value;
+    };
+    expireUnsaved(store, NOW + 31 * DAY);
+    expect(tokenOf(store, ANA)).not.toBeNull();
   });
 
   it("never throws when the store refuses everything", () => {

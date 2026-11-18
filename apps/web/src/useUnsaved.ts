@@ -11,9 +11,9 @@ import {
 const DELAY_MS = 400;
 
 /**
- * Each person's sign-outs in this tab. The count every tab shares is kept in the store, for
- * each person apart (unsaved.ts); this one also ends that person's forms in this tab where the
- * store could not take the new count.
+ * Each person's sign-outs in this tab. What every tab shares is the person's token in the store
+ * (unsaved.ts), which a sign-out replaces; this count also ends that person's forms in this tab
+ * where the store could not be written to.
  */
 const signOutsHere = new Map<string, number>();
 const signOutsHereOf = (personId: string | null) =>
@@ -57,8 +57,8 @@ export function useUnsaved(personId: string | null, scope: string) {
     pending.current = null;
     if (!next || !buffer) return;
     if (signOutsAtStart.current !== signOutsHereOf(personId)) end();
-    // The store's count of this person's sign-outs is read again in here, immediately before
-    // the write.
+    // The person's token in the store is read again in here, immediately before the write and
+    // after it.
     else if (!buffer.write(next.version, next.values, next.bases)) end();
   }, [buffer, end, personId]);
 
@@ -82,9 +82,10 @@ export function useUnsaved(personId: string | null, scope: string) {
     const hidden = () => {
       if (document.visibilityState === "hidden") flush();
     };
-    // Another tab changed the store. If it counted a sign-out of this person, or emptied the
-    // store, what waits here to be written is dropped at once, and not only at the next attempt
-    // to write. Anything else it did there, another person's sign-out included, is not ours.
+    // Another tab changed the store. If it replaced or removed this person's token (a sign-out),
+    // or emptied the store, what waits here to be written is dropped at once, and not only at
+    // the next attempt to write. Anything else it did there, another person's sign-out
+    // included, is not ours.
     const stored = (event: StorageEvent) => {
       if (event.storageArea !== null && event.storageArea !== browserStore()) return;
       if (buffer?.changedElsewhere(event.key)) end();

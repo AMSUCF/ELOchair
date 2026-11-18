@@ -925,7 +925,7 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(page)).toEqual([]);
-  // What stays after a sign-out is a count of sign-outs for each of them: no word of theirs.
+  // What stays after a sign-out is a random token for each of them: no word of theirs.
   const kept = await wholeStore(page);
   expect(kept).not.toContain("poems");
   expect(kept).not.toContain("machines");
