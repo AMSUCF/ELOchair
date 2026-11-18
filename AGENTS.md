@@ -59,7 +59,7 @@ These are invariants. Do not trade them away for convenience.
 
 5. **People approve irreversible actions.**
    - Sending mail to participants, recording decisions and publishing follow *plan → approve*. An agent may create the plan; only a person, in the web UI, approves it.
-   - Conference configuration changes are human-only.
+   - Conference configuration changes are human-only. Chairs change the stage-one values in the app, admins anything (spec 02, §1.9); a change never makes submitted work invalid.
 
 6. **Everything is audited.** Every mutation calls `audit()`. Agent requests are audited automatically by middleware. The audit table is append-only, enforced by a database trigger.
 

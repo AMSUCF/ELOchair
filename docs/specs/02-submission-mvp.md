@@ -133,6 +133,30 @@ The call was published in November 2026 at <https://elo27.eliterature.org/>. `pa
 - **Where the call is silent, earlier defaults stand** until the organisers say otherwise: three anonymized reviews for the call's "academic" formats and two with names visible for its "artistic" ones; team sizes (a panel may have up to 24 people: six talks of up to four authors each, so that co-authors are never refused); panels not counting toward the cap of two; one bio limit of 300 words for the whole conference (the call asks for 250, and 200–300 for the exhibition: [issue #17](https://github.com/AMSUCF/ELOchair/issues/17)).
 - **Panels** hold their papers' abstracts in one required field until submissions can carry them as separate items ([issue #15](https://github.com/AMSUCF/ELOchair/issues/15)).
 
+### 1.9 Conference settings
+Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked from "Manage submissions"). This is stage one: existing values only. Adding, removing or reordering formats and fields is still done by importing a configuration.
+
+- **Who.** Configuration changes are human-only: agents are refused, whoever they act for.
+  - **Chairs** (`isConferenceChair`: the `chair` and `admin` roles, and site admins) may change the stage-one values. Track chairs and reviewers may not open the screen.
+  - **Admins** may change anything, as before (through the API; the screen offers the stage-one values to everyone).
+  - **The stage-one values** are defined once, in `packages/schema/src/settings.ts`, which the server enforces and the screen renders from:
+    - the conference: title, theme, host, place, modality, contact email, website, dates, the "provisional" mark
+    - the four deadlines
+    - the presenter cap's number and the bio word limit (where the conference has those rules)
+    - of each existing format: name, description, what the abstract is called, its fewest and most words, minutes on the program, fewest and most people
+    - of each existing field: label, help text, whether it is required, most words, and for a number field its range and "whole numbers only"
+    - the names and descriptions of formats not submitted here, and the names of existing tracks and topics
+  - **Everything else is an admin's:** adding, removing, reordering or re-keying anything; the slug, year, time zone and languages; review pools, criteria and blind modes; agreements (consent is recorded against their versions); a field's kind, options, `identifying` and `public`; a format's review pool. A chair's save that changes any of it is refused with 403 and the paths.
+- **Submitted work stays valid.** A save is checked, under the conference's row lock, against every proposal that has been sent in and not withdrawn or turned down, with the validation the submit path uses. If one of them would gain a problem it does not have now, nothing is saved: 409 `submitted_work_invalid`, with the count, the counts by problem, and the IDs of those the person may manage as a chair (their own and conflicted work is only counted). Admins are held to it too.
+  - **Drafts never block.** The review says how many drafts would gain a problem.
+  - Writes to a submission share the conference's row, so a save and a write wait for each other: the write is checked against the configuration in force when it commits.
+- **Review before saving.** `POST …/config/preview` saves nothing and answers with the changed values (before and after), schema problems by value, what blocks, and what warns: drafts affected, a call that this would open or close at that moment, a deadline moved into the past. The screen always shows this before "Save changes", and offers no save while something blocks.
+- **Two people at once.** A save names the configuration it started from (`If-Match`, a token of the stored configuration, given by `GET …/settings`). When that is no longer the stored one the save is refused with 409 `stale`, and the screen offers to reload; what was typed stays in the form.
+- **Deadlines keep their offset.** A deadline is shown and edited as its date, its time and its UTC offset, each as stored. The offset changes only when someone writes another one. As it is typed, the screen says which instant it is in the conference's time zone and in the reader's.
+- **Texts** are edited in each language of the conference; the default language is required.
+- **Audit.** One `conference.config_updated` entry per save, with every changed value's path, before and after, and how many drafts were affected. A configuration holds no personal data.
+- **Not yet:** the CLI's `import-config` does not apply the submitted-work check.
+
 ## 2. Contracts
 
 ### 2.1 One query, one shape
@@ -190,11 +214,14 @@ The call was published in November 2026 at <https://elo27.eliterature.org/>. `pa
 | `POST /api/me/invitations/:submissionId/answer` | person | same as above, by session |
 | `PUT /api/me/profile` | person | strict |
 | `GET /api/conferences/:slug` | anyone who can see the conference | configuration, phase and `callOpen` (server clock) |
+| `GET /api/conferences/:slug/settings` | chair or admin (human) | configuration, its token, and `scope` (`stage_one` or `all`); §1.9 |
+| `POST /api/conferences/:slug/config/preview` | chair or admin (human) | the configuration as it would be saved; saves nothing; §1.9 |
+| `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 403 with `paths` for what a chair may not change; 409 `stale` or `submitted_work_invalid`; row-locked, audited; §1.9 |
 | `PUT /api/conferences/:slug/phase` | admin (human) | forward only unless `force` + `reason`; row-locked |
 | `GET /api/conferences/:slug/submissions` | per policy | `SubmissionQuery` |
 | `GET /api/conferences/:slug/submissions.csv` and `contributors.csv` | chair (human), or tier C on internal | §2.3 |
 
-Write routes have a 64 KB body limit and 60 writes a minute per person. Input schemas cap characters: title 300, abstract 8 × maxWords, each field 10,000.
+Write routes have a 64 KB body limit (256 KB for a whole configuration) and 60 writes a minute per person. Input schemas cap characters: title 300, abstract 8 × maxWords, each field 10,000.
 
 ### 2.3 CSV exports
 - **Rows:** only submissions where `submissionAccess(person, r) === "chair"` (so a chair's own and conflicted submissions are left out). The response says how many were omitted (`X-Omitted-Rows`, the list's `excludedCount`). List filters apply. Every matching row is included: the server pages internally and ignores any `cursor` or `limit`.
