@@ -110,7 +110,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 ### 1.7 What ELO's formats need now
 - **`participationMode`** (`in_person`, `online` or `undecided`) is a core submission field. It is required when the conference is hybrid, and it is visible to tier M as an enumeration.
 - **`language`** is the language of the abstract, one of the conference's languages.
-- **Panels** get one session abstract. Per-paper panel abstracts (2022, 2025) depend on the Barranquilla CFP; see Deferred.
+- **Panels** had one session abstract in 2026. ELO 2027's call asks for a rationale and an abstract for each paper: §1.8 says how a panel holds them for now, and [Deferred](#deferred) what is still to come.
 
 ### 1.8 ELO 2027's formats
 The call was published in November 2026 at <https://elo27.eliterature.org/>. `packages/schema/src/conferences/elo2027.ts` follows it, and `packages/schema/src/elo2027.test.ts` is the record of what it says.
