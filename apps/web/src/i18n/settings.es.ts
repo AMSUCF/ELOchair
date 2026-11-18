@@ -70,6 +70,9 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsNo: "no",
   settingsSave: "Guardar los cambios",
   settingsSaved: "Configuración guardada.",
+  settingsSavedMore:
+    "Configuración guardada. Lo que cambiaste mientras se guardaba sigue en el formulario, aún sin guardar.",
+  settingsNotSaved: "Estos cambios no se guardaron. Revisa de nuevo tus cambios.",
   settingsFixFirst: "Corrige lo siguiente antes de guardar estos cambios:",
   settingsBlocked:
     "Estos cambios no se pueden guardar. Propuestas enviadas que dejarían de ser válidas: {count}.",

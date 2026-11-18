@@ -23,6 +23,7 @@ import { formatDateTime, viewerTimeZone } from "../format";
 import { describedBy, ErrorSummary, FieldError, fieldId } from "../forms";
 import { isMessageKey, LANG_NAMES, type MessageKey, useT } from "../i18n";
 import { deadlineKey, modalityKey } from "../labels";
+import { DATETIME, type Edits, editsAfterSave, parts, type Raw, rawOf } from "../settingsEdits";
 import { Localized, PageHeading } from "../ui";
 
 /*
@@ -94,18 +95,6 @@ const LABELS: Record<SettingId, MessageKey> = {
   "topic.label": "settingsLabel_topic_label",
 };
 
-/** What is in a control: text as typed, or a ticked box. */
-type Raw = string | boolean;
-/**
- * What the person has typed and not saved, by setting path. A deadline is typed in three parts,
- * kept under its path with "#date", "#time" and "#offset". Only values that differ from the
- * configuration are here, so an edit taken back is no change.
- */
-type Edits = Record<string, Raw>;
-
-const rawOf = (s: Setting): Raw =>
-  s.kind === "bool" ? s.value === true : s.value == null ? "" : String(s.value);
-
 /** The value a control stands for. Blank is absent; a blank number that is needed is null. */
 function typed(s: Setting, raw: Raw): unknown {
   // A box never ticked stays absent rather than becoming an explicit "no".
@@ -117,19 +106,6 @@ function typed(s: Setting, raw: Raw): unknown {
     return Number.isFinite(n) ? n : null;
   }
   return text === "" ? undefined : text;
-}
-
-const DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
-
-/** A stored instant as its date, its time and its offset, the way it was written. */
-function parts(iso: unknown) {
-  const m = typeof iso === "string" ? DATETIME.exec(iso) : null;
-  return {
-    date: m?.[1] ?? "",
-    time: m?.[2] ?? "",
-    seconds: m?.[3] ?? "00",
-    offset: m ? (m[4] === "Z" ? "+00:00" : (m[4] ?? "")) : "",
-  };
 }
 
 /**
@@ -206,6 +182,15 @@ function SettingsForm({
   const { lang, t } = useT();
   const [data, setData] = useState(initial);
   const [edits, setEdits] = useState<Edits>({});
+  /**
+   * The edits as they are at this very moment. The form stays open to typing while a request
+   * is on its way, and the answer to a save has to be set against what is typed by then.
+   */
+  const editsNow = useRef(edits);
+  const changeEdits = (next: Edits) => {
+    editsNow.current = next;
+    setEdits(next);
+  };
   /** The server's review, and the exact configuration it was a review of. */
   const [review, setReview] = useState<{ of: string; result: Review } | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -259,12 +244,10 @@ function SettingsForm({
 
   const set = (path: string, raw: Raw, stored: Raw) => {
     setMessage("");
-    setEdits((current) => {
-      const next = { ...current };
-      if (raw === stored) delete next[path];
-      else next[path] = raw;
-      return next;
-    });
+    const next = { ...editsNow.current };
+    if (raw === stored) delete next[path];
+    else next[path] = raw;
+    changeEdits(next);
   };
 
   /** One request at a time: a second tap while one is on its way does nothing. */
@@ -318,17 +301,28 @@ function SettingsForm({
 
   function save() {
     if (!shown?.canSave) return;
+    // What is sent is what was reviewed. The form stays open meanwhile: see editsAfterSave.
+    const sent = edits;
     return exclusive(async () => {
       const res = await api<{ config: ConferenceConfig; token: string }>(
         `/api/conferences/${data.slug}/config`,
         { method: "PUT", body: built, headers: based },
       );
       if (res.ok) {
-        setData({ ...data, config: res.data.config, token: res.data.token });
-        setEdits({});
+        // The saved configuration is the new base. Whatever was typed while the save was on
+        // its way stays in the form as an unsaved change to it, to be reviewed in its turn.
+        const saved = res.data.config;
+        const now = stageOneSettings(saved);
+        const typedSince = editsNow.current !== sent;
+        const left = editsAfterSave(sent, editsNow.current, settings, now);
+        const more = configChanges(saved, build(saved, now, left)).length > 0;
+        setData({ ...data, config: saved, token: res.data.token });
+        changeEdits(left);
         setReview(null);
         setIssues([]);
-        return say(t("settingsSaved"));
+        const text = t(more ? "settingsSavedMore" : "settingsSaved");
+        // Someone who is typing is not taken out of the form: the status line is a live region.
+        return typedSince ? setMessage(text) : say(text);
       }
       if (res.status === 409 && res.error === "stale") {
         setStale(true);
@@ -339,6 +333,10 @@ function SettingsForm({
       if (res.status === 409 && res.error === "submitted_work_invalid") {
         const blocked = res.body?.blocked as Review["blocked"];
         setReview({ of: builtKey, result: { ...shown, blocked, canSave: false } });
+        // Typed in since: that review is of something else and is not shown. Say so instead.
+        if (JSON.stringify(build(config, settings, editsNow.current)) !== builtKey) {
+          setMessage(t("settingsNotSaved"));
+        }
         return;
       }
       say(t(res.status === 403 ? "settingsNoAccess" : "errorGeneric"));

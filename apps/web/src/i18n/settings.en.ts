@@ -68,6 +68,9 @@ export const settingsEn = {
   settingsNo: "no",
   settingsSave: "Save changes",
   settingsSaved: "Settings saved.",
+  settingsSavedMore:
+    "Settings saved. What you changed while they were being saved is still in the form, not saved yet.",
+  settingsNotSaved: "These changes were not saved. Review your changes again.",
   settingsFixFirst: "Please fix the following before these changes can be saved:",
   settingsBlocked:
     "These changes cannot be saved. Submitted proposals that would no longer be valid: {count}.",

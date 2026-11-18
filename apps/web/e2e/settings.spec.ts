@@ -335,6 +335,81 @@ test.describe("conference settings", () => {
     await expect(date).not.toHaveAccessibleDescription(new RegExp(why));
   });
 
+  test("what is typed while a save is on its way stays in the form, to be reviewed in its turn", async () => {
+    test.slow();
+    await openSettings(chair);
+    await chair.locator("summary", { hasText: FORMAT }).click();
+    const most = formatSection(chair).getByLabel("Most words in the abstract");
+    await most.fill("310");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+
+    // The save is held on its way to the server, as on a slow connection.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let left = () => {};
+    const leaving = new Promise<void>((resolve) => {
+      left = resolve;
+    });
+    const saving = `**/api/conferences/${CALL}/config`;
+    await chair.route(saving, async (route) => {
+      if (route.request().method() === "PUT") {
+        left();
+        await held;
+      }
+      await route.continue();
+    });
+    await chair.getByRole("button", { name: "Save changes" }).click();
+    await leaving;
+
+    // Meanwhile the form is still open: the same value is typed again, and another is changed.
+    await most.fill("320");
+    const decisions = chair.getByRole("group", { name: "Decisions sent" });
+    const date = decisions.getByLabel("Date");
+    const before = await date.inputValue();
+    const after = new Date(Date.parse(`${before}T00:00:00Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await date.fill(after);
+    release();
+
+    // The page says what was saved and what was not, without taking the person out of the form.
+    await expect(chair.getByRole("status")).toHaveText(
+      "Settings saved. What you changed while they were being saved is still in the form, not saved yet.",
+    );
+    await expect(date).toBeFocused();
+    await chair.unroute(saving);
+    // What was reviewed is what was saved...
+    const stored = (await (
+      await chair.request.get(`/api/conferences/${CALL}/settings`)
+    ).json()) as {
+      config: { submissionTypes: { key: string; abstract: { maxWords: number } }[] };
+    };
+    expect(
+      stored.config.submissionTypes.find((type) => type.key === "performance")?.abstract.maxWords,
+    ).toBe(310);
+    // ...and what was typed since is still in the form, as changes to what was saved.
+    await expect(most).toHaveValue("320");
+    await expect(date).toHaveValue(after);
+    await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const review = chair.getByRole("region", { name: "Review your changes" });
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveCount(2);
+    await expect(review).toContainText("from “310” to “320”");
+    await expect(review).toContainText("Decisions sent");
+
+    // Back as they were, for the tests that run beside this one.
+    await most.fill("300");
+    await date.fill(before);
+    await reviewAndSave(chair);
+    await chair.goto(`/en/c/${CALL}`);
+    await expect(listedFormat(chair)).toContainText("300 words at most");
+  });
+
   test("settings that someone else changed meanwhile are reloaded, and what was typed stays", async () => {
     test.slow();
     await openSettings(chair);
