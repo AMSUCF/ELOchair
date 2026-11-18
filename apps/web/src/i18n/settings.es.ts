@@ -82,7 +82,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsWarnDrafts:
     "Borradores que tendrían un problema nuevo por resolver antes de poder enviarse: {n}.",
   settingsWarnCloses:
-    "Esto cierra la convocatoria en cuanto guardes: nadie podrá iniciar, editar, enviar ni retirar una propuesta.",
+    "Esto cierra la convocatoria en cuanto guardes: nadie podrá iniciar, editar ni enviar una propuesta, ni confirmar una invitación a una.",
   settingsWarnOpens: "Esto abre la convocatoria en cuanto guardes.",
   settingsWarnPast: "«{deadline}» quedaría en el pasado.",
   settingsForbidden: "Solo una persona administradora del congreso puede cambiar: {paths}.",

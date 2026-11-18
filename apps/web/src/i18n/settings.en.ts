@@ -80,7 +80,7 @@ export const settingsEn = {
   settingsWarnDrafts:
     "Drafts that would have a new problem to fix before they can be submitted: {n}.",
   settingsWarnCloses:
-    "This closes the call as soon as you save: nobody will be able to start, edit, submit or withdraw a proposal.",
+    "This closes the call as soon as you save: nobody will be able to start, edit or submit a proposal, or confirm an invitation to one.",
   settingsWarnOpens: "This opens the call as soon as you save.",
   settingsWarnPast: "“{deadline}” would be in the past.",
   settingsForbidden: "Only a conference admin may change: {paths}.",
