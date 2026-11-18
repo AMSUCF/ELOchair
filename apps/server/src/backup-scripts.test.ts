@@ -3,9 +3,10 @@
  * `npm run check` covers the retention policy and the backup's failure paths. The round trip
  * against Postgres, and the policy under dash/mawk and busybox, are in deploy/test/backup-e2e.sh.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -24,10 +25,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const RETENTION = fileURLToPath(new URL("../../../deploy/backup-retention.sh", import.meta.url));
 const BACKUP = fileURLToPath(new URL("../../../deploy/backup.sh", import.meta.url));
+const README = fileURLToPath(new URL("../../../deploy/README.md", import.meta.url));
 const PATH = process.env.PATH ?? "";
 
 /** Neither script is for Windows; elsewhere a missing shell is a failure, not a skip. */
 const posix = process.platform !== "win32";
+/** backup.sh locks only where flock is installed (the postgres image has it; macOS does not). */
+const hasFlock = posix && spawnSync("flock", ["--version"]).status === 0;
+/** The copy off the server is by rsync, which a development machine may not have. */
+const hasRsync = posix && spawnSync("rsync", ["--version"]).status === 0;
 
 interface Keep {
   hourly: number;
@@ -389,6 +395,8 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
         ...env,
       },
       encoding: "utf8",
+      // A command that waits for a lock it has no business waiting for fails here, not hangs.
+      timeout: 20_000,
     });
     if (r.error) throw r.error;
     return { status: r.status, out: r.stdout, err: r.stderr };
@@ -521,6 +529,68 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
     expect(present()).toEqual(old.slice(0, 2));
   });
 
+  it.skipIf(!hasFlock)(
+    "a prune run by hand waits for a dump or a restore that holds the directory; a dry run does not",
+    async () => {
+      const old = Array.from({ length: 4 }, (_, i) => ago(i * 3600));
+      touch(...old);
+      const keep = keepEnv({ ...OFF, hourly: 1 });
+      const held = join(dir, "held");
+      const release = join(dir, "release");
+      // Stands in for a dump in progress: it holds the directory's lock until it is told to let go.
+      const holder = spawn("flock", [
+        backups,
+        "sh",
+        "-c",
+        `touch "${held}"; while [ ! -e "${release}" ]; do sleep 0.05; done`,
+      ]);
+      const holderGone = new Promise((resolve) => holder.on("exit", resolve));
+      try {
+        while (!existsSync(held)) await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // A dry run only reads: it answers at once, lock or no lock.
+        const dry = backup(["prune", "--dry-run"], keep);
+        expect(dry.status).toBe(0);
+        expect(dry.out.trim().split("\n")).toHaveLength(3);
+        expect(present()).toEqual(old);
+
+        const pruning = spawn("bash", [BACKUP, "prune"], {
+          env: {
+            PATH: `${join(dir, "bin")}:${PATH}`,
+            BACKUP_DIR: backups,
+            BACKUP_TEST_NOW: String(NOW),
+            ...keep,
+          },
+        });
+        let ended = false;
+        const status = new Promise<number | null>((resolve) =>
+          pruning.on("exit", (code) => {
+            ended = true;
+            resolve(code);
+          }),
+        );
+        // Long enough for an unlocked prune to have finished many times over.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(ended).toBe(false);
+        expect(present()).toEqual(old);
+
+        writeFileSync(release, "");
+        expect(await status).toBe(0);
+        expect(present()).toEqual(old.slice(0, 1));
+      } finally {
+        writeFileSync(release, "");
+        await holderGone;
+      }
+    },
+    20_000,
+  );
+
+  it("prunes nothing, and waits for nothing, where there is no backup directory yet", () => {
+    const r = backup(["prune"], { BACKUP_DIR: join(dir, "not-there") });
+    expect(r.status).toBe(0);
+    expect(existsSync(join(dir, "not-there"))).toBe(false);
+  });
+
   it("removes a .partial left over for more than a day, going by its name and not its file time", () => {
     const stale = `${ago(86_400 + 60)}.partial`;
     const recent = `${ago(86_400 - 60)}.partial`;
@@ -637,4 +707,76 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
       [ago(0), ago(3600), ago(7200)].map((n) => `${n}  1 bytes`),
     );
   });
+});
+
+describe.skipIf(!posix)('deploy/README.md: the commands under "Off the server"', () => {
+  let dir: string;
+  let server: string;
+  let copy: string;
+  const NOW = seconds("2027-02-14T23:00:00Z");
+  /** Sixty hourly dumps, as the server holds them, and what else is in its directory. */
+  const dumps = Array.from({ length: 60 }, (_, i) => at(NOW - i * 3600));
+  const pinned = "before-the-deadline.dump";
+  const others = [pinned, `${at(NOW + 1800)}.partial`, ".gitignore"];
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "elochair-offserver-test-"));
+    server = join(dir, "server");
+    copy = join(dir, "copy");
+    mkdirSync(server);
+    mkdirSync(copy);
+    for (const n of [...dumps, ...others]) writeFileSync(join(server, n), n);
+    // The one thing the operator puts in the copy's directory by hand.
+    copyFileSync(RETENTION, join(copy, "backup-retention.sh"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  /** The one command of that section that starts with `start`, exactly as it is written there. */
+  function documented(start: string): string {
+    const section =
+      readFileSync(README, "utf8").split("\n### Off the server\n")[1]?.split("\n### ")[0] ?? "";
+    const lines = section.split("\n").filter((line) => line.startsWith(start));
+    expect(lines).toHaveLength(1);
+    return lines[0] ?? "";
+  }
+  const inCopy = (command: string, env: Record<string, string> = {}) =>
+    spawnSync("sh", ["-c", command], { cwd: copy, env: { PATH, ...env }, encoding: "utf8" });
+  const held = () => readdirSync(copy).sort();
+  const withScript = (names: string[]) => [...names, "backup-retention.sh"].sort();
+
+  it("keeps a copy of the dumps to the policy's rolling set, by their names alone", () => {
+    const prune = documented("ls | sh ./backup-retention.sh prune");
+    for (const n of [...dumps, pinned, "notes.txt"]) writeFileSync(join(copy, n), n);
+
+    // A setting that is not a whole number deletes nothing.
+    inCopy(prune, { BACKUP_KEEP_DAILY: "lots" });
+    expect(held()).toEqual(withScript([...dumps, pinned, "notes.txt"]));
+
+    expect(inCopy(prune).status).toBe(0);
+    const stay = expectedToStay(dumps, DEFAULTS);
+    expect(stay.length).toBeLessThan(dumps.length);
+    expect(held()).toEqual(withScript([...stay, pinned, "notes.txt"]));
+  });
+
+  it.skipIf(!hasRsync)(
+    "copies every finished dump and nothing else, deletes nothing on the server, and settles",
+    () => {
+      const written = documented("rsync -a ");
+      const pull = written.replace("<user>@<server>:/srv/elochair/deploy/backups/", `"${server}/"`);
+      expect(pull).not.toBe(written);
+      const prune = documented("ls | sh ./backup-retention.sh prune");
+      const stay = expectedToStay(dumps, DEFAULTS);
+
+      expect(inCopy(pull).status).toBe(0);
+      expect(held()).toEqual(withScript([...dumps, pinned]));
+      expect(inCopy(prune).status).toBe(0);
+      expect(held()).toEqual(withScript([...stay, pinned]));
+
+      // The next round fetches again what the server still has, and ends with the same set.
+      expect(inCopy(pull).status).toBe(0);
+      expect(inCopy(prune).status).toBe(0);
+      expect(held()).toEqual(withScript([...stay, pinned]));
+      expect(readdirSync(server).sort()).toEqual([...dumps, ...others].sort());
+    },
+  );
 });

@@ -28,7 +28,7 @@ No single machine can both add to the bucket and empty it, and neither can read 
 
 So a bucket can hold a few objects beyond the bound until someone deletes them with a key that can; the log names them. If the bucket holds nothing but dumps stamped ahead, the uploader cannot tell whether they or its own clock are wrong, and uploads only its newest dump, not its history.
 
-The retention policy is shared with the server's own rolling backups in `deploy/backups/`, so the disk and the bucket keep the same set: the newest dump of each of the last 48 hours, 14 days, 8 weeks and 12 months that have a dump, and always the newest dump. The four settings are `BACKUP_KEEP_HOURLY`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` and `BACKUP_KEEP_MONTHLY`. **The pruner's machine and the server must use the same four values.** The defaults are the same on both, so leave them alone unless you change them in both places.
+The retention policy is the one the server's own rolling backups in `deploy/backups/` use, so the disk and the bucket keep the same set. It is described once, under "What is kept" in [README.md](README.md): in short, the newest dump of each of the last 48 hours, 14 days, 8 weeks and 12 months that have a dump, and always the newest dump. The four settings are `BACKUP_KEEP_HOURLY`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` and `BACKUP_KEEP_MONTHLY`. **The pruner's machine and the server must use the same four values.** The defaults are the same on both, so leave them alone unless you change them in both places.
 
 ## 1. Create the bucket and the two keys
 

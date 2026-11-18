@@ -139,7 +139,42 @@ docker compose -f deploy/docker-compose.yml run --rm backup now
 
 ### Off the server
 
-**A backup on the same disk is not a backup.** `deploy/backups/` covers a bad upgrade or a mistaken deletion, not the loss of the server. Copy the dumps somewhere else as well: see [backup-offsite.md](backup-offsite.md).
+**A backup on the same disk is not a backup.** `deploy/backups/` covers a bad upgrade or a mistaken deletion, not the loss of the server. Until the dumps are also copied somewhere else, losing the server loses them with the database, and the backup service will not say so: it is healthy either way.
+
+There are two ways to copy them, and either one is enough:
+
+- **To a bucket, automatically.** [backup-offsite.md](backup-offsite.md) sets up a second service on the server that uploads every finished dump to S3-compatible object storage, and a pruner on another machine that keeps the bucket to the same rolling set. The uploader reports `unhealthy` when the newest dump is not in the bucket.
+- **To another machine, which pulls them.** No bucket and no extra service: the other machine fetches the dumps over SSH, so that the server holds no key to the place its backups go. Nothing reports when this stops.
+
+For the second way, on the other machine, make a private directory and put a copy of `deploy/backup-retention.sh` in it:
+
+```bash
+mkdir -p ~/elochair-backups && chmod 700 ~/elochair-backups
+cp deploy/backup-retention.sh ~/elochair-backups/      # from a checkout of this repository
+```
+
+Then run these every hour, from cron or a scheduled task. `<user>` is whoever owns `deploy/backups/` on the server: the dumps are readable by nobody else.
+
+```bash
+cd ~/elochair-backups
+rsync -a --include='*.dump' --exclude='*' <user>@<server>:/srv/elochair/deploy/backups/ .
+ls | sh ./backup-retention.sh prune | while IFS= read -r name; do rm -f -- "$name"; done
+```
+
+- The `rsync` line copies every finished dump the copy does not have yet, and never a `.partial`. It deletes nothing, in the copy or on the server.
+- The last line keeps the copy to the same rolling set as the server, 82 dumps at most. The policy reads the file names and prints the ones to delete. Set the same four `BACKUP_KEEP_*` values for it if you changed them on the server.
+- A dump you copied to a name of your own on the server is copied too, and is never deleted.
+- If a setting is not a whole number the policy prints nothing, so nothing is deleted.
+- While the server cannot be reached the copy stays as it is. Nothing ages out of it, because the policy counts dumps, not days.
+- Nothing reports that the copying has stopped. Look at the newest file there now and then, or have the other machine's own monitoring do it.
+
+The key that machine uses can read every dump, so let it do nothing else. Where `rrsync` is installed on the server (it comes with the rsync package on Ubuntu 24.04), a line like this in `<user>`'s `~/.ssh/authorized_keys` confines the key to reading that one directory:
+
+```
+command="rrsync -ro /srv/elochair/deploy/backups",restrict ssh-ed25519 AAAA... elochair-backup-pull
+```
+
+The key then sees that directory as `/`, so the source in the `rsync` line becomes `<user>@<server>:/`.
 
 The dumps hold the database and nothing else. `deploy/.env` is not in them; keep a copy of it somewhere safe and separate.
 
@@ -209,9 +244,11 @@ The backup service was checked on 2026-11-17, in a development sandbox and in CI
 - The retention policy gives the same answer in the `postgres:16` image (dash and mawk), in the `rclone/rclone` image (busybox) and on the machine that runs the test.
 - With the backup directory read-only, the service turns `unhealthy` once the newest dump is too old, keeps running, logs the failure, and takes a dump by itself when the directory is writable again.
 
-`npm run check` covers the retention policy and the failure paths of `backup.sh` (`apps/server/src/backup-scripts.test.ts`), among them a dump or a name the disk does not take, with a stand-in for `sync` that fails: nothing older is deleted then.
+`npm run check` covers the retention policy and the failure paths of `backup.sh` (`apps/server/src/backup-scripts.test.ts`), among them a dump or a name the disk does not take, with a stand-in for `sync` that fails: nothing older is deleted then. It also checks that a prune run by hand waits for a dump or a restore in progress, and it runs the two commands under "Off the server" as they are written there, between two directories.
 
-Not checked: a database of real size (the test database is almost empty, so how long a dump or a restore takes is unknown), a full disk, and an upgrade on a server that was running without the backup service.
+The commands under "Off the server" were run by hand on 2026-11-18 between two directories on one machine: the copy took 60 dumps and one under a name of its own, left the `.partial` behind, and was cut to the 49 the policy keeps of them. With `rrsync -ro` standing where SSH would run it, the copy still worked and a write to the server's directory was refused.
+
+Not checked: a database of real size (the test database is almost empty, so how long a dump or a restore takes is unknown), a full disk, an upgrade on a server that was running without the backup service, and the copy off the server over a real SSH connection between two machines, including the `authorized_keys` line.
 
 ## Needed from ELO's server administrator
 
