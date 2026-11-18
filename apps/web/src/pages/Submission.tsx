@@ -34,7 +34,7 @@ import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
-import { type ProposalForm as Form, withUnsaved } from "../unsavedProposal";
+import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsavedProposal";
 import { useUnsaved } from "../useUnsaved";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
@@ -800,7 +800,7 @@ function Editor({
           ))}
         </select>
 
-        {config.modality === "hybrid" && (
+        {showsControl("participationMode", config, type) && (
           <fieldset id={fieldId("participationMode")} tabIndex={-1} disabled={!editable}>
             <legend>{t("startMode")}</legend>
             {(["in_person", "online", "undecided"] as const).map((m) => (
@@ -818,7 +818,7 @@ function Editor({
           </fieldset>
         )}
 
-        {config.tracks.length > 0 && (
+        {showsControl("trackKey", config, type) && (
           <>
             <label htmlFor={fieldId("trackKey")}>{t("editTrack")}</label>
             <select
@@ -837,7 +837,7 @@ function Editor({
           </>
         )}
 
-        {config.topics.length > 0 && (
+        {showsControl("topicKeys", config, type) && (
           <fieldset id={fieldId("topicKeys")} tabIndex={-1} disabled={!editable}>
             <legend>{t("editTopics")}</legend>
             {config.topics.map((x) => (

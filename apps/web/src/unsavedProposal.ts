@@ -35,9 +35,42 @@ export function fitField(field: CustomField, v: UnsavedValue): FieldValue | unde
 }
 
 /**
- * `base` with unsaved values from the browser put back. Whatever no longer fits the form is
- * left out, so it is neither shown nor sent: a field the format no longer has, a language, a
- * track or a topic the conference no longer offers, a value of the wrong kind.
+ * Whether the editor shows a control for this path of the form, as the conference is configured
+ * now. The editor renders by it, and withUnsaved() restores by it, so the two cannot drift: a
+ * value with no control on screen is never put back. Its owner could neither see it nor change
+ * it, and it would go out with the next save.
+ */
+export function showsControl(
+  path: string,
+  config: Pick<ConferenceConfig, "modality" | "tracks" | "topics">,
+  type: SubmissionType | undefined,
+): boolean {
+  switch (path) {
+    case "title":
+    case "abstract":
+    case "language":
+      return true;
+    // How someone takes part is a question only where there is a choice.
+    case "participationMode":
+      return config.modality === "hybrid";
+    case "trackKey":
+      return config.tracks.length > 0;
+    case "topicKeys":
+      return config.topics.length > 0;
+    default: {
+      if (!path.startsWith("fields.")) return false;
+      const key = path.slice("fields.".length);
+      return type?.fields.some((f) => f.key === key) ?? false;
+    }
+  }
+}
+
+/**
+ * `base` with unsaved values from the browser put back. A value comes back only where the
+ * editor shows its control (showsControl), and only if it still fits: a field the format no
+ * longer has, a way of taking part where the conference no longer offers the choice, a
+ * language, a track or a topic that is gone, a value of the wrong kind are all left out, so
+ * they are neither shown nor sent.
  */
 export function withUnsaved(
   base: ProposalForm,
@@ -47,6 +80,7 @@ export function withUnsaved(
 ): ProposalForm {
   const out: ProposalForm = { ...base, topicKeys: [...base.topicKeys], fields: { ...base.fields } };
   for (const [path, v] of Object.entries(values)) {
+    if (!showsControl(path, config, type)) continue;
     if (path === "title" || path === "abstract") {
       if (typeof v === "string") out[path] = v;
     } else if (path === "language") {

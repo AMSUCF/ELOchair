@@ -1,7 +1,7 @@
 import type { ConferenceConfig, CustomField, SubmissionType } from "@elochair/schema";
 import { describe, expect, it } from "vitest";
 import { readUnsaved, type Store, writeUnsaved } from "./unsaved";
-import { fitField, type ProposalForm, withUnsaved } from "./unsavedProposal";
+import { fitField, type ProposalForm, showsControl, withUnsaved } from "./unsavedProposal";
 
 /** A made-up format's field: only what restoring looks at is filled in. */
 const field = (key: string, kind: CustomField["kind"], more: Partial<CustomField> = {}) =>
@@ -40,13 +40,17 @@ const fields: CustomField[] = [
   field("room", "select", { options: options("small", "large") }),
   field("gear", "multiselect", { options: options("screen", "sound") }),
 ];
-// Restoring reads a format's fields and a conference's languages, tracks and topics: no more.
+// Restoring reads a format's fields and a conference's modality, languages, tracks and topics:
+// no more.
 const type = { key: "workshop", fields } as unknown as SubmissionType;
 const config = {
+  modality: "hybrid",
   languages: ["en", "es"],
   tracks: [{ key: "main", name: { en: "Main" } }],
   topics: [{ key: "sound", label: { en: "Sound" } }],
 } as unknown as ConferenceConfig;
+/** The same conference with something changed since the text was kept. */
+const changed = (more: Partial<ConferenceConfig>) => ({ ...config, ...more }) as ConferenceConfig;
 
 const saved: ProposalForm = {
   title: "Mapping attention by hand",
@@ -142,6 +146,56 @@ describe("withUnsaved", () => {
     });
   });
 
+  it("leaves out a way of taking part where the conference no longer offers the choice", () => {
+    // The conference was hybrid when "online" was chosen and not saved; it is in person now.
+    // The editor shows that choice only for a hybrid conference, so the value would be sent
+    // without its owner ever seeing it.
+    const before: ProposalForm = { ...saved, participationMode: null };
+    for (const modality of ["in_person", "online"] as const) {
+      const form = withUnsaved(
+        before,
+        { participationMode: "online" },
+        changed({ modality }),
+        type,
+      );
+      expect(form.participationMode).toBeNull();
+      expect(form).toEqual(before);
+    }
+    // Where the choice is still on screen it comes back, and so does one that was cleared.
+    expect(withUnsaved(before, { participationMode: "online" }, config, type)).toMatchObject({
+      participationMode: "online",
+    });
+    expect(withUnsaved(saved, { participationMode: null }, config, type).participationMode).toBe(
+      null,
+    );
+  });
+
+  it("leaves a saved track and saved topics alone where their controls are gone", () => {
+    // The conference dropped its tracks and its topics. A buffer that cleared the track, or
+    // unticked the topics, must not change what is saved behind controls nobody can see.
+    const before: ProposalForm = { ...saved, trackKey: "main", topicKeys: ["sound"] };
+    const bare = changed({ tracks: [], topics: [] });
+    expect(withUnsaved(before, { trackKey: null, topicKeys: [] }, bare, type)).toEqual(before);
+    expect(withUnsaved(before, { trackKey: "main", topicKeys: ["sound"] }, bare, type)).toEqual(
+      before,
+    );
+    // With the controls on screen the same buffer is put back.
+    expect(withUnsaved(before, { trackKey: null, topicKeys: [] }, config, type)).toMatchObject({
+      trackKey: null,
+      topicKeys: [],
+    });
+  });
+
+  it("puts nothing back under a path that is not a control of the form", () => {
+    const form = withUnsaved(
+      saved,
+      { status: "submitted", "fields.": "x", fields: "y", "bios.en": "A bio." },
+      config,
+      type,
+    );
+    expect(form).toEqual(saved);
+  });
+
   it("leaves out a value of the wrong kind, so nothing malformed is sent", () => {
     const form = withUnsaved(
       saved,
@@ -150,5 +204,31 @@ describe("withUnsaved", () => {
       type,
     );
     expect(form).toEqual(saved);
+  });
+});
+
+describe("showsControl", () => {
+  it("says which controls the editor shows for the conference as it is now", () => {
+    for (const path of ["title", "abstract", "language"]) {
+      expect(
+        showsControl(path, changed({ modality: "online", tracks: [], topics: [] }), type),
+      ).toBe(true);
+    }
+    expect(showsControl("participationMode", config, type)).toBe(true);
+    expect(showsControl("participationMode", changed({ modality: "in_person" }), type)).toBe(false);
+    expect(showsControl("participationMode", changed({ modality: "online" }), type)).toBe(false);
+    expect(showsControl("trackKey", config, type)).toBe(true);
+    expect(showsControl("trackKey", changed({ tracks: [] }), type)).toBe(false);
+    expect(showsControl("topicKeys", config, type)).toBe(true);
+    expect(showsControl("topicKeys", changed({ topics: [] }), type)).toBe(false);
+  });
+
+  it("shows a field of the format, and no other", () => {
+    expect(showsControl("fields.people", config, type)).toBe(true);
+    expect(showsControl("fields.tools_disclosure", config, type)).toBe(false);
+    expect(showsControl("fields.people", config, undefined)).toBe(false);
+    expect(showsControl("fields.", config, type)).toBe(false);
+    expect(showsControl("fields", config, type)).toBe(false);
+    expect(showsControl("status", config, type)).toBe(false);
   });
 });
