@@ -17,6 +17,7 @@ import {
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const CALL = "elo2027-open";
 const FORMAT = "Reading or performance";
+const RESTORED = "Your unsaved changes were restored from this device. Review them, then save.";
 const words = (n: number) =>
   Array.from(
     { length: n },
@@ -74,6 +75,10 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.getByRole("button", { name: "Sign in with code" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
 }
+
+/** What the app keeps unsaved in this browser (apps/web/src/unsaved.ts), by storage key. */
+const unsavedKeys = (page: Page) =>
+  page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("elochair:unsaved:")));
 
 /** The collapsible section of one format on the settings screen. */
 const formatSection = (page: Page) =>
@@ -357,8 +362,37 @@ test.describe("conference settings", () => {
     await expect(review).toContainText("from “300” to “310”");
     await expect(chair.getByRole("button", { name: "Save changes" })).toBeVisible();
 
-    // Nothing of this is kept: the form is put back, and so is the value changed elsewhere.
-    await most.fill("300");
+    // What is typed and not saved is kept in this browser, as in the proposal editor. After a
+    // reload (or a tab the phone closed) it is back in the form, in a section that is open, and
+    // the page says so.
+    await expect.poll(() => unsavedKeys(chair)).toHaveLength(1);
+    await chair.reload();
+    await expect(chair.getByText(RESTORED)).toBeVisible();
+    await expect(most).toBeVisible();
+    await expect(most).toHaveValue("310");
+    await expect(chair.getByText("Values changed and not saved yet: 1.")).toBeVisible();
+    const discard = chair.getByRole("button", { name: "Discard unsaved changes" });
+    await expectTouchTarget(discard);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    // It is still only typed: the review comes before any save, and shows it against what is stored.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(review.getByRole("listitem")).toHaveCount(1);
+    await expect(review).toContainText("from “300” to “310”");
+
+    // Discarding puts the saved settings back and keeps nothing: the form is as it was, and so,
+    // below, is the value changed elsewhere.
+    await discard.click();
+    await expect(chair.getByRole("status")).toHaveText("Unsaved changes discarded.");
+    await expect(chair.getByRole("status")).toBeFocused();
+    await expect(most).toHaveValue("300");
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+    await chair.reload();
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
     await elsewhere(6);
   });
 });
