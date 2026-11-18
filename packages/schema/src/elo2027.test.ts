@@ -250,6 +250,27 @@ describe("a range on a number field", () => {
     ]);
   });
 
+  it("when a value is outside, says only the ends the field has", () => {
+    const outside = (field: Record<string, unknown>, participants: number) => {
+      const input = structuredClone(elo2027);
+      const workshop = input.submissionTypes.find((t) => t.key === "workshop");
+      if (!workshop?.fields?.[0]) throw new Error("no workshop field");
+      Object.assign(workshop.fields[0], field);
+      return validateSubmission(
+        ConferenceConfig.parse(input),
+        submission("workshop", { fields: { participants, needs: "A projector." } }),
+        lead,
+      );
+    };
+    expect(outside({ min: 1, max: undefined }, 0)).toEqual([
+      { path: "fields.participants", code: "out_of_range", params: { min: 1 } },
+    ]);
+    expect(outside({ min: undefined, max: 30 }, 31)).toEqual([
+      { path: "fields.participants", code: "out_of_range", params: { max: 30 } },
+    ]);
+    expect(outside({ min: 1, max: undefined }, 500)).toEqual([]);
+  });
+
   it("belongs to number fields only", () => {
     expect(withField({ kind: "text", integer: undefined })).toEqual([
       "submissionTypes.4.fields.0: min and max are for number fields",

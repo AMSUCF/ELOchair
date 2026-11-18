@@ -147,6 +147,8 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issue_owner_cannot_be_removed: "Não é possível remover quem criou a proposta.",
   issue_unknown_field: "Este formato não tem esse campo.",
   issue_out_of_range: "Escreva um número entre {min} e {max}.",
+  issue_out_of_range_min: "Escreva um número igual ou superior a {min}.",
+  issue_out_of_range_max: "Escreva um número igual ou inferior a {max}.",
   issue_not_integer: "Escreva um número inteiro.",
   issue_generic: "Verifique este valor.",
 

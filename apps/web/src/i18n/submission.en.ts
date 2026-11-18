@@ -142,6 +142,8 @@ export const submissionEn = {
   issue_owner_cannot_be_removed: "The owner cannot be removed.",
   issue_unknown_field: "This format has no such field.",
   issue_out_of_range: "Enter a number from {min} to {max}.",
+  issue_out_of_range_min: "Enter a number that is {min} or more.",
+  issue_out_of_range_max: "Enter a number that is {max} or less.",
   issue_not_integer: "Enter a whole number.",
   issue_generic: "Check this value.",
 
