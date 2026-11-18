@@ -300,6 +300,41 @@ test.describe("conference settings", () => {
     await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
   });
 
+  test("a deadline that is refused says why at each of its three inputs", async () => {
+    await openSettings(chair);
+    const decisions = chair.getByRole("group", { name: "Decisions sent" });
+    const date = decisions.getByLabel("Date");
+    const before = await date.inputValue();
+    // Decisions cannot be sent before the call has closed.
+    await date.fill("2001-01-01");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    const why = "This must not be before the deadline above it.";
+    await expect(summary).toContainText(`Decisions sent: ${why}`);
+    await expect(decisions.locator(".field-error")).toHaveText(why);
+    // Someone who comes back from the summary to correct it hears the reason at each input,
+    // after the instant it makes (and, at the offset, before what an offset is).
+    const error = await decisions.locator(".field-error").getAttribute("id");
+    expect(error).toBeTruthy();
+    for (const name of ["Date", "Time", "Offset from UTC"]) {
+      const input = decisions.getByLabel(name);
+      await expect(input).toHaveAttribute("aria-invalid", "true");
+      await expect(input).toHaveAttribute("aria-describedby", new RegExp(`(^| )${error}( |$)`));
+      await expect(input).toHaveAccessibleDescription(new RegExp(`Conference time.*${why}`));
+    }
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // Taken back, nothing is wrong and nothing is described as wrong.
+    await date.fill(before);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect(date).not.toHaveAttribute("aria-invalid", "true");
+    await expect(date).not.toHaveAccessibleDescription(new RegExp(why));
+  });
+
   test("settings that someone else changed meanwhile are reloaded, and what was typed stays", async () => {
     test.slow();
     await openSettings(chair);

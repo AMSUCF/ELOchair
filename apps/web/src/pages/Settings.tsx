@@ -753,7 +753,13 @@ function Deadline({
         autoComplete="off"
         spellCheck={which === "offset" ? false : undefined}
         aria-invalid={invalid}
-        aria-describedby={which === "offset" ? `${id}-when settings-offset-hint` : `${id}-when`}
+        // Each part says which instant it makes and, when the deadline was refused, why.
+        aria-describedby={describedBy(
+          s.path,
+          issues,
+          `${id}-when`,
+          ...(which === "offset" ? ["settings-offset-hint"] : []),
+        )}
         value={String(edits[`${s.path}#${which}`] ?? stored[which])}
         onChange={(e) => set(`${s.path}#${which}`, e.target.value, stored[which])}
       />
