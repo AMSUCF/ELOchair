@@ -10,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   utimesSync,
@@ -415,6 +416,55 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
     expect(r.status).not.toBe(0);
     expect(r.out).toContain("FAILED");
     expect(present()).toEqual(old);
+  });
+
+  /** A stand-in for sync that records what it was asked to write through, and can refuse. */
+  const stubSync = () => {
+    writeFileSync(
+      join(dir, "bin", "sync"),
+      [
+        "#!/bin/sh",
+        `echo "$1" >> "${join(dir, "synced")}"`,
+        'if [ "$STUB_SYNC_FAILS" = file ] && [ -f "$1" ]; then echo "sync: error syncing" >&2; exit 1; fi',
+        'if [ "$STUB_SYNC_FAILS" = directory ] && [ -d "$1" ]; then echo "sync: error syncing" >&2; exit 1; fi',
+        "exit 0",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(join(dir, "bin", "sync"), 0o755);
+  };
+
+  it("writes the dump through to the disk, then its name, before anything older goes", () => {
+    stubSync();
+    const old = Array.from({ length: 5 }, (_, i) => ago((i + 1) * 3600));
+    touch(...old);
+    expect(backup(["now"], keepEnv({ ...OFF, hourly: 1 })).status).toBe(0);
+    expect(readFileSync(join(dir, "synced"), "utf8").split("\n").filter(Boolean)).toEqual([
+      `${join(backups, at(NOW))}.partial`,
+      backups,
+    ]);
+    expect(present()).toEqual([at(NOW)]);
+  });
+
+  it("discards a dump the disk did not take, and deletes nothing", () => {
+    stubSync();
+    const old = Array.from({ length: 5 }, (_, i) => ago((i + 1) * 3600));
+    touch(...old);
+    const r = backup(["now"], { ...keepEnv({ ...OFF, hourly: 1 }), STUB_SYNC_FAILS: "file" });
+    expect(r.status).not.toBe(0);
+    expect(r.out).toContain("FAILED: the new dump could not be written through to the disk");
+    // No final name, no .partial left behind, and every older dump still there.
+    expect(present()).toEqual(old);
+  });
+
+  it("deletes nothing when the new dump's name could not be written through to the disk", () => {
+    stubSync();
+    const old = Array.from({ length: 5 }, (_, i) => ago((i + 1) * 3600));
+    touch(...old);
+    const r = backup(["now"], { ...keepEnv({ ...OFF, hourly: 1 }), STUB_SYNC_FAILS: "directory" });
+    expect(r.status).not.toBe(0);
+    expect(r.out).toContain("no older dump was deleted");
+    expect(present()).toEqual([at(NOW), ...old]);
   });
 
   it("discards a dump that does not read back, and deletes nothing", () => {

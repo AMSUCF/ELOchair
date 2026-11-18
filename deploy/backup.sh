@@ -15,8 +15,8 @@
 #                                        with --into, restore into a new database instead
 #
 # The contract other tools rely on (deploy/backup-offsite.md): a dump is written as
-# elochair-<UTC yyyymmddThhmmssZ>.dump.partial, read back, and only then renamed to
-# elochair-<stamp>.dump. A file with the final name is always complete.
+# elochair-<UTC yyyymmddThhmmssZ>.dump.partial, read back, written through to the disk, and only
+# then renamed to elochair-<stamp>.dump. A file with the final name is always complete.
 #
 # Which dumps stay is decided by backup-retention.sh, next to this file, and nowhere else.
 set -euo pipefail
@@ -183,14 +183,26 @@ take_dump() {
     log "FAILED: the new dump does not read back; it was discarded"
     return 1
   fi
-  sync "$partial" 2>/dev/null || true
+  # Reading it back proved the bytes, not that the disk has them: pg_restore read them from
+  # memory. A dump the disk did not take (it is full, or failing) is not a backup, and no older
+  # dump may be deleted on its account.
+  if ! sync "$partial"; then
+    rm -f -- "$partial"
+    log "FAILED: the new dump could not be written through to the disk; it was discarded and no older dump was touched"
+    return 1
+  fi
   if ! mv -- "$partial" "$final"; then
     rm -f -- "$partial"
     log "FAILED: could not rename $partial"
     return 1
   fi
+  # The new name has to be on the disk as well, before anything older goes.
+  if ! sync "$DIR"; then
+    log "FAILED: $final is written, but its name could not be written through to the disk; no older dump was deleted"
+    return 1
+  fi
   log "wrote $final ($(($(wc -c <"$final"))) bytes)"
-  # Only now, with a new dump safely in place, may older ones go.
+  # Only now, with a new dump safely on the disk, may older ones go.
   prune || log "ERROR: retention was not applied in full; old dumps may be piling up"
   if [ ! -e "$final" ]; then
     log "ERROR: $final was pruned as soon as it was written: dumps with later names fill every tier. Were they stamped by a wrong clock? Rename or remove them."
