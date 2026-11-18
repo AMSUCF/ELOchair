@@ -96,6 +96,7 @@ A first visit in English fetches four font files, 147 kB in all; the conference 
 | `button`, `.button` | pill; `.secondary`, `.danger` | 44px tall at least |
 | `.notice` | pale gold panel | for things to know, not errors |
 | `.timeline` | key dates | vertical on a phone, horizontal from 52rem; `li.key` is filled in |
+| `.format`, `.format-elsewhere` | a format card; dashed for a format the call takes outside this portal | conference page |
 | `.hero-facts`, `.fact`, `.countdown` | the facts strip on glass | conference page |
 | `.feature` | the featured conference on glass | home page |
 

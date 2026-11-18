@@ -3,6 +3,7 @@ import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, type ConferenceDetail, type Me, type MySubmission, type Role } from "../api";
+import { hasMinimum } from "../format";
 import { ErrorSummary } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { modeKey, roleKey } from "../labels";
@@ -102,7 +103,10 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
               </strong>
               <span className="meta">
                 {" "}
-                · {t("confWords", { min: x.abstract.minWords, max: x.abstract.maxWords })}
+                ·{" "}
+                {hasMinimum(x.abstract.minWords)
+                  ? t("confWords", { min: x.abstract.minWords, max: x.abstract.maxWords })
+                  : t("confWordsMax", { max: x.abstract.maxWords })}
                 {x.durationMinutes ? ` · ${t("confMinutes", { n: x.durationMinutes })}` : ""}
               </span>
             </span>

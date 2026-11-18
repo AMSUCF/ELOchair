@@ -8,6 +8,7 @@ import {
   formatCoordinates,
   formatDateRange,
   formatDateTime,
+  hasMinimum,
   viewerTimeZone,
 } from "../format";
 import { useT } from "../i18n";
@@ -112,10 +113,14 @@ export function ConferencePage() {
                     <Localized text={type.abstract.label} fallback={fb} />
                   </p>
                   <ul className="stats">
-                    <Stat
-                      value={range(type.abstract.minWords, type.abstract.maxWords)}
-                      label={t("statWords")}
-                    />
+                    {hasMinimum(type.abstract.minWords) ? (
+                      <Stat
+                        value={range(type.abstract.minWords, type.abstract.maxWords)}
+                        label={t("statWords")}
+                      />
+                    ) : (
+                      <Stat value={type.abstract.maxWords} label={t("statWordsMax")} />
+                    )}
                     {type.durationMinutes && (
                       <Stat value={type.durationMinutes} label={t("statMinutes")} />
                     )}
@@ -145,6 +150,24 @@ export function ConferencePage() {
                 </li>
               );
             })}
+            {/* In the call, but not submitted through this portal: listed so the call is whole. */}
+            {c.otherFormats.map((other, i) => (
+              <li key={other.key} className="card format format-elsewhere">
+                <div className="format-head">
+                  <span className="format-number" aria-hidden="true">
+                    {two(c.submissionTypes.length + i + 1)}
+                  </span>
+                  <span className="tag">{t("confNotHere")}</span>
+                </div>
+                <h3>
+                  <Localized text={other.name} fallback={fb} />
+                  <LocalizedEcho text={other.name} />
+                </h3>
+                <p>
+                  <Localized text={other.description} fallback={fb} />
+                </p>
+              </li>
+            ))}
           </ol>
         </section>
 

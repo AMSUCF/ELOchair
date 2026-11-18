@@ -110,7 +110,28 @@ The goal is to open a call for proposals that people can submit to from a phone,
 ### 1.7 What ELO's formats need now
 - **`participationMode`** (`in_person`, `online` or `undecided`) is a core submission field. It is required when the conference is hybrid, and it is visible to tier M as an enumeration.
 - **`language`** is the language of the abstract, one of the conference's languages.
-- **Panels** get one session abstract. Per-paper panel abstracts (2022, 2025) depend on the Barranquilla CFP; see Deferred.
+- **Panels** had one session abstract in 2026. ELO 2027's call asks for a rationale and an abstract for each paper: §1.8 says how a panel holds them for now, and [Deferred](#deferred) what is still to come.
+
+### 1.8 ELO 2027's formats
+The call was published in November 2026 at <https://elo27.eliterature.org/>. `packages/schema/src/conferences/elo2027.ts` follows it, and `packages/schema/src/elo2027.test.ts` is the record of what it says.
+
+| Format | Abstract | Slot | Review | Also asks for |
+|---|---|---|---|---|
+| Paper (`talk`) | up to 300 words | 15 min | anonymized | |
+| Lightning talk (`lightning`) | up to 150 words | 5 min | anonymized | |
+| Panel (`panel`) | rationale, up to 150 words | | anonymized | the abstract of each paper or talk (required); three to 24 people |
+| Artist talk (`artist_talk`) | up to 300 words | 15 min | anonymized | |
+| Workshop (`workshop`) | description and goals, up to 300 words | 60 min | anonymized | participants expected, 15 to 30 (required); tools and room conditions (required) |
+| Reading or performance (`performance`) | up to 300 words | | names visible | technical requirements; a link to the work |
+| Work for the exhibition (`exhibition`) | up to 300 words | | names visible | a link to the work |
+
+- **Curatorial pitches** go by email. They are in the configuration as `otherFormats`, which the conference page lists and nothing else uses.
+- **Submissions are in English or Spanish** (`languages`). The interface is also in Portuguese.
+- **No minimum length.** The call gives only maxima, so its formats have no `minWords`. An abstract must still be there: an empty one is refused with `required`, not `too_few_words`. The interface says "up to 300 words". A format that does set `minWords` behaves as before.
+- **A number field may have a range** (`min`, `max` on the field). Outside it, submitting is refused with `out_of_range`.
+- **A number field may take whole numbers only** (`integer` on the field, as the workshop's participants do). A fraction is refused with `not_integer`. A configuration whose whole-number field has no whole number between its two ends (15.1 to 15.9) is refused: nobody could answer it.
+- **Where the call is silent, earlier defaults stand** until the organisers say otherwise: three anonymized reviews for the call's "academic" formats and two with names visible for its "artistic" ones; team sizes (a panel may have up to 24 people: six talks of up to four authors each, so that co-authors are never refused); panels not counting toward the cap of two; one bio limit of 300 words for the whole conference (the call asks for 250, and 200–300 for the exhibition: [issue #17](https://github.com/AMSUCF/ELOchair/issues/17)).
+- **Panels** hold their papers' abstracts in one required field until submissions can carry them as separate items ([issue #15](https://github.com/AMSUCF/ELOchair/issues/15)).
 
 ## 2. Contracts
 
@@ -209,7 +230,8 @@ Write routes have a 64 KB body limit and 60 writes a minute per person. Input sc
 - **Tiers:** tier M gets metadata. The contributors in the metadata view carry `status`, and the view also includes `participationMode`, `issueCodes` and the self-identification warning count. Tier C gets exactly what its owner would see.
 
 ### 2.5 Fixtures and the dry run
-- **`seedOpenCall(db, { slug, now })`** clones ELO 2027 with deadlines relative to the clock and the phase set to `cfp_open`. Development and the e2e tests use it, so tests pass on any date.
+- **`seedOpenCall(db, { slug, now })`** clones ELO 2027 with deadlines relative to the clock and the phase set to `cfp_open`. Development and the e2e tests use it, so they exercise what people will really be offered, on any date.
+- **`seedTestCall(db, { slug, now })`** does the same with a made-up call (`apps/server/src/fixture-call.ts`) whose formats and limits never change. Server tests use it, so a decision by a conference's organisers never breaks a test that is about something else.
 - **Dry run:** `import-config <file> --slug elo2027-dryrun --window <open>/<close>`. It is human-only and audited, and the runbook shows the exact command.
 
 ## 3. Acceptance
@@ -283,7 +305,8 @@ The rules and contracts above describe the reviewed behaviour. Machine-drafted S
 These were set aside on purpose, with the reason for each.
 
 **From the Barranquilla call, not yet built**
-- **Per-paper panel abstracts.** The call, published in November 2026 at <https://elo27.eliterature.org/>, asks for them (150-word abstracts of three to four papers or five to six lightning talks, plus a 150-word rationale). Adding `panelItems` is tracked in [issue #15](https://github.com/AMSUCF/ELOchair/issues/15); the call's other formats in [issue #14](https://github.com/AMSUCF/ELOchair/issues/14).
+- **Per-paper panel abstracts as separate items.** The call asks for 150-word abstracts of three to four papers or five to six lightning talks, plus a 150-word rationale. For now they share one field (§1.8); adding `panelItems` is tracked in [issue #15](https://github.com/AMSUCF/ELOchair/issues/15).
+- **Bio lengths by format** ([issue #17](https://github.com/AMSUCF/ELOchair/issues/17)), and deadlines shown as "anywhere on Earth" ([issue #16](https://github.com/AMSUCF/ELOchair/issues/16)).
 
 **Not needed for the January launch**
 - **Transferring ownership.** Chairs can reassign it in the database, with an audit row.

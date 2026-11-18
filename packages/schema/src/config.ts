@@ -131,6 +131,11 @@ export const CustomField = z.object({
   public: z.boolean().default(false),
   options: z.array(z.object({ key: Key, label: LocalizedText })).optional(),
   maxWords: z.int().positive().optional(),
+  /** For number fields: the smallest and largest value accepted (both inclusive). */
+  min: z.number().optional(),
+  max: z.number().optional(),
+  /** For number fields: true when only whole numbers are accepted (a head count). */
+  integer: z.boolean().optional(),
 });
 export type CustomField = z.infer<typeof CustomField>;
 
@@ -143,7 +148,11 @@ export const SubmissionType = z.object({
   blindMode: BlindMode.optional(),
   abstract: z.object({
     label: LocalizedText,
-    minWords: z.int().min(0),
+    /**
+     * The fewest words accepted. Left out when the call gives no minimum: the abstract then only
+     * has to be there. (0 says something else: the abstract may be left empty.)
+     */
+    minWords: z.int().min(0).optional(),
     maxWords: z.int().positive(),
   }),
   /** Length of the slot on the program. Absent for things that are not scheduled (exhibition). */
@@ -191,6 +200,14 @@ const ConferenceConfigShape = z.object({
   topics: z.array(z.object({ key: Key, label: LocalizedText })).default([]),
   reviewPools: z.array(ReviewPool).min(1),
   submissionTypes: z.array(SubmissionType).min(1),
+  /**
+   * Formats the call offers that are not submitted through ELOchair (ELO 2027 takes curatorial
+   * pitches by email). The conference page lists them so the call is complete; nothing else
+   * uses them.
+   */
+  otherFormats: z
+    .array(z.object({ key: Key, name: LocalizedText, description: LocalizedText }))
+    .default([]),
   /** True while the content is a stand-in (e.g. dates not yet announced). The UI says so. */
   placeholder: z.boolean().default(false),
 });
@@ -249,6 +266,20 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     c.submissionTypes.map((t) => t.key),
   );
 
+  // A format is either submitted here or it is not: the two lists share one set of keys.
+  const typeKeys = new Set(c.submissionTypes.map((t) => t.key));
+  unique(
+    ["otherFormats"],
+    c.otherFormats.map((f) => f.key),
+  );
+  c.otherFormats.forEach((f, i) => {
+    if (typeKeys.has(f.key)) {
+      issue(["otherFormats", i, "key"], `"${f.key}" is already a submission type`);
+    }
+    text(["otherFormats", i, "name"], f.name);
+    text(["otherFormats", i, "description"], f.description);
+  });
+
   c.reviewPools.forEach((p, i) => {
     text(["reviewPools", i, "name"], p.name);
     unique(
@@ -270,7 +301,7 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     if (!pools.has(t.reviewPool)) {
       issue([...at, "reviewPool"], `unknown review pool "${t.reviewPool}"`);
     }
-    if (t.abstract.minWords > t.abstract.maxWords) {
+    if (t.abstract.minWords !== undefined && t.abstract.minWords > t.abstract.maxWords) {
       issue([...at, "abstract"], "minWords must not exceed maxWords");
     }
     if (t.team.min > t.team.max) issue([...at, "team"], "team.min must not exceed team.max");
@@ -282,6 +313,27 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       const fat = [...at, "fields", j];
       text([...fat, "label"], f.label);
       text([...fat, "help"], f.help);
+      if (f.min !== undefined && f.max !== undefined && f.min > f.max) {
+        issue(fat, "min must not exceed max");
+      }
+      if ((f.min !== undefined || f.max !== undefined) && f.kind !== "number") {
+        issue(fat, "min and max are for number fields");
+      }
+      if (f.integer !== undefined && f.kind !== "number") {
+        issue(fat, "integer is for number fields");
+      }
+      // Whole numbers only, between two ends with no whole number between them (15.1 to 15.9):
+      // every answer would be refused, so nobody could submit the format.
+      if (
+        f.kind === "number" &&
+        f.integer === true &&
+        f.min !== undefined &&
+        f.max !== undefined &&
+        f.min <= f.max &&
+        Math.ceil(f.min) > Math.floor(f.max)
+      ) {
+        issue(fat, "a whole-number field needs a whole number between min and max");
+      }
       const hasOptions = (f.options?.length ?? 0) > 0;
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {
         issue([...fat, "options"], "select fields need options");

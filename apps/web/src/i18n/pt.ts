@@ -109,6 +109,9 @@ export const pt: Messages = {
   confFullCallNote:
     "O texto do tema, os temas sugeridos e a inscrição estão no site da conferência.",
   statWords: "palavras",
+  confWordsMax: "até {max} palavras",
+  statWordsMax: "palavras no máximo",
+  confNotHere: "Não se envia aqui",
   statMinutes: "minutos",
   statPeople: "pessoas",
   statPerson: "pessoa",
