@@ -136,7 +136,7 @@ Name the service every time. On a server where another web server sits in front 
 The container gets `deploy/offsite-upload/.env` and nothing else. It has none of the values in `deploy/.env`, it is on a network of its own from which the database cannot be reached, and it mounts `deploy/backups/` read-only. No other container is given the bucket key. To see that for yourself, this must print nothing:
 
 ```bash
-for service in app db caddy; do
+for service in app db backup caddy; do
   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.offsite.yml config "$service" | grep -E 'RCLONE|OFFSITE'
 done
 ```
@@ -255,7 +255,7 @@ One dump of a conference of ELO's size is a few megabytes. At most 82 of them, p
 - Nothing the pruner removed is uploaded again.
 - With encryption, the bucket does not hold the dump in the clear, a dump fetched back and decrypted is byte for byte the one uploaded and `pg_restore` reads it, and the pruner prunes the encrypted bucket without the password.
 - A key the bucket refuses makes the uploader unhealthy and says so in the log.
-- The uploader container has none of the server's other secrets and cannot reach the database. With the key and the encryption password in `deploy/offsite-upload/.env`, the rendered configuration gives them to the uploader and to no other service, and the check used for that does catch the same settings put in `deploy/.env`.
+- The uploader container has none of the server's other secrets and cannot reach the database. With the key and the encryption password in `deploy/offsite-upload/.env`, the rendered configuration gives them to the uploader and to no other service (the app, the database, the backup service and Caddy), and the check used for that does catch the same settings put in `deploy/.env`. The command in section 2 for seeing this yourself is run as it is written there.
 - An interval of `0`, `00`, `000` or anything that is not a whole number of seconds is refused by the uploader and the pruner; `0009` and `0900` are read as 9 and 900.
 - A bucket holding only `elochair-99999999T999999Z.dump` does not stop an upload, and the pruner neither counts nor deletes that object. A dump stamped March 2027, seen in November 2026, does not stop uploads or get old dumps uploaded again, and the pruner keeps the newest real dump, not that one. A bucket with nothing but a dump stamped ahead gets only the server's newest dump.
 

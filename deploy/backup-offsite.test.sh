@@ -530,7 +530,7 @@ stored_is "and uploads nothing the pruner removed" encrypted \
 section "the bucket key and the encryption password reach the uploader and no other service"
 dc config >"$T/all" 2>/dev/null
 others_get >"$T/others"
-for service in app db caddy; do
+for service in app db backup caddy; do
   check "the rendered configuration has the $service service" grep -qx "  $service:" "$T/others"
 done
 check "the uploader is given the key" grep -q "RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: uploader-secret" "$T/all"
@@ -567,6 +567,20 @@ check "without offsite-upload/.env the uploader's compose file refuses to load" 
 cp "$HERE/offsite-upload/.env.example" "$T/doc/offsite-upload/.env"
 check "with offsite-upload/.env.example copied to .env it loads" \
   docker compose -f "$T/doc/docker-compose.yml" -f "$T/doc/docker-compose.offsite.yml" config --quiet
+
+# The check backup-offsite.md gives the operator for "no other container is given the bucket key",
+# run as it is written there, from the directory above deploy/.
+documented_check="$(awk '/^for service in /,/^done$/' "$HERE/backup-offsite.md")"
+mkdir -p "$T/docroot"
+ln -s "$T/doc" "$T/docroot/deploy"
+check "the documented check looks at the app, the database, the backup service and Caddy" \
+  grep -qx 'for service in app db backup caddy; do' <<<"$documented_check"
+(cd "$T/docroot" && sh -c "$documented_check") >"$T/out" 2>/dev/null
+check "it prints nothing while only the uploader is given the settings" refuses test -s "$T/out"
+# And it is not silent for want of looking: the same setting in deploy/.env shows.
+echo 'RCLONE_CONFIG_OFFSITE_TYPE=s3' >>"$T/doc/.env"
+(cd "$T/docroot" && sh -c "$documented_check") >"$T/out" 2>/dev/null
+check "it prints the setting once it is in deploy/.env, which the app is given" said 'RCLONE_CONFIG_OFFSITE_TYPE: s3'
 
 echo
 if [ "$failures" -ne 0 ]; then
