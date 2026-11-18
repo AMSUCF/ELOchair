@@ -67,7 +67,7 @@ describe("what a chair may change", () => {
   it("allows the stage-one values of existing formats, fields, tracks and topics", () => {
     for (const path of [
       "title.en",
-      "theme.pt-BR",
+      "theme.es",
       "host",
       "modality",
       "contactEmail",
@@ -88,8 +88,49 @@ describe("what a chair may change", () => {
       "tracks.main.name.en",
       "topics.sound.label.en",
     ]) {
-      expect(chairMayChange(path), path).toBe(true);
+      expect(chairMayChange(path, config), path).toBe(true);
     }
+  });
+
+  it("allows a text only in a language the conference has", () => {
+    // English and Spanish here. A text that is missing in one of them may be written.
+    expect(config.theme.es).toBeUndefined();
+    expect(chairMayChange("theme.es", config)).toBe(true);
+    for (const path of [
+      "title.fr",
+      "title.pt",
+      "theme.pt-BR",
+      "location.de",
+      "submissionTypes.talk.name.fr",
+      "submissionTypes.talk.description.pt",
+      "submissionTypes.talk.abstract.label.fr",
+      "submissionTypes.talk.fields.needs.label.fr",
+      "submissionTypes.talk.fields.needs.help.pt",
+      "otherFormats.pitch.name.fr",
+      "tracks.main.name.fr",
+      "topics.sound.label.fr",
+    ]) {
+      expect(chairMayChange(path, config), path).toBe(false);
+    }
+    // The same paths are a chair's where the conference has those languages.
+    const wider = { languages: ["en", "es", "fr", "pt", "pt-BR", "de"] };
+    expect(chairMayChange("title.fr", wider)).toBe(true);
+    expect(chairMayChange("theme.pt-BR", wider)).toBe(true);
+    // The list of languages itself stays an admin's, so a chair cannot widen it first.
+    expect(chairMayChange("languages", wider)).toBe(false);
+  });
+
+  it("sees a crafted configuration that adds a language to a text as a change it refuses", () => {
+    const crafted = structuredClone(config);
+    crafted.title.fr = "Réunion inventée";
+    const type = crafted.submissionTypes[0];
+    if (!type) throw new Error("no format");
+    type.name.fr = "Exposé";
+    // The schema takes the extra texts: it is this check that keeps them an admin's.
+    expect(ConferenceConfig.safeParse(crafted).success).toBe(true);
+    const changed = configChanges(config, crafted).map((c) => c.path);
+    expect(changed).toEqual(["title.fr", `submissionTypes.${type.key}.name.fr`]);
+    expect(changed.filter((path) => !chairMayChange(path, config))).toEqual(changed);
   });
 
   it("leaves everything else to admins", () => {
@@ -123,7 +164,7 @@ describe("what a chair may change", () => {
       "title.en.extra",
       "nonsense",
     ]) {
-      expect(chairMayChange(path), path).toBe(false);
+      expect(chairMayChange(path, config), path).toBe(false);
     }
   });
 });
@@ -211,9 +252,12 @@ describe("the settings of a configuration", () => {
       const found = stageOneSettings(c);
       expect(new Set(paths(found)).size).toBe(found.length);
       for (const s of found) {
-        expect(chairMayChange(s.path), s.path).toBe(true);
+        expect(chairMayChange(s.path, c), s.path).toBe(true);
         expect(settingAt(c, s.path), s.path).toEqual(s.value);
       }
+      // Every text is offered in each language of the conference, and in no other.
+      const offered = new Set(found.flatMap((s) => (s.lang ? [s.lang] : [])));
+      expect([...offered].sort()).toEqual([...c.languages].sort());
     }
   });
 

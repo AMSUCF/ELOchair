@@ -195,7 +195,10 @@ export function reviewConfig(args: {
   const before = conference.config;
   review.changes = configChanges(before, next);
   if (review.scope === "stage_one") {
-    review.forbidden = review.changes.map((c) => c.path).filter((path) => !chairMayChange(path));
+    // Against the stored configuration: its languages are the ones a chair may write in.
+    review.forbidden = review.changes
+      .map((c) => c.path)
+      .filter((path) => !chairMayChange(path, before));
   }
 
   const byCode: Record<string, number> = {};

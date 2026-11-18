@@ -131,19 +131,30 @@ export type Setting = {
 
 const KEY = "[a-z][a-z0-9_]*";
 const LANG = "[a-z]{2,3}(?:-[A-Z]{2})?";
+/** One pattern each; a pattern has at most one "@", and the language it stands for is captured. */
 const CHAIR_PATHS = STAGE_ONE.map(
   (d) =>
     new RegExp(
       `^${d.pattern
         .split(".")
-        .map((token) => (token === "*" ? KEY : token === "@" ? LANG : token))
+        .map((token) => (token === "*" ? KEY : token === "@" ? `(${LANG})` : token))
         .join("\\.")}$`,
     ),
 );
 
-/** Whether a chair (not only an admin) may change the value at this path. */
-export function chairMayChange(path: string): boolean {
-  return CHAIR_PATHS.some((re) => re.test(path));
+/**
+ * Whether a chair (not only an admin) may change the value at this path of `config`, the stored
+ * configuration. A text is a chair's only in a language the conference has: there a chair may
+ * change it, clear it, or write one that was missing. A text in any other language would add a
+ * language to the conference, which is an admin's.
+ */
+export function chairMayChange(path: string, config: Pick<ConferenceConfig, "languages">): boolean {
+  return CHAIR_PATHS.some((re) => {
+    const found = re.exec(path);
+    if (!found) return false;
+    const lang = found[1];
+    return lang === undefined || config.languages.includes(lang);
+  });
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>

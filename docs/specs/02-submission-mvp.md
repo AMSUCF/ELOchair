@@ -156,7 +156,7 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 - **Review before saving.** `POST …/config/preview` saves nothing and answers with the changed values (before and after), schema problems by value, what blocks, and what warns: drafts affected, a call that this would open or close at that moment, a deadline moved into the past. The screen always shows this before "Save changes", and offers no save while something blocks.
 - **Two people at once.** A save names the configuration it started from (`If-Match`, a token of the stored configuration, given by `GET …/settings`). When that is no longer the stored one the save is refused with 409 `stale`, and the screen offers to reload; what was typed stays in the form.
 - **Deadlines keep their offset.** A deadline is shown and edited as its date, its time and its UTC offset, each as stored. The offset changes only when someone writes another one. As it is typed, the screen says which instant it is in the conference's time zone and in the reader's.
-- **Texts** are edited in each language of the conference; the default language is required.
+- **Texts** are edited in each language of the conference; the default language is required. A chair may change, clear or write a text in those languages only. A text in any other language would add a language to the conference, which is an admin's, like the list of languages itself.
 - **Audit.** One `conference.config_updated` entry per save, with every changed value's path, before and after, and how many drafts were affected. A configuration holds no personal data.
 - **Not yet:** the CLI's `import-config` does not apply the submitted-work check.
 

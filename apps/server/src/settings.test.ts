@@ -313,6 +313,15 @@ describe("what a chair may change", () => {
         },
         ["languages", "rules.presenterCap"],
       ],
+      [
+        // The schema accepts the extra texts; the conference has English, Spanish, Portuguese.
+        "texts in a language the conference does not have",
+        (c) => {
+          c.title.fr = "Rencontre inventée";
+          typeOf(c, "talk").name.fr = "Exposé";
+        },
+        ["title.fr", "submissionTypes.talk.name.fr"],
+      ],
     ];
     const rowsBefore = (await configAudit()).length;
     for (const [what, change, paths] of cases) {
@@ -338,6 +347,41 @@ describe("what a chair may change", () => {
       canSave: true,
     });
     expect((await save("admin", config, token)).status).toBe(200);
+  });
+
+  it("lets an admin, not a chair, write a text in a language the conference does not have", async () => {
+    const { config, token } = await edited("admin", (c) => {
+      c.title.fr = "Rencontre inventée";
+    });
+    expect((await preview("admin", config, token)).json).toMatchObject({
+      scope: "all",
+      changes: [{ path: "title.fr", after: "Rencontre inventée" }],
+      forbidden: [],
+      canSave: true,
+    });
+  });
+
+  it("lets a chair clear a text, or write one, in a language the conference has", async () => {
+    const cleared = await edited("chair", (c) => {
+      delete c.location.pt;
+    });
+    expect((await preview("chair", cleared.config, cleared.token)).json).toMatchObject({
+      changes: [{ path: "location.pt" }],
+      forbidden: [],
+      canSave: true,
+    });
+    const written = await edited("chair", (c) => {
+      typeOf(c, "workshop").fields[0] = {
+        ...(typeOf(c, "workshop").fields[0] as Config["submissionTypes"][number]["fields"][number]),
+        help: { en: "What the room must have.", es: "Lo que debe tener la sala." },
+      };
+    });
+    const reviewed = await preview("chair", written.config, written.token);
+    expect(reviewed.json).toMatchObject({ forbidden: [], canSave: true });
+    expect(reviewed.json.changes.map((c: { path: string }) => c.path)).toEqual([
+      "submissionTypes.workshop.fields.needs.help.en",
+      "submissionTypes.workshop.fields.needs.help.es",
+    ]);
   });
 });
 
