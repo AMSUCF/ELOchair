@@ -169,6 +169,12 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   profileBioHelp: "Vista pela coordenação, nunca por quem revê de forma anónima.",
   profileSave: "Guardar perfil",
   profileSaved: "Perfil guardado.",
+  profileConflict:
+    "O seu perfil foi guardado noutro lugar depois de ter escrito estas alterações neste dispositivo. O formulário mostra a versão guardada. Pode voltar a pôr as suas alterações sobre ela ou descartá-las.",
+  profileConflictEmpty: "(vazio)",
+  profileConflictKeep: "Voltar a pôr as minhas alterações no formulário",
+  profileConflictDiscard: "Descartar as minhas alterações e manter a versão guardada",
+  profileConflictKept: "As suas alterações estão de novo no formulário. Reveja-as e guarde.",
 
   invTitle: "Convite para uma proposta",
   invIntro: "{owner} incluiu-o/a com o papel de {role} numa proposta para {conference}.",

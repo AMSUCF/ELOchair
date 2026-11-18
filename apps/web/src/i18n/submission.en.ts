@@ -162,6 +162,12 @@ export const submissionEn = {
   profileBioHelp: "Seen by chairs, never by anonymous reviewers.",
   profileSave: "Save profile",
   profileSaved: "Profile saved.",
+  profileConflict:
+    "Your profile was saved somewhere else after you typed these changes on this device. The form shows the saved version. You can put your changes back on top of it, or discard them.",
+  profileConflictEmpty: "(left empty)",
+  profileConflictKeep: "Put my changes back in the form",
+  profileConflictDiscard: "Discard my changes and keep the saved version",
+  profileConflictKept: "Your changes are back in the form. Review them, then save.",
 
   invTitle: "Invitation to a proposal",
   invIntro: "{owner} has listed you as {role} on a proposal for {conference}.",

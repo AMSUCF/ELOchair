@@ -4,15 +4,25 @@ import {
   expireUnsaved,
   forgetPerson,
   MAX_AGE_MS,
+  openUnsaved,
   readUnsaved,
+  SIGN_OUTS_KEY,
   type Store,
+  signOutCount,
+  sortUnsaved,
   writeUnsaved,
 } from "./unsaved";
 
-/** localStorage as a Map. `refuse` makes it throw, as a full or blocked store does. */
+/**
+ * localStorage as a Map. `refuse` makes it throw, as a full or blocked store does; `room` is how
+ * many keys it holds before it is full. `beforeSet` runs inside a write, where another tab's
+ * write would land between this tab's last look at the store and its own write.
+ */
 class MemoryStore implements Store {
   readonly items = new Map<string, string>();
   refuse: "nothing" | "writes" | "everything" = "nothing";
+  room = Number.POSITIVE_INFINITY;
+  beforeSet: ((key: string) => void) | null = null;
 
   private check(writing: boolean) {
     if (this.refuse === "everything" || (writing && this.refuse === "writes")) {
@@ -33,6 +43,12 @@ class MemoryStore implements Store {
   }
   setItem(key: string, value: string) {
     this.check(true);
+    const between = this.beforeSet;
+    this.beforeSet = null;
+    between?.(key);
+    if (!this.items.has(key) && this.items.size >= this.room) {
+      throw new DOMException("full", "QuotaExceededError");
+    }
     this.items.set(key, value);
   }
   removeItem(key: string) {
@@ -46,6 +62,10 @@ const BRUNO = "0b7c5a52-0000-4000-8000-000000000002";
 const NOW = Date.UTC(2027, 0, 20, 12);
 const DAY = 24 * 60 * 60 * 1000;
 const VALUES = { title: "Poems that read", "fields.needs": null, topicKeys: ["a", "b"] };
+
+/** The buffers in the store, by key: everything but the count of sign-outs. */
+const bufferKeys = (store: MemoryStore) =>
+  [...store.items.keys()].filter((k) => k !== SIGN_OUTS_KEY);
 
 /** The one key in the store (tests that write a single buffer). */
 function onlyKey(store: MemoryStore) {
@@ -82,7 +102,7 @@ describe("unsaved changes kept in the browser", () => {
     writeUnsaved(store, "ana:profile", "x", null, { title: "Hers" }, NOW);
     expect(readUnsaved(store, "ana", "profile:x", NOW)).toBeNull();
     forgetPerson(store, "ana");
-    expect(store.items.size).toBe(1);
+    expect(bufferKeys(store)).toHaveLength(1);
   });
 
   it("removes the buffer when no unsaved changes are left", () => {
@@ -182,6 +202,18 @@ describe("malformed data", () => {
     ["a missing version", JSON.stringify({ at: NOW, values: { a: 1 } })],
     ["an object as a value", JSON.stringify({ version: 1, at: NOW, values: { a: { b: 1 } } })],
     ["a mixed array as a value", JSON.stringify({ version: 1, at: NOW, values: { a: ["x", 1] } })],
+    [
+      "bases that are not an object",
+      JSON.stringify({ version: null, at: NOW, values: { a: "x" }, bases: ["a"] }),
+    ],
+    [
+      "a base for a path that has no change",
+      JSON.stringify({ version: null, at: NOW, values: { a: "x" }, bases: { b: "y" } }),
+    ],
+    [
+      "an object as a base",
+      JSON.stringify({ version: null, at: NOW, values: { a: "x" }, bases: { a: { b: 1 } } }),
+    ],
   ];
 
   it.each(cases)("discards %s", (_name, raw) => {
@@ -240,5 +272,177 @@ describe("storage that cannot be used", () => {
       forgetPerson(store, ANA);
       expireUnsaved(store, NOW);
     }).not.toThrow();
+  });
+});
+
+describe("a sign-out reaches every tab", () => {
+  it("counts sign-outs in the store, under a key that names nobody and holds no text", () => {
+    const store = new MemoryStore();
+    expect(signOutCount(store)).toBe(0);
+    writeUnsaved(store, ANA, "profile", null, { "bios.en": "Ana writes poems." }, NOW);
+    forgetPerson(store, ANA);
+    expect(signOutCount(store)).toBe(1);
+    expect([...store.items.entries()]).toEqual([[SIGN_OUTS_KEY, "1"]]);
+    forgetPerson(store, BRUNO);
+    expect(store.items.get(SIGN_OUTS_KEY)).toBe("2");
+    expect(SIGN_OUTS_KEY.startsWith("elochair:unsaved:")).toBe(false);
+  });
+
+  it("reads anything that is not a count as 0, and never throws", () => {
+    const store = new MemoryStore();
+    for (const raw of ["", "-1", "1.5", "two", "1e3", " 4", "9".repeat(16)]) {
+      store.items.set(SIGN_OUTS_KEY, raw);
+      expect(signOutCount(store)).toBe(0);
+    }
+    store.refuse = "everything";
+    expect(signOutCount(store)).toBe(0);
+    expect(signOutCount(null)).toBe(0);
+  });
+
+  it("ends the buffer of a form that is still open in another tab", () => {
+    // One store, as two tabs of one browser share it. Tab A has the profile open and dirty.
+    const store = new MemoryStore();
+    const tabA = openUnsaved(store, ANA, "profile", NOW);
+    expect(tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW)).toBe(true);
+    expect(bufferKeys(store)).toHaveLength(1);
+
+    // Ana signs out in tab B. Tab A does not know yet: its next write, of text typed before or
+    // after the sign-out, must not put anything of hers back.
+    forgetPerson(store, ANA);
+    expect(bufferKeys(store)).toEqual([]);
+    expect(tabA.write(null, { "bios.en": "Ana writes poems" }, undefined, NOW + 1)).toBe(false);
+    expect(bufferKeys(store)).toEqual([]);
+    // It has ended for good: also when the count is back where it was, or the text is cleared.
+    store.items.set(SIGN_OUTS_KEY, "0");
+    expect(tabA.write(null, { "bios.en": "Ana" }, undefined, NOW + 2)).toBe(false);
+    expect(tabA.write(null, {}, undefined, NOW + 3)).toBe(false);
+    expect(bufferKeys(store)).toEqual([]);
+  });
+
+  it("ends every form that was open, in both tabs, and lets a form opened afterwards keep text", () => {
+    const store = new MemoryStore();
+    const profile = openUnsaved(store, ANA, "profile", NOW);
+    const proposal = openUnsaved(store, ANA, "submission:1", NOW);
+    profile.write(null, { pronouns: "she" }, undefined, NOW);
+    proposal.write(3, { title: "One" }, undefined, NOW);
+    expect(profile.signedOut()).toBe(false);
+
+    forgetPerson(store, ANA);
+    // What a tab asks when the store tells it that another tab changed something.
+    expect(profile.signedOut()).toBe(true);
+    expect(proposal.write(3, { title: "Two" }, undefined, NOW + 1)).toBe(false);
+    expect(bufferKeys(store)).toEqual([]);
+
+    // Bruno signs in after her, in the same browser: his forms start from the new count.
+    const next = openUnsaved(store, BRUNO, "profile", NOW + 2);
+    expect(next.found).toBeNull();
+    expect(next.write(null, { pronouns: "he" }, undefined, NOW + 2)).toBe(true);
+    expect(readUnsaved(store, BRUNO, "profile", NOW + 2)?.values).toEqual({ pronouns: "he" });
+    expect(readUnsaved(store, ANA, "profile", NOW + 2)).toBeNull();
+  });
+
+  it("takes back a write that a sign-out overtook", () => {
+    const store = new MemoryStore();
+    const tabA = openUnsaved(store, ANA, "profile", NOW);
+    // Tab A has looked at the count and is about to write; in that instant tab B signs out.
+    store.beforeSet = () => forgetPerson(store, ANA);
+    expect(tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW)).toBe(false);
+    expect(bufferKeys(store)).toEqual([]);
+    expect(signOutCount(store)).toBe(1);
+  });
+
+  it("writes nothing for a form that the record ended (deleted, withdrawn)", () => {
+    const store = new MemoryStore();
+    const editor = openUnsaved(store, ANA, "submission:1", NOW);
+    editor.end();
+    expect(editor.write(2, { title: "One" }, undefined, NOW)).toBe(false);
+    expect(store.items.size).toBe(0);
+  });
+
+  it("counts the sign-out in a full store once the buffers are gone", () => {
+    const store = new MemoryStore();
+    store.items.set("theme", "dark");
+    const tabA = openUnsaved(store, ANA, "profile", NOW);
+    tabA.write(null, { "bios.en": "Ana writes" }, undefined, NOW);
+    store.room = 2;
+    forgetPerson(store, ANA);
+    expect(signOutCount(store)).toBe(1);
+    expect(bufferKeys(store)).toEqual(["theme"]);
+    expect(tabA.write(null, { "bios.en": "Ana writes poems" }, undefined, NOW + 1)).toBe(false);
+    expect(bufferKeys(store)).toEqual(["theme"]);
+  });
+
+  it("gives back what an earlier visit left, read with the count it is valid under", () => {
+    const store = new MemoryStore();
+    writeUnsaved(store, ANA, "submission:1", 4, VALUES, NOW);
+    const editor = openUnsaved(store, ANA, "submission:1", NOW + DAY);
+    expect(editor.found).toEqual({ version: 4, at: NOW, values: VALUES });
+    expect(openUnsaved(null, ANA, "submission:1", NOW).found).toBeNull();
+    expect(openUnsaved(null, ANA, "submission:1", NOW).write(4, VALUES)).toBe(true);
+  });
+});
+
+describe("changes kept with the saved value they were made on", () => {
+  const BIO = { "bios.en": "Ana writes poems for machines." };
+
+  it("returns the bases that were written, and keeps them apart from the values", () => {
+    const store = new MemoryStore();
+    writeUnsaved(store, ANA, "profile", null, BIO, NOW, { bases: { "bios.en": "Ana writes." } });
+    expect(readUnsaved(store, ANA, "profile", NOW)).toEqual({
+      version: null,
+      at: NOW,
+      values: BIO,
+      bases: { "bios.en": "Ana writes." },
+    });
+    // The same changes on another saved value are another buffer: its age starts again.
+    writeUnsaved(store, ANA, "profile", null, BIO, NOW + DAY, { bases: { "bios.en": "Ana." } });
+    expect(readUnsaved(store, ANA, "profile", NOW + DAY)?.at).toBe(NOW + DAY);
+    writeUnsaved(store, ANA, "profile", null, BIO, NOW + 2 * DAY, { bases: { "bios.en": "Ana." } });
+    expect(readUnsaved(store, ANA, "profile", NOW + 2 * DAY)?.at).toBe(NOW + DAY);
+  });
+
+  it("puts a change back when the saved value is still the one it was made on", () => {
+    const found = { version: null, at: NOW, values: BIO, bases: { "bios.en": "Ana writes." } };
+    expect(sortUnsaved(found, { "bios.en": "Ana writes.", pronouns: "she" })).toEqual({
+      restore: BIO,
+      conflicts: {},
+    });
+  });
+
+  it("makes a conflict of a change whose saved value has changed since, and restores the rest", () => {
+    // Typed on this device on top of "Ana writes."; saved as something else on another device.
+    const found = {
+      version: null,
+      at: NOW,
+      values: { ...BIO, pronouns: "she/her", affiliation: "" },
+      bases: { "bios.en": "Ana writes.", pronouns: "she", affiliation: "Uni Norte" },
+    };
+    const saved = { "bios.en": "Ana builds machines.", pronouns: "she", affiliation: "Uni Sur" };
+    expect(sortUnsaved(found, saved)).toEqual({
+      restore: { pronouns: "she/her" },
+      conflicts: {
+        "bios.en": { mine: BIO["bios.en"], base: "Ana writes." },
+        affiliation: { mine: "", base: "Uni Norte" },
+      },
+    });
+  });
+
+  it("is done with a change that is what is saved now", () => {
+    const found = { version: null, at: NOW, values: BIO, bases: { "bios.en": "Ana writes." } };
+    expect(sortUnsaved(found, BIO)).toEqual({ restore: {}, conflicts: {} });
+  });
+
+  it("leaves out a change with no recorded base, and one for a value that is not there", () => {
+    const found = {
+      version: null,
+      at: NOW,
+      values: { pronouns: "she", "bios.fr": "Ana écrit.", orcid: "0000-0002-1825-0097" },
+      bases: { "bios.fr": "", orcid: "" },
+    };
+    expect(sortUnsaved(found, { pronouns: "", orcid: "" })).toEqual({
+      restore: { orcid: "0000-0002-1825-0097" },
+      conflicts: {},
+    });
+    expect(sortUnsaved(null, { pronouns: "" })).toEqual({ restore: {}, conflicts: {} });
   });
 });

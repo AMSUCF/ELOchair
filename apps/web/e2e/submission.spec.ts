@@ -841,6 +841,135 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   expect(await unsavedKeys(page)).toHaveLength(1);
 });
 
+const CONFLICT =
+  "Your profile was saved somewhere else after you typed these changes on this device. The form shows the saved version. You can put your changes back on top of it, or discard them.";
+
+/**
+ * The same person saves another bio from another device. Here it goes straight to the server
+ * from this session, so that nothing this browser keeps (apps/web/src/unsaved.ts) is touched.
+ */
+async function saveBioElsewhere(page: Page, bio: string) {
+  const status = await page.evaluate(async (en) => {
+    const { person } = await (await fetch("/api/me", { credentials: "same-origin" })).json();
+    const { displayName, affiliation, country, languages, pronouns, orcid, bios } = person;
+    const saved = await fetch("/api/me/profile", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName,
+        affiliation,
+        country,
+        languages,
+        pronouns,
+        orcid,
+        bios: { ...bios, en },
+      }),
+    });
+    return saved.status;
+  }, bio);
+  expect(status).toBe(200);
+}
+
+test("an unsaved bio never replaces newer saved text unasked, and a sign-out in another tab ends it", async ({
+  page,
+  request,
+}) => {
+  await listenForAnnouncements(page);
+  await signIn(page, request, "e2e-unsaved-dana@example.org");
+  await setName(page, "Dana Unsaved");
+  const bio = page.getByLabel("Bio in English");
+  const pronouns = page.getByLabel("Pronouns (optional)");
+  const conflict = page.getByText(CONFLICT);
+  const save = page.getByRole("button", { name: "Save profile" });
+  await bio.fill("Dana writes.");
+  await save.click();
+  await expect(page.getByText("Profile saved.")).toBeVisible();
+
+  // Two devices. On this one she types and does not save; on another she saves a different bio.
+  await bio.fill("Dana writes poems for machines.");
+  await pronouns.fill("she");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  await page.waitForTimeout(600);
+  await saveBioElsewhere(page, "Dana builds reading machines.");
+  await page.reload();
+
+  // The form shows what is saved now. Her older text is offered, not laid over it; the change
+  // made on a value that did not change elsewhere (the pronouns) is back as before.
+  await expect(bio).toHaveValue("Dana builds reading machines.");
+  await expect(pronouns).toHaveValue("she");
+  await expect(conflict).toBeVisible();
+  await expect(page.getByText("Dana writes poems for machines.")).toBeVisible();
+  await expect(page.getByText(RESTORED)).toBeVisible();
+  await expect.poll(() => announcements(page)).toContain(CONFLICT);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  const mine = page.getByRole("button", { name: "Put my changes back in the form" });
+  const theirs = page.getByRole("button", {
+    name: "Discard my changes and keep the saved version",
+  });
+  await expectTouchTarget(mine);
+  await expectTouchTarget(theirs);
+  // Nothing scrolls sideways at phone width, however long the text she is shown.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await expectAccessibleInBothThemes(page);
+
+  // Saving before she has chosen sends none of the older text: the bio stays as saved elsewhere,
+  // and the choice is still there after another reload.
+  await save.click();
+  await expect(page.getByText("Profile saved.")).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.reload();
+  await expect(bio).toHaveValue("Dana builds reading machines.");
+  await expect(pronouns).toHaveValue("she");
+  await expect(conflict).toBeVisible();
+  await expect(page.getByText(RESTORED)).toHaveCount(0);
+
+  // She chooses her own text: it goes into the form as an unsaved change, to review and save.
+  await mine.click();
+  await expect(bio).toHaveValue("Dana writes poems for machines.");
+  await expect(
+    page.getByText("Your changes are back in the form. Review them, then save."),
+  ).toBeFocused();
+  await expect(conflict).toHaveCount(0);
+  await page.waitForTimeout(600);
+  await page.reload();
+  await expect(bio).toHaveValue("Dana writes poems for machines.");
+  await expect(page.getByText(RESTORED)).toBeVisible();
+  await expect(conflict).toHaveCount(0);
+
+  // The other choice, after the profile is saved elsewhere once more: the saved version stays.
+  await saveBioElsewhere(page, "Dana reads.");
+  await page.reload();
+  await expect(bio).toHaveValue("Dana reads.");
+  await expect(conflict).toBeVisible();
+  await theirs.click();
+  await expect(bio).toHaveValue("Dana reads.");
+  await expect(page.getByText("Unsaved changes discarded.")).toBeFocused();
+  await expect(conflict).toHaveCount(0);
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
+
+  // Two tabs of one browser. This one has unsaved text; she signs out in the other.
+  await bio.fill("Dana reads aloud.");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  const other = await page.context().newPage();
+  await other.goto("/en/me");
+  await expect(other.getByLabel("Bio in English")).toHaveValue("Dana reads aloud.");
+  await other.getByRole("button", { name: "Sign out" }).click();
+  await expect(other).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(other)).toEqual([]);
+  // This tab still shows her text. Typing on, waiting past the moment it would be written, and
+  // then leaving the page must put nothing of hers back into the browser.
+  await bio.fill("Dana reads aloud, to machines.");
+  await page.waitForTimeout(900);
+  expect(await unsavedKeys(other)).toEqual([]);
+  await page.goto("/en/");
+  await expect(page).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(page)).toEqual([]);
+  await other.close();
+});
+
 test("a chair finds the submissions, opens one and downloads both CSV files", async ({
   page,
   request,
