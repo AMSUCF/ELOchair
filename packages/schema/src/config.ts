@@ -348,6 +348,18 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       if (f.integer !== undefined && f.kind !== "number") {
         issue(fat, "integer is for number fields");
       }
+      // Whole numbers only, between two ends with no whole number between them (15.1 to 15.9):
+      // every answer would be refused, so nobody could submit the format.
+      if (
+        f.kind === "number" &&
+        f.integer === true &&
+        f.min !== undefined &&
+        f.max !== undefined &&
+        f.min <= f.max &&
+        Math.ceil(f.min) > Math.floor(f.max)
+      ) {
+        issue(fat, "a whole-number field needs a whole number between min and max");
+      }
       const hasOptions = (f.options?.length ?? 0) > 0;
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {
         issue([...fat, "options"], "select fields need options");
