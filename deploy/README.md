@@ -84,25 +84,28 @@ elochair revoke-token <token-id>
 The `backup` service dumps the database into `deploy/backups/` every hour and deletes old dumps by a fixed rule. It is part of the stack, so there is nothing to schedule.
 
 - With the whole stack, `docker compose -f deploy/docker-compose.yml up -d` starts it with everything else.
-- Where another web server sits in front and the services are started by name (Caddy is left out), name it too. Nothing else depends on the backup service, so it does not start on its own:
+- Where another web server sits in front and the services are started by name (Caddy is left out), name it too, every time. Nothing else depends on the backup service, so it does not start on its own, and a bare `up -d` must never be run there because it would start Caddy:
 
   ```bash
   docker compose -f deploy/docker-compose.yml up -d --build app backup
   ```
 
+**An installation that was running before this service existed has no backups until it is started once.** On the upgrade that brings it in, start it by name as above (or with `up -d backup` alone), and do not leave before the two checks below pass. The jtm.io installation is one of these: its procedure is in "Deploying to jtm.io" in [AGENTS.md](../AGENTS.md), and names `app backup` as here.
+
 Check on it after every deployment, and now and then:
 
 ```bash
-docker compose -f deploy/docker-compose.yml ps backup               # "healthy" once the first dump is written
+docker compose -f deploy/docker-compose.yml ps backup               # Up, and "healthy" once the first dump is written
+docker compose -f deploy/docker-compose.yml run --rm backup healthy # the newest dump and its age; fails if there is none or it is too old
 docker compose -f deploy/docker-compose.yml logs --tail 20 backup
 docker compose -f deploy/docker-compose.yml run --rm backup list    # the dumps, newest first
 ```
 
-The service reports `unhealthy` when the newest dump is more than two hours and five minutes old, or when a retention setting is not a whole number. A dump that fails is logged, leaves no file behind, and is tried again five minutes later; the service keeps running. Nothing sends an alert: someone has to look, or the server's monitoring has to watch the container's health.
+The service reports `unhealthy` when the newest dump is more than two hours and five minutes old, or when a retention setting is not a whole number. A dump that fails is logged, leaves no file behind, deletes nothing older, and is tried again five minutes later; the service keeps running. Nothing sends an alert: someone has to look, or the server's monitoring has to watch the container's health.
 
 ### What is kept
 
-Each dump is one file, `deploy/backups/elochair-<UTC date and time>.dump`, for example `elochair-20270214T230000Z.dump`. It is written under a `.partial` name, read back in full, and only then given its final name, so a file with the final name is complete. The dumps hold personal data and confidential reviews: they are readable only by the owner of `deploy/backups/`, which is whoever checked out the repository, and that user can copy them without root.
+Each dump is one file, `deploy/backups/elochair-<UTC date and time>.dump`, for example `elochair-20270214T230000Z.dump`. It is written under a `.partial` name, read back in full, written through to the disk, and only then given its final name, so a file with the final name is complete. If the disk does not take the dump or its name (it is full, or failing), that backup has failed, and no older dump is deleted on its account. The dumps hold personal data and confidential reviews: they are readable only by the owner of `deploy/backups/`, which is whoever checked out the repository, and that user can copy them without root.
 
 After each dump, `deploy/backup-retention.sh` decides what stays. It keeps the newest dump of each of:
 
@@ -171,9 +174,13 @@ docker compose -f deploy/docker-compose.yml run --rm backup now   # a backup fir
 git pull
 docker compose -f deploy/docker-compose.yml up -d --build         # migrations run on start
 docker compose -f deploy/docker-compose.yml restart backup        # so that it runs the scripts just pulled
+docker compose -f deploy/docker-compose.yml ps backup             # Up, and healthy
+docker compose -f deploy/docker-compose.yml run --rm backup healthy
 ```
 
-On the upgrade that first brings in the backup service there is nothing to run the first line with: pull first, then take the backup, then carry on.
+Where the services are started by name, the third command is `up -d --build app backup` instead, never a bare `up -d`.
+
+On the upgrade that first brings in the backup service there is nothing to run the first line with: pull first, then take the backup, then carry on. That upgrade is also the one that has to start the service; the last two commands show that it did.
 
 If an upgrade goes wrong, check out the version that was running before, restore the dump taken in the first line (see "Restoring"), and start that version. Do not take another backup before you restore: a second dump in the same hour would replace the good one.
 
@@ -200,7 +207,7 @@ The backup service was checked on 2026-11-17, in a development sandbox and in CI
 - The retention policy gives the same answer in the `postgres:16` image (dash and mawk), in the `rclone/rclone` image (busybox) and on the machine that runs the test.
 - With the backup directory read-only, the service turns `unhealthy` once the newest dump is too old, keeps running, logs the failure, and takes a dump by itself when the directory is writable again.
 
-`npm run check` covers the retention policy and the failure paths of `backup.sh` (`apps/server/src/backup-scripts.test.ts`).
+`npm run check` covers the retention policy and the failure paths of `backup.sh` (`apps/server/src/backup-scripts.test.ts`), among them a dump or a name the disk does not take, with a stand-in for `sync` that fails: nothing older is deleted then.
 
 Not checked: a database of real size (the test database is almost empty, so how long a dump or a restore takes is unknown), a full disk, and an upgrade on a server that was running without the backup service.
 
