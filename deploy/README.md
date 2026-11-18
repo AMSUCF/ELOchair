@@ -129,6 +129,8 @@ Two things follow from "one dump for each hour":
   cp deploy/backups/elochair-20270214T230000Z.dump deploy/backups/before-the-deadline.dump
   ```
 
+A file named like a dump whose date or time cannot exist (`elochair-20270231T120000Z.dump`, for 31 February) is not taken for one: it is never counted, listed or deleted, here or in the bucket.
+
 ### A backup now
 
 ```bash

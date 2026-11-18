@@ -87,13 +87,31 @@ stamp_of() {
     "$y" "$m" "$d" $((rest / 3600)) $((rest % 3600 / 60)) $((rest % 60))
 }
 
+# Whether a yyyymmddThhmmssZ stamp names a date and time that can exist. This is the rule of
+# backup-retention.sh, which passes over any other name: a file named like a dump for 31 February
+# or for 25 o'clock is not one of ours either, so it is never counted, listed, restored from as
+# "latest", or deleted.
+real_stamp() {
+  local y=$((10#${1:0:4})) m=$((10#${1:4:2})) d=$((10#${1:6:2}))
+  local days=31
+  case "$m" in
+    4 | 6 | 9 | 11) days=30 ;;
+    2) days=$(((y % 4 == 0 && y % 100 != 0) || y % 400 == 0 ? 29 : 28)) ;;
+  esac
+  [ "$m" -ge 1 ] && [ "$m" -le 12 ] && [ "$d" -ge 1 ] && [ "$d" -le "$days" ] &&
+    [ "$((10#${1:9:2}))" -le 23 ] && [ "$((10#${1:11:2}))" -le 59 ] && [ "$((10#${1:13:2}))" -le 60 ]
+}
+
 # Sets STAMPS to the stamps of the dumps in $DIR, newest first. Only files with exactly our name
-# pattern count: anything else in the directory is somebody else's and is never touched.
+# pattern and a date that can exist count: anything else in the directory is somebody else's and
+# is never touched.
 read_stamps() {
   STAMPS=()
-  local f all=()
+  local f s all=()
   for f in "$DIR"/elochair-*.dump; do
-    if [[ ${f##*/} =~ $NAME_RE ]] && [ -f "$f" ]; then all+=("${BASH_REMATCH[1]}"); fi
+    [[ ${f##*/} =~ $NAME_RE ]] || continue
+    s=${BASH_REMATCH[1]}
+    if [ -f "$f" ] && real_stamp "$s"; then all+=("$s"); fi
   done
   local i
   for ((i = ${#all[@]} - 1; i >= 0; i--)); do STAMPS+=("${all[i]}"); done
@@ -130,6 +148,7 @@ prune() {
   t=$(now)
   for f in "$DIR"/elochair-*.dump.partial; do
     [[ ${f##*/} =~ $PARTIAL_RE ]] || continue
+    real_stamp "${BASH_REMATCH[1]}" || continue
     epoch_of "${BASH_REMATCH[1]}"
     if [ $((t - EPOCH)) -le "$STALE_PARTIAL" ]; then continue; fi
     if [ -n "$dry" ]; then

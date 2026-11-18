@@ -298,6 +298,27 @@ describe.skipIf(!posix)("deploy/backup-retention.sh: which dumps stay", () => {
     expect(retention("keep", [], DEFAULTS)).toMatchObject({ status: 0, out: [] });
   });
 
+  it("passes over a name whose date or time cannot exist, as it does any name that is not ours", () => {
+    const real = [name("2027-03-10T12:00:00Z"), name("2027-03-09T12:00:00Z")];
+    const impossible = [
+      "elochair-20270231T120000Z.dump", // 31 February
+      "elochair-20270229T120000Z.dump", // 2027 is not a leap year
+      "elochair-20271301T120000Z.dump", // a thirteenth month
+      "elochair-20270300T120000Z.dump", // day 0
+      "elochair-20270310T240000Z.dump", // 24 o'clock
+      "elochair-20270310T126000Z.dump", // minute 60
+      "elochair-99999999T999999Z.dump",
+    ];
+    const names = [...impossible, ...real];
+    expect(retention("keep", names, { ...OFF, hourly: 1 }).out).toEqual([real[0]]);
+    expect(retention("prune", names, { ...OFF, hourly: 1 }).out).toEqual([real[1]]);
+    expect(retention("keep", impossible, DEFAULTS)).toMatchObject({ status: 0, out: [] });
+    expect(retention("prune", impossible, OFF)).toMatchObject({ status: 0, out: [] });
+    // 29 February is a date in a leap year.
+    const leapDay = "elochair-20280229T120000Z.dump";
+    expect(retention("keep", [leapDay], OFF).out).toEqual([leapDay]);
+  });
+
   it("counts a name once however often it is listed", () => {
     const names = [name("2027-03-10T12:00:00Z"), name("2027-03-09T12:00:00Z")];
     expect(retention("keep", [...names, ...names], { ...OFF, hourly: 2 }).out).toEqual(names);
@@ -566,6 +587,41 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
     expect(r.status).not.toBe(0);
     expect(r.out).toContain("pruned as soon as it was written");
     expect(backup(["healthy"]).status).toBe(1);
+  });
+
+  it("leaves a file whose date cannot exist alone: it is never pruned and never in the way", () => {
+    const impossible = [
+      "elochair-20270231T120000Z.dump",
+      "elochair-20270310T116000Z.dump",
+      "elochair-99999999T999999Z.dump",
+      // By plain arithmetic this one was left more than a day ago; it is not ours to remove.
+      "elochair-20260231T120000Z.dump.partial",
+    ];
+    const old = Array.from({ length: 5 }, (_, i) => ago((i + 1) * 3600));
+    touch(...impossible, ...old);
+    const keep = keepEnv({ ...OFF, hourly: 2 });
+    expect(backup(["prune", "--dry-run"], keep).out.trim().split("\n")).toEqual(
+      old.slice(2).map((n) => `would delete ${join(backups, n)}`),
+    );
+    expect(backup(["prune"], keep).status).toBe(0);
+    expect(present()).toEqual([...impossible, old[0], old[1]].sort().reverse());
+    expect(backup(["now"], keep).status).toBe(0);
+    expect(present()).toEqual([...impossible, at(NOW), old[0]].sort().reverse());
+    const listed = backup(["list"]).out;
+    expect(listed).toContain(at(NOW));
+    for (const n of impossible) expect(listed).not.toContain(n);
+  });
+
+  it("does not take a file whose date cannot exist for a recent dump", () => {
+    // By plain arithmetic, minute 60 of eleven o'clock would be this very moment.
+    touch("elochair-20270310T116000Z.dump");
+    expect(backup(["healthy"])).toMatchObject({
+      status: 1,
+      out: expect.stringContaining("no dump"),
+    });
+    expect(backup(["tick"]).status).toBe(0);
+    expect(existsSync(join(backups, at(NOW)))).toBe(true);
+    expect(backup(["healthy"]).status).toBe(0);
   });
 
   it("refuses to run with an interval that is not a whole number of minutes", () => {

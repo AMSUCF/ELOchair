@@ -6,7 +6,8 @@
 #   backup-retention.sh keep     prints the names the policy keeps
 #   backup-retention.sh prune    prints the names the policy would delete
 #
-# A name is elochair-YYYYMMDDTHHMMSSZ.dump, in UTC. Every other line is ignored and printed by
+# A name is elochair-YYYYMMDDTHHMMSSZ.dump, in UTC, with a date and time that can exist. Every
+# other line (another name, or one for 31 February or for 25 o'clock) is ignored and printed by
 # neither command, so delete only what "prune" prints, never "everything that was not kept".
 #
 # Dumps are grouped by hour, by day, by ISO 8601 week and by month. A tier set to N keeps the
