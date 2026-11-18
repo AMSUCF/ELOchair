@@ -79,13 +79,11 @@ describe("ConferenceConfig", () => {
 
 describe("effectiveBlindMode", () => {
   const c2026 = ConferenceConfig.parse(elo2026);
-  const c2027 = ConferenceConfig.parse(elo2027);
 
   it("uses the pool default unless the type overrides it", () => {
     expect(effectiveBlindMode(c2026, "talk")).toBe("double");
-    expect(effectiveBlindMode(c2026, "exhibition")).toBe("single");
+    expect(effectiveBlindMode(c2026, "exhibition")).toBe("single"); // the artistic pool's default
     expect(effectiveBlindMode(c2026, "performance")).toBe("double"); // 2026 override
-    expect(effectiveBlindMode(c2027, "performance")).toBe("single"); // 2027 default
   });
 
   it("fails closed for unknown types", () => {

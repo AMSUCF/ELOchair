@@ -6,7 +6,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type CliContext, runCli } from "./cli";
 import { auditLog, conferences } from "./db/schema";
-import { seedTestCall } from "./fixtures";
+import { fixtureCall, seedTestCall } from "./fixtures";
 import { getConference, grantRole, saveConference } from "./repo";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
@@ -144,7 +144,7 @@ describe("CLI set-phase", () => {
 describe("CLI import-config --phase", () => {
   it("creates a new conference in the phase given", async () => {
     const path = join(dir, "brand-new.json");
-    await writeFile(path, JSON.stringify({ ...configs.elo2027, slug: "brand-new" }));
+    await writeFile(path, JSON.stringify({ ...fixtureCall, slug: "brand-new" }));
     expect(await cli(["import-config", path, "--phase", "cfp_open"])).toBe(0);
     expect(await phaseOf("brand-new")).toBe("cfp_open");
     expect(await phaseAudit("brand-new")).toEqual([]);
@@ -220,18 +220,18 @@ describe("CLI import-config --phase", () => {
 
 describe("CLI import-config over a stored config that no longer parses (#5)", () => {
   it("replaces it, with or without --phase", async () => {
-    await saveConference(t.db, { ...configs.elo2027, slug: "legacy" }, "cfp_open");
+    await saveConference(t.db, { ...fixtureCall, slug: "legacy" }, "cfp_open");
     // Stored under an older schema: a type key longer than today's limit of 64 characters.
-    const legacy = structuredClone({ ...configs.elo2027, slug: "legacy" });
+    const legacy = structuredClone({ ...fixtureCall, slug: "legacy" });
     legacy.submissionTypes[0]!.key = "t".repeat(70);
     await t.db.update(conferences).set({ config: legacy }).where(eq(conferences.slug, "legacy"));
     await expect(getConference(t.db, "legacy")).rejects.toThrow();
 
     const fixed = join(dir, "legacy-fixed.json");
-    await writeFile(fixed, JSON.stringify({ ...configs.elo2027, slug: "legacy" }));
+    await writeFile(fixed, JSON.stringify({ ...fixtureCall, slug: "legacy" }));
     expect(await cli(["import-config", fixed])).toBe(0);
     const repaired = await getConference(t.db, "legacy");
-    expect(repaired?.config.submissionTypes[0]?.key).toBe(configs.elo2027.submissionTypes[0]?.key);
+    expect(repaired?.config.submissionTypes[0]?.key).toBe(fixtureCall.submissionTypes[0]?.key);
     expect(repaired?.phase).toBe("cfp_open");
 
     // And with a phase move, which is checked against the stored phase as usual.
@@ -244,6 +244,8 @@ describe("CLI import-config over a stored config that no longer parses (#5)", ()
   });
 });
 
+// `seed` installs the built-in conferences, so these tests are about ELO 2026 and ELO 2027
+// themselves: that they are there, in which phase. Nothing here depends on what they say.
 describe("CLI seed --force", () => {
   it("is refused in production, where it would overwrite live conferences", async () => {
     await saveConference(t.db, configs.elo2027, "draft");
