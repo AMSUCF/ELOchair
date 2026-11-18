@@ -167,7 +167,8 @@ export const elo2027: ConferenceConfigInput = {
    * - Minimum lengths: none given, so an abstract only has to be there (minWords 1).
    * - Review: the call's "academic" formats go to the scientific pool (anonymized, three
    *   reviews), its "artistic" ones to the artistic pool (names visible, two reviews).
-   * - Team sizes, and panels not counting toward the cap of two.
+   * - Team sizes, and panels not counting toward the cap of two. A panel may have up to 24
+   *   people, so that co-authors of its papers are never refused.
    * - Bios: the call asks for 250 words (200-300 for the exhibition). ELOchair has one limit for
    *   the whole conference (rules.bio above) until bios can differ by format.
    * - Panels: the call asks for an abstract per paper. Until submissions can hold those as
@@ -234,7 +235,9 @@ export const elo2027: ConferenceConfigInput = {
         minWords: 1,
         maxWords: 150,
       },
-      team: { min: 3, max: 6 },
+      // At least three papers, so three people. At most six talks, each with up to four authors
+      // (the most a paper or a lightning talk may have): 24. The call gives no figure.
+      team: { min: 3, max: 24 },
       countsTowardPresenterCap: false,
       fields: [
         {

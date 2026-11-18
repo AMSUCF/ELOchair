@@ -141,7 +141,7 @@ describe("submitting to ELO 2027", () => {
     ]);
   });
 
-  it("a panel needs three to six people, a rationale of up to 150 words, and its papers' abstracts", () => {
+  it("a panel needs three people or more, a rationale of up to 150 words, and its papers' abstracts", () => {
     const three = [
       { role: "lead" as const },
       { role: "panelist" as const },
@@ -157,6 +157,22 @@ describe("submitting to ELO 2027", () => {
     // Six abstracts of 150 words and their titles fit; a seventh does not.
     const long = { ...full, fields: { paper_abstracts: words(1001) } };
     expect(codes(config, long, three)).toEqual(["fields.paper_abstracts: too_many_words"]);
+  });
+
+  it("a panel has room for its papers' co-authors: up to six talks of four authors each", () => {
+    const team = (n: number) => [
+      { role: "lead" as const },
+      ...Array.from({ length: n - 1 }, () => ({ role: "panelist" as const })),
+    ];
+    const full = submission("panel", { fields: { paper_abstracts: words(450) } });
+    // Four papers with two authors each.
+    expect(codes(config, full, team(8))).toEqual([]);
+    expect(type("panel").team).toEqual({ min: 3, max: 24 });
+    expect(type("panel").team.max).toBe(6 * type("lightning").team.max);
+    expect(codes(config, full, team(24))).toEqual([]);
+    expect(validateSubmission(config, full, team(25))).toEqual([
+      { path: "contributions", code: "team_size", params: { count: 25, min: 3, max: 24 } },
+    ]);
   });
 
   it("a workshop says how many people it expects and what it needs", () => {
