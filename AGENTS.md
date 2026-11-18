@@ -91,6 +91,7 @@ Spec 02 has the details.
 - **Consent.** Consent to the conference's agreements is recorded on submit and on confirm.
 - **Lists.** Lists, CSV exports and MCP tools all go through `querySubmissions()`, which projects first and filters afterwards.
 - **Errors.** Routes throw `Refusal(status, code)` for deliberate refusals.
+- **Unsaved text.** The editor and the profile form keep unsaved changes in the browser's `localStorage`, through `apps/web/src/unsaved.ts` and `useUnsaved`, so that a reload or a closed tab does not lose them. The server stays the source of truth and saving stays explicit. Buffers are kept under the signed-in person's id; they go on save, discard, delete, withdraw and sign-out, and after 30 days. A new form that holds real writing uses the same module. Never keep there what the server sent about other people.
 
 ## Deploying to jtm.io
 

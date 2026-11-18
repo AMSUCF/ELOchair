@@ -1,11 +1,60 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Issue, type Me, type Profile } from "../api";
-import { describedBy, ErrorSummary, FieldError, fieldId } from "../forms";
+import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { conferenceRoleKey } from "../labels";
 import { PageHeading } from "../ui";
+import type { UnsavedValues } from "../unsaved";
 import { useApi } from "../useApi";
+import { forgetUnsaved, useUnsaved } from "../useUnsaved";
+
+const TEXT_KEYS = [
+  "displayName",
+  "affiliation",
+  "country",
+  "languages",
+  "pronouns",
+  "orcid",
+] as const;
+const BIO_LANGS = ["en", "es", "pt"] as const;
+type ProfileFields = Record<(typeof TEXT_KEYS)[number], string> & { bios: Record<string, string> };
+
+const fieldsOf = (p: Profile | null): ProfileFields => ({
+  displayName: p?.displayName ?? "",
+  affiliation: p?.affiliation ?? "",
+  country: p?.country ?? "",
+  languages: (p?.languages ?? []).join(", "),
+  pronouns: p?.pronouns ?? "",
+  orcid: p?.orcid ?? "",
+  bios: { en: "", es: "", pt: "", ...(p?.bios ?? {}) },
+});
+
+/** What differs from `base`, by form path ("affiliation", "bios.es"), as the browser keeps it. */
+function unsavedOf(base: ProfileFields, form: ProfileFields): UnsavedValues {
+  const out: UnsavedValues = {};
+  for (const k of TEXT_KEYS) {
+    if (form[k] !== base[k]) out[k] = form[k];
+  }
+  for (const l of BIO_LANGS) {
+    if (form.bios[l] !== base.bios[l]) out[`bios.${l}`] = form.bios[l] ?? "";
+  }
+  return out;
+}
+
+/** `base` with unsaved values from the browser put back; anything else stored there is ignored. */
+function withUnsaved(base: ProfileFields, values: UnsavedValues): ProfileFields {
+  const out: ProfileFields = { ...base, bios: { ...base.bios } };
+  for (const k of TEXT_KEYS) {
+    const v = values[k];
+    if (typeof v === "string") out[k] = v;
+  }
+  for (const l of BIO_LANGS) {
+    const v = values[`bios.${l}`];
+    if (typeof v === "string") out.bios[l] = v;
+  }
+  return out;
+}
 
 export function MePage() {
   const { lang, t } = useT();
@@ -33,8 +82,11 @@ export function MePage() {
   const person = saved ?? me.person;
   async function signOut() {
     const out = await api("/api/auth/logout", { method: "POST", body: {} });
-    if (out.ok) navigate(`/${lang}/`);
-    else setSignOutFailed(true);
+    if (out.ok) {
+      // Unsaved text must not wait in this browser for whoever uses it next.
+      if (person) forgetUnsaved(person.id);
+      navigate(`/${lang}/`);
+    } else setSignOutFailed(true);
   }
   return (
     <>
@@ -86,21 +138,44 @@ function ProfileForm({
   onSaved: (p: Profile) => void;
 }) {
   const { t } = useT();
-  const [form, setForm] = useState({
-    displayName: initial?.displayName ?? "",
-    affiliation: initial?.affiliation ?? "",
-    country: initial?.country ?? "",
-    languages: (initial?.languages ?? []).join(", "),
-    pronouns: initial?.pronouns ?? "",
-    orcid: initial?.orcid ?? "",
-    bios: { en: "", es: "", pt: "", ...(initial?.bios ?? {}) } as Record<string, string>,
+  const { found, keep } = useUnsaved(initial?.id ?? null, "profile");
+  /** The form as it was last loaded or saved. Unsaved changes are the differences from it. */
+  const [base, setBase] = useState(() => fieldsOf(initial));
+  /** Changes an earlier visit left unsaved in this browser, back on top of the saved profile. */
+  const [restore] = useState(() => {
+    const kept = found ? withUnsaved(base, found.values) : base;
+    return Object.keys(unsavedOf(base, kept)).length > 0 ? kept : null;
   });
+  const [form, setForm] = useState(() => restore ?? base);
+  const [restored, setRestored] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [message, setMessage] = useState("");
-  const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const set = (key: (typeof TEXT_KEYS)[number], value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
+  const unsaved = useMemo(() => unsavedOf(base, form), [base, form]);
+
+  // Said after the first render, so that the notice is announced.
+  useEffect(() => {
+    if (restore) setRestored(true);
+  }, [restore]);
+
+  useEffect(() => {
+    keep(unsaved, null);
+  }, [keep, unsaved]);
+
+  /** Back to the saved profile. The notice goes away: focus moves to the line that says so. */
+  function discardRestored() {
+    setForm(base);
+    setRestored(false);
+    setIssues([]);
+    setMessage(t("unsavedDiscarded"));
+    statusRef.current?.focus();
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    const sent = form;
     const res = await api<Profile>("/api/me/profile", {
       method: "PUT",
       body: {
@@ -118,6 +193,9 @@ function ProfileForm({
     });
     if (res.ok) {
       if (res.data) onSaved(res.data);
+      // Anything typed while the save was on its way stays as an unsaved change.
+      setBase(sent);
+      setRestored(false);
       setIssues([]);
       setMessage(t("profileSaved"));
     } else {
@@ -148,6 +226,10 @@ function ProfileForm({
   return (
     <form onSubmit={save} className="stack wide" noValidate>
       <h2>{t("profileTitle")}</h2>
+      <RestoredNotice
+        shown={restored && Object.keys(unsaved).length > 0}
+        onDiscard={discardRestored}
+      />
       <ErrorSummary issues={issues} title={t("editErrors")} />
       {field("displayName", t("profileName"), { autoComplete: "name" })}
       {field("affiliation", t("profileAffiliation"), { autoComplete: "organization" })}
@@ -155,7 +237,7 @@ function ProfileForm({
       {field("languages", t("profileLanguages"))}
       {field("pronouns", t("profilePronouns"))}
       {field("orcid", t("profileOrcid"))}
-      {(["en", "es", "pt"] as const).map((l) => (
+      {BIO_LANGS.map((l) => (
         <div key={l} className="stack">
           <label htmlFor={`bio-${l}`}>{t("profileBio", { lang: LANG_NAMES[l] })}</label>
           <textarea
@@ -172,7 +254,7 @@ function ProfileForm({
         {t("profileBioHelp")}
       </p>
       <button type="submit">{t("profileSave")}</button>
-      <p className="status-line" role="status">
+      <p className="status-line" role="status" tabIndex={-1} ref={statusRef}>
         {message}
       </p>
     </form>

@@ -84,10 +84,16 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   editReloaded: "A versão mais recente foi carregada.",
   editReloadedKept:
     "A versão mais recente foi carregada e as suas alterações foram mantidas. Reveja-as e guarde.",
-  editLeaveUnsaved: "Tem alterações por guardar. Sair desta página e perdê-las?",
+  editLeaveUnsaved: "Tem alterações por guardar. Sair desta página sem as guardar?",
   editActionFor: "{action}: {name}",
   editClosed: "A chamada encerrou: esta proposta já não pode ser editada.",
   editUnsaved: "Tem alterações por guardar.",
+  unsavedRestored:
+    "As suas alterações por guardar foram restauradas a partir deste dispositivo. Reveja-as e guarde.",
+  unsavedRestoredStale:
+    "As suas alterações por guardar foram restauradas a partir deste dispositivo.",
+  unsavedDiscard: "Descartar as alterações por guardar",
+  unsavedDiscarded: "Alterações por guardar descartadas.",
   editAgreements: "Antes de submeter, leia e aceite:",
   editAgree: "Aceito: {title}",
   editRead: "Ler",

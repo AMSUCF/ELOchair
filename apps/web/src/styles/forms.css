@@ -9,6 +9,12 @@
   max-width: none;
 }
 
+/* The region for the "unsaved changes restored" notice stays rendered, so that the notice is
+   announced when it appears. Empty, it takes no room (and no gap) in a stack. */
+.stack > .restored:empty {
+  position: absolute;
+}
+
 label {
   font-weight: 600;
 }
