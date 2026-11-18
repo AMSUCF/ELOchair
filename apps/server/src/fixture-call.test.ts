@@ -37,6 +37,20 @@ describe("the fixture call", () => {
     expect(fixtureCall.contactEmail).toMatch(/@example\.org$/);
     expect(fixtureCall.website).toBeUndefined();
     expect(Object.keys(conferences)).not.toContain(fixtureCall.slug);
+    // Nowhere in it: the real organisation, its conferences, their hosts or their sites.
+    // ("Electronic literature" alone is the art form, which the formats do mention.)
+    const all = JSON.stringify(fixtureCall);
+    expect(all.match(/\bELO\b|\belo20\d\d\b/g)).toBeNull();
+    expect(
+      all.match(
+        /literature organi[sz]ation|eliterature|uninorte|universidad del norte|barranquilla/gi,
+      ),
+    ).toBeNull();
+    // Every link and address is in a domain reserved for examples.
+    const hosts = [...all.matchAll(/https?:\/\/([^/"\s]+)|[\w.+-]+@([\w.-]+)/g)].map(
+      (m) => m[1] ?? m[2] ?? "",
+    );
+    expect(hosts).toEqual(["example.org", "example.org"]);
   });
 
   it("opens as test-call for tests, while development gets ELO 2027's own formats", async () => {

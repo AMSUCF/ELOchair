@@ -49,25 +49,25 @@ export const fixtureCall: ConferenceConfigInput = {
       key: "privacy",
       version: "draft-1",
       title: {
-        en: "Privacy notice: how ELO uses your personal data",
-        es: "Aviso de privacidad: cómo usa la ELO tus datos personales",
-        pt: "Aviso de privacidade: como a ELO usa os seus dados pessoais",
+        en: "Privacy notice: how the Test Society uses your personal data",
+        es: "Aviso de privacidad: cómo usa la Sociedad de Prueba tus datos personales",
+        pt: "Aviso de privacidade: como a Sociedade de Teste usa os seus dados pessoais",
       },
       text: {
-        en: "ELO stores your name, email, affiliation and submissions to run the conference review and program, and publishes accepted work in the open-access archive. Placeholder text pending ELO's privacy notice.",
-        es: "La ELO guarda tu nombre, correo, institución y envíos para gestionar la revisión y el programa del congreso, y publica los trabajos aceptados en el archivo de acceso abierto. Texto provisional hasta contar con el aviso de privacidad de la ELO.",
-        pt: "A ELO guarda o seu nome, email, instituição e submissões para gerir a revisão e o programa do congresso, e publica os trabalhos aceites no arquivo de acesso aberto. Texto provisório até existir o aviso de privacidade da ELO.",
+        en: "The Test Society stores your name, email, affiliation and submissions to run the conference review and program, and publishes accepted work in the open-access archive. Made-up text for tests.",
+        es: "La Sociedad de Prueba guarda tu nombre, correo, institución y envíos para gestionar la revisión y el programa del congreso, y publica los trabajos aceptados en el archivo de acceso abierto. Texto inventado para pruebas.",
+        pt: "A Sociedade de Teste guarda o seu nome, email, instituição e submissões para gerir a revisão e o programa do congresso, e publica os trabalhos aceites no arquivo de acesso aberto. Texto inventado para testes.",
       },
     },
     {
       key: "code_of_conduct",
       version: "draft-1",
       title: {
-        en: "ELO Code of Conduct",
-        es: "Código de conducta de la ELO",
-        pt: "Código de conduta da ELO",
+        en: "Test Society Code of Conduct",
+        es: "Código de conducta de la Sociedad de Prueba",
+        pt: "Código de conduta da Sociedade de Teste",
       },
-      url: "https://eliterature.org/",
+      url: "https://example.org/code-of-conduct",
     },
     {
       key: "recordings",
@@ -78,9 +78,9 @@ export const fixtureCall: ConferenceConfigInput = {
         pt: "Política de gravações: as sessões são gravadas e publicadas em acesso aberto",
       },
       text: {
-        en: "Sessions are recorded and published open access after the conference. Placeholder text pending ELO's recordings policy.",
-        es: "Las sesiones se graban y se publican en acceso abierto después del congreso. Texto provisional hasta contar con la política de grabaciones de la ELO.",
-        pt: "As sessões são gravadas e publicadas em acesso aberto depois do congresso. Texto provisório até existir a política de gravações da ELO.",
+        en: "Sessions are recorded and published open access after the conference. Made-up text for tests.",
+        es: "Las sesiones se graban y se publican en acceso abierto después del congreso. Texto inventado para pruebas.",
+        pt: "As sessões são gravadas e publicadas em acesso aberto depois do congresso. Texto inventado para testes.",
       },
     },
   ],
@@ -96,9 +96,9 @@ export const fixtureCall: ConferenceConfigInput = {
         {
           key: "fit",
           label: {
-            en: "Fit with the theme and the ELO community",
-            es: "Pertinencia con el tema y la comunidad ELO",
-            pt: "Adequação ao tema e à comunidade ELO",
+            en: "Fit with the theme and the community",
+            es: "Pertinencia con el tema y la comunidad",
+            pt: "Adequação ao tema e à comunidade",
           },
         },
         {
@@ -133,9 +133,9 @@ export const fixtureCall: ConferenceConfigInput = {
         {
           key: "fit",
           label: {
-            en: "Fit with the theme and the ELO community",
-            es: "Pertinencia con el tema y la comunidad ELO",
-            pt: "Adequação ao tema e à comunidade ELO",
+            en: "Fit with the theme and the community",
+            es: "Pertinencia con el tema y la comunidad",
+            pt: "Adequação ao tema e à comunidade",
           },
         },
         {
