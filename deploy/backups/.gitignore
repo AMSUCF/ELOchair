@@ -1,0 +1,5 @@
+# The backup service writes database dumps here. They hold personal data and confidential
+# reviews: never commit them. This file keeps the directory in every checkout, owned by whoever
+# checked it out, and the dumps are written as that user (see deploy/backup.sh).
+*
+!.gitignore
