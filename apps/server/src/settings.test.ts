@@ -90,6 +90,12 @@ const typeOf = (config: Config, key: string) => {
   return type;
 };
 
+const fieldOf = (config: Config, typeKey: string, key: string) => {
+  const field = typeOf(config, typeKey).fields.find((x) => x.key === key);
+  if (!field) throw new Error(`no field ${typeKey}.${key}`);
+  return field;
+};
+
 /**
  * A proposal of `typeKey` whose abstract is `count` times `word`; submitted unless `asDraft`.
  * The word is short: an abstract may hold eight characters for each word its format allows.
@@ -322,6 +328,18 @@ describe("what a chair may change", () => {
         },
         ["title.fr", "submissionTypes.talk.name.fr"],
       ],
+      [
+        // The schema takes a word limit on any field; only a text field has one to set.
+        "a word limit on a field that is not text",
+        (c) => {
+          fieldOf(c, "performance", "work_url").maxWords = 12;
+          fieldOf(c, "exhibition", "work_url").maxWords = 12;
+        },
+        [
+          "submissionTypes.performance.fields.work_url.maxWords",
+          "submissionTypes.exhibition.fields.work_url.maxWords",
+        ],
+      ],
     ];
     const rowsBefore = (await configAudit()).length;
     for (const [what, change, paths] of cases) {
@@ -356,6 +374,30 @@ describe("what a chair may change", () => {
     expect((await preview("admin", config, token)).json).toMatchObject({
       scope: "all",
       changes: [{ path: "title.fr", after: "Rencontre inventée" }],
+      forbidden: [],
+      canSave: true,
+    });
+  });
+
+  it("lets an admin, not a chair, give a field a value its kind does not have", async () => {
+    const path = "submissionTypes.performance.fields.work_url.maxWords";
+    const { config, token } = await edited("admin", (c) => {
+      fieldOf(c, "performance", "work_url").maxWords = 12;
+    });
+    expect((await preview("admin", config, token)).json).toMatchObject({
+      scope: "all",
+      changes: [{ path, after: 12 }],
+      forbidden: [],
+      canSave: true,
+    });
+    // The same request from a chair, and a text field's word limit, which is a chair's.
+    const reviewed = await preview("chair", config, token);
+    expect(reviewed.json).toMatchObject({ scope: "stage_one", forbidden: [path], canSave: false });
+    const own = await edited("chair", (c) => {
+      fieldOf(c, "workshop", "needs").maxWords = 150;
+    });
+    expect((await preview("chair", own.config, own.token)).json).toMatchObject({
+      changes: [{ path: "submissionTypes.workshop.fields.needs.maxWords", after: 150 }],
       forbidden: [],
       canSave: true,
     });
