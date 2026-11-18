@@ -6,6 +6,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -24,12 +25,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const RETENTION = fileURLToPath(new URL("../../../deploy/backup-retention.sh", import.meta.url));
 const BACKUP = fileURLToPath(new URL("../../../deploy/backup.sh", import.meta.url));
+const README = fileURLToPath(new URL("../../../deploy/README.md", import.meta.url));
 const PATH = process.env.PATH ?? "";
 
 /** Neither script is for Windows; elsewhere a missing shell is a failure, not a skip. */
 const posix = process.platform !== "win32";
 /** backup.sh locks only where flock is installed (the postgres image has it; macOS does not). */
 const hasFlock = posix && spawnSync("flock", ["--version"]).status === 0;
+/** The copy off the server is by rsync, which a development machine may not have. */
+const hasRsync = posix && spawnSync("rsync", ["--version"]).status === 0;
 
 interface Keep {
   hourly: number;
@@ -647,4 +651,76 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
       [ago(0), ago(3600), ago(7200)].map((n) => `${n}  1 bytes`),
     );
   });
+});
+
+describe.skipIf(!posix)('deploy/README.md: the commands under "Off the server"', () => {
+  let dir: string;
+  let server: string;
+  let copy: string;
+  const NOW = seconds("2027-02-14T23:00:00Z");
+  /** Sixty hourly dumps, as the server holds them, and what else is in its directory. */
+  const dumps = Array.from({ length: 60 }, (_, i) => at(NOW - i * 3600));
+  const pinned = "before-the-deadline.dump";
+  const others = [pinned, `${at(NOW + 1800)}.partial`, ".gitignore"];
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "elochair-offserver-test-"));
+    server = join(dir, "server");
+    copy = join(dir, "copy");
+    mkdirSync(server);
+    mkdirSync(copy);
+    for (const n of [...dumps, ...others]) writeFileSync(join(server, n), n);
+    // The one thing the operator puts in the copy's directory by hand.
+    copyFileSync(RETENTION, join(copy, "backup-retention.sh"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  /** The one command of that section that starts with `start`, exactly as it is written there. */
+  function documented(start: string): string {
+    const section =
+      readFileSync(README, "utf8").split("\n### Off the server\n")[1]?.split("\n### ")[0] ?? "";
+    const lines = section.split("\n").filter((line) => line.startsWith(start));
+    expect(lines).toHaveLength(1);
+    return lines[0] ?? "";
+  }
+  const inCopy = (command: string, env: Record<string, string> = {}) =>
+    spawnSync("sh", ["-c", command], { cwd: copy, env: { PATH, ...env }, encoding: "utf8" });
+  const held = () => readdirSync(copy).sort();
+  const withScript = (names: string[]) => [...names, "backup-retention.sh"].sort();
+
+  it("keeps a copy of the dumps to the policy's rolling set, by their names alone", () => {
+    const prune = documented("ls | sh ./backup-retention.sh prune");
+    for (const n of [...dumps, pinned, "notes.txt"]) writeFileSync(join(copy, n), n);
+
+    // A setting that is not a whole number deletes nothing.
+    inCopy(prune, { BACKUP_KEEP_DAILY: "lots" });
+    expect(held()).toEqual(withScript([...dumps, pinned, "notes.txt"]));
+
+    expect(inCopy(prune).status).toBe(0);
+    const stay = expectedToStay(dumps, DEFAULTS);
+    expect(stay.length).toBeLessThan(dumps.length);
+    expect(held()).toEqual(withScript([...stay, pinned, "notes.txt"]));
+  });
+
+  it.skipIf(!hasRsync)(
+    "copies every finished dump and nothing else, deletes nothing on the server, and settles",
+    () => {
+      const written = documented("rsync -a ");
+      const pull = written.replace("<user>@<server>:/srv/elochair/deploy/backups/", `"${server}/"`);
+      expect(pull).not.toBe(written);
+      const prune = documented("ls | sh ./backup-retention.sh prune");
+      const stay = expectedToStay(dumps, DEFAULTS);
+
+      expect(inCopy(pull).status).toBe(0);
+      expect(held()).toEqual(withScript([...dumps, pinned]));
+      expect(inCopy(prune).status).toBe(0);
+      expect(held()).toEqual(withScript([...stay, pinned]));
+
+      // The next round fetches again what the server still has, and ends with the same set.
+      expect(inCopy(pull).status).toBe(0);
+      expect(inCopy(prune).status).toBe(0);
+      expect(held()).toEqual(withScript([...stay, pinned]));
+      expect(readdirSync(server).sort()).toEqual([...dumps, ...others].sort());
+    },
+  );
 });

@@ -14,9 +14,10 @@
 #                                        keeping the previous database under another name;
 #                                        with --into, restore into a new database instead
 #
-# The contract other tools rely on (deploy/backup-offsite.md): a dump is written as
-# elochair-<UTC yyyymmddThhmmssZ>.dump.partial, read back, written through to the disk, and only
-# then renamed to elochair-<stamp>.dump. A file with the final name is always complete.
+# The contract that anything copying the dumps elsewhere relies on ("Off the server" in
+# deploy/README.md): a dump is written as elochair-<UTC yyyymmddThhmmssZ>.dump.partial, read back,
+# written through to the disk, and only then renamed to elochair-<stamp>.dump. A file with the
+# final name is always complete.
 #
 # Which dumps stay is decided by backup-retention.sh, next to this file, and nowhere else.
 set -euo pipefail
