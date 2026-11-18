@@ -1,6 +1,6 @@
 # Running ELOchair on ELO's server
 
-ELOchair runs as three containers: the app, Postgres 16, and Caddy, which obtains HTTPS certificates automatically. Everything in this runbook is done from a checkout of this repository on the server.
+ELOchair runs as four containers: the app, Postgres 16, a backup service that dumps the database every hour, and Caddy, which obtains HTTPS certificates automatically. Everything in this runbook is done from a checkout of this repository on the server.
 
 ## What the server needs
 
@@ -8,7 +8,7 @@ ELOchair runs as three containers: the app, Postgres 16, and Caddy, which obtain
 - **Memory:** 2 GB is enough for now. Allow 4 GB once the on-server model worker for reviewer matching arrives.
 - **Domain:** a DNS name pointing at the server, for example `chair.eliterature.org`, with ports 80 and 443 open.
 - **Mail:** an SMTP account allowed to send as the `MAIL_FROM` address. SPF and DKIM for `eliterature.org` must cover it, otherwise sign-in emails land in spam.
-- **Backups:** somewhere off the server to copy them to.
+- **Backups:** disk space for 82 database dumps, and somewhere off the server to copy them to.
 
 ## Install
 
@@ -81,28 +81,101 @@ elochair revoke-token <token-id>
 
 ## Backups
 
-Schedule `deploy/backup.sh` nightly. It writes a compressed `pg_dump` to `deploy/backups/` and keeps 30 days:
+The `backup` service dumps the database into `deploy/backups/` every hour and deletes old dumps by a fixed rule. It is part of the stack, so there is nothing to schedule.
 
-```cron
-15 3 * * *  /srv/elochair/deploy/backup.sh >> /var/log/elochair-backup.log 2>&1
+- With the whole stack, `docker compose -f deploy/docker-compose.yml up -d` starts it with everything else.
+- Where another web server sits in front and the services are started by name (Caddy is left out), name it too. Nothing else depends on the backup service, so it does not start on its own:
+
+  ```bash
+  docker compose -f deploy/docker-compose.yml up -d --build app backup
+  ```
+
+Check on it after every deployment, and now and then:
+
+```bash
+docker compose -f deploy/docker-compose.yml ps backup               # "healthy" once the first dump is written
+docker compose -f deploy/docker-compose.yml logs --tail 20 backup
+docker compose -f deploy/docker-compose.yml run --rm backup list    # the dumps, newest first
 ```
 
-**Copy `deploy/backups/` off the server as well**, for example with rsync to another machine. To restore:
+The service reports `unhealthy` when the newest dump is more than two hours and five minutes old, or when a retention setting is not a whole number. A dump that fails is logged, leaves no file behind, and is tried again five minutes later; the service keeps running. Nothing sends an alert: someone has to look, or the server's monitoring has to watch the container's health.
+
+### What is kept
+
+Each dump is one file, `deploy/backups/elochair-<UTC date and time>.dump`, for example `elochair-20270214T230000Z.dump`. It is written under a `.partial` name, read back in full, and only then given its final name, so a file with the final name is complete. The dumps hold personal data and confidential reviews: they are readable only by the owner of `deploy/backups/`, which is whoever checked out the repository, and that user can copy them without root.
+
+After each dump, `deploy/backup-retention.sh` decides what stays. It keeps the newest dump of each of:
+
+- the latest 48 hours,
+- the latest 14 days,
+- the latest 8 weeks (Monday to Sunday), and
+- the latest 12 months
+
+that have a dump, all in UTC, and it always keeps the newest dump of all. Hours, days, weeks and months without a dump are not counted, so nothing ages out while backups are stalled.
+
+**The directory never holds more than 82 dumps** (48 + 14 + 8 + 12), however often dumps are taken, and usually fewer, because one dump can be the newest of its hour, its day, its week and its month at once. Only while a new dump is being written is there one more.
+
+The numbers are settings in `deploy/.env`: `BACKUP_KEEP_HOURLY`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`, and `BACKUP_INTERVAL_MINUTES` for how often a dump is taken. The limit is always the sum of the four, and 0 turns a tier off.
+
+Two things follow from "one dump for each hour":
+
+- A second dump in the same clock hour replaces the first. Two manual backups ten minutes apart leave only the later one, and with `BACKUP_INTERVAL_MINUTES` under 60 only the latest dump of each hour stays.
+- To keep one dump for good, copy it to a name of your own. Files with any other name are never deleted, and `restore` accepts them:
+
+  ```bash
+  cp deploy/backups/elochair-20270214T230000Z.dump deploy/backups/before-the-deadline.dump
+  ```
+
+### A backup now
+
+```bash
+docker compose -f deploy/docker-compose.yml run --rm backup now
+```
+
+### Off the server
+
+**A backup on the same disk is not a backup.** `deploy/backups/` covers a bad upgrade or a mistaken deletion, not the loss of the server. Copy the dumps somewhere else as well: see [backup-offsite.md](backup-offsite.md).
+
+The dumps hold the database and nothing else. `deploy/.env` is not in them; keep a copy of it somewhere safe and separate.
+
+### Restoring
 
 ```bash
 docker compose -f deploy/docker-compose.yml stop app
-docker compose -f deploy/docker-compose.yml exec -T db pg_restore -U elochair -d elochair --clean --if-exists < deploy/backups/elochair-YYYYMMDDTHHMMSSZ.dump
+docker compose -f deploy/docker-compose.yml run --rm backup list
+docker compose -f deploy/docker-compose.yml run --rm backup restore elochair-YYYYMMDDTHHMMSSZ.dump   # or: restore latest
 docker compose -f deploy/docker-compose.yml start app
+```
+
+`restore` loads the dump into a new database and, only if all of it loads, gives that database the name `elochair`. A dump that does not load leaves the live database as it was. The result holds exactly what the dump holds: a table added by a later migration is gone as well, so the version of the app that wrote the dump starts on it cleanly.
+
+The database as it was before the restore is kept, and `restore` prints its name, `elochair_before_restore_<time>`. Once you are sure of the restore, remove it:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec db dropdb -U elochair elochair_before_restore_<time>
+```
+
+To check that a dump restores, without touching the live database:
+
+```bash
+docker compose -f deploy/docker-compose.yml run --rm backup restore --into elochair_check latest
+docker compose -f deploy/docker-compose.yml exec db psql -U elochair -d elochair_check -c "SELECT count(*) FROM submissions"
+docker compose -f deploy/docker-compose.yml exec db dropdb -U elochair elochair_check
 ```
 
 ## Upgrades
 
 ```bash
-cd /srv/elochair && git pull
-docker compose -f deploy/docker-compose.yml up -d --build   # migrations run on start
+cd /srv/elochair
+docker compose -f deploy/docker-compose.yml run --rm backup now   # a backup first
+git pull
+docker compose -f deploy/docker-compose.yml up -d --build         # migrations run on start
+docker compose -f deploy/docker-compose.yml restart backup        # so that it runs the scripts just pulled
 ```
 
-Take a backup first.
+On the upgrade that first brings in the backup service there is nothing to run the first line with: pull first, then take the backup, then carry on.
+
+If an upgrade goes wrong, check out the version that was running before, restore the dump taken in the first line (see "Restoring"), and start that version. Do not take another backup before you restore: a second dump in the same hour would replace the good one.
 
 ## What has been verified
 
@@ -112,7 +185,6 @@ These were checked on 2026-11-08 in a development sandbox, not yet on ELO's serv
 - The internal listener answers only on `127.0.0.1:8081`.
 - Security headers are present.
 - `seed` works inside the container.
-- `backup.sh` writes a dump that restores into a fresh database.
 - After the review fixes, the checks were repeated:
   - the app shell is served `no-cache` and hashed assets `immutable`, with a 404 for missing assets
   - a `openssl rand -hex 32` password works in the database URL
@@ -120,6 +192,17 @@ These were checked on 2026-11-08 in a development sandbox, not yet on ELO's serv
   - the app refuses to start without `SECRET_KEY`, and with it is healthy and sends sign-in mail
 
 Real TLS certificates and SMTP delivery have not been tested, because they need the real domain and mail account.
+
+The backup service was checked on 2026-11-17, in a development sandbox and in CI, by `deploy/test/backup-e2e.sh` against Postgres 16 with the real schema. CI runs it again whenever the backup scripts, the Compose file or the migrations change.
+- Starting `db` and `backup` writes a first dump unasked. It is mode 600 and belongs to the owner of the backup directory.
+- A manual dump restores over later changes: the rows come back, a table created after the dump is gone, the audit log is append-only again, a client that was still connected is disconnected, and the previous database is kept.
+- Restoring into a spare database leaves the live one untouched, and works from a dump copied to a name of its own.
+- The retention policy gives the same answer in the `postgres:16` image (dash and mawk), in the `rclone/rclone` image (busybox) and on the machine that runs the test.
+- With the backup directory read-only, the service turns `unhealthy` once the newest dump is too old, keeps running, logs the failure, and takes a dump by itself when the directory is writable again.
+
+`npm run check` covers the retention policy and the failure paths of `backup.sh` (`apps/server/src/backup-scripts.test.ts`).
+
+Not checked: a database of real size (the test database is almost empty, so how long a dump or a restore takes is unknown), a full disk, and an upgrade on a server that was running without the backup service.
 
 ## Needed from ELO's server administrator
 
