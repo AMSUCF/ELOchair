@@ -34,13 +34,10 @@ import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
+import { type ProposalForm as Form, withUnsaved } from "../unsavedProposal";
 import { useUnsaved } from "../useUnsaved";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
-type Form = Pick<
-  MySubmission,
-  "title" | "abstract" | "trackKey" | "topicKeys" | "language" | "participationMode" | "fields"
->;
 type SelfIdFinding = { path: string; kind: SelfIdKind };
 /** Runs one request at a time for the whole editor; a repeat tap while one is pending is ignored. */
 type Exclusive = <T>(work: () => Promise<T>) => Promise<T | null>;
@@ -108,40 +105,6 @@ function unsavedOf(form: Form, changed: Iterable<string>): UnsavedValues {
     out[path] = path.startsWith("fields.")
       ? (form.fields[path.slice("fields.".length)] ?? null)
       : form[path as (typeof PLAIN_KEYS)[number]];
-  }
-  return out;
-}
-
-/**
- * `base` with unsaved values from the browser put back. Whatever no longer fits the form (the
- * configuration changed, or the stored text was tampered with) is left out.
- */
-function withUnsaved(
-  base: Form,
-  values: UnsavedValues,
-  config: ConferenceConfig,
-  type: SubmissionType | undefined,
-): Form {
-  const out: Form = { ...base, topicKeys: [...base.topicKeys], fields: { ...base.fields } };
-  for (const [path, v] of Object.entries(values)) {
-    if (path === "title" || path === "abstract") {
-      if (typeof v === "string") out[path] = v;
-    } else if (path === "language") {
-      if (typeof v === "string" && config.languages.includes(v)) out.language = v;
-    } else if (path === "trackKey") {
-      if (v === null || config.tracks.some((x) => x.key === v)) out.trackKey = v as string | null;
-    } else if (path === "topicKeys") {
-      if (Array.isArray(v)) out.topicKeys = v.filter((k) => config.topics.some((x) => x.key === k));
-    } else if (path === "participationMode") {
-      if (v === null || v === "in_person" || v === "online" || v === "undecided") {
-        out.participationMode = v;
-      }
-    } else if (path.startsWith("fields.")) {
-      const key = path.slice("fields.".length);
-      if (!type?.fields.some((f) => f.key === key)) continue;
-      if (v === null) delete out.fields[key];
-      else out.fields[key] = v;
-    }
   }
   return out;
 }

@@ -433,8 +433,15 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await expect(page.getByText("Enter a whole number.").first()).toBeVisible();
   await expect(page.locator(".badge.status-draft")).toBeVisible();
 
+  // Typed and not saved, the head count is kept in this browser like any other answer. After a
+  // reload it is back as the number it was, and the server takes it as one.
   await people.fill("20");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  await page.reload();
+  await expect(people).toHaveValue("20");
+  await expect(page.getByText(RESTORED)).toBeVisible();
   await saveDraft(page);
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
   await acceptAgreements(page);
   await page.getByRole("button", { name: "Submit proposal" }).click();
   await expect(page.getByText("Submitted. A receipt is on its way")).toBeVisible();
@@ -870,27 +877,37 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   await expect(bio).toHaveValue("Ana writes poems for machines.");
   await expect(restored).toHaveCount(0);
 
-  // Unsaved text does not wait in the browser for whoever uses it next: signing out removes it,
-  // and the next person to sign in finds nothing restored.
+  // Ana's session goes away without a sign-out (here: the browser forgets its cookies). Her
+  // unsaved text stays in the browser, under her id: Bruno, signing in after her, sees his own
+  // profile and nothing of hers.
   await bio.fill("Ana writes poems for machines, and for people.");
   await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/en\/$/);
-  expect(await unsavedKeys(page)).toEqual([]);
+  const anaSession = await page.context().cookies();
+  await page.context().clearCookies();
   await signIn(page, request, bruno);
   await expect(page.getByRole("button", { name: "Save profile" })).toBeVisible();
   await expect(bio).toHaveValue("");
   await expect(restored).toHaveCount(0);
-
-  // Bruno's session ends without a sign-out. His text stays in the browser, under his id: Ana,
-  // signing in after him, sees her own saved profile and nothing of his.
-  await bio.fill("Bruno builds reading machines.");
-  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
-  await page.context().clearCookies();
-  await signIn(page, request, ana);
-  await expect(bio).toHaveValue("Ana writes poems for machines.");
-  await expect(restored).toHaveCount(0);
   expect(await unsavedKeys(page)).toHaveLength(1);
+
+  // Unsaved text does not wait in the browser for whoever uses it next: signing out removes
+  // Bruno's, and only his.
+  await bio.fill("Bruno builds reading machines.");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(2);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(page)).toHaveLength(1);
+
+  // Ana is back on her session (it was forgotten, never ended; signing in again would be one
+  // more of the sign-in links the server rations). Her text is restored and nothing of Bruno's
+  // is, and her own sign-out leaves nothing in the browser.
+  await page.context().addCookies(anaSession);
+  await page.goto("/en/me");
+  await expect(bio).toHaveValue("Ana writes poems for machines, and for people.");
+  await expect(restored).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(page)).toEqual([]);
 });
 
 const CONFLICT =
