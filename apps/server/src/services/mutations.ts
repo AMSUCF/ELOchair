@@ -18,9 +18,9 @@ import { eq } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { Db } from "../db/client";
-import { conferences, submissions } from "../db/schema";
+import { submissions } from "../db/schema";
 import { deliverPending, enqueueMail, type MailMessage } from "../mail";
-import { type ConferenceRow, loadSubmission } from "../repo";
+import { type ConferenceRow, loadSubmission, shareConference } from "../repo";
 import { RateLimited, Refusal } from "../routes/common";
 import { type MailLang, mailLang } from "../templates";
 
@@ -58,13 +58,7 @@ export async function mutateSubmission<T>(
       // A configuration save checks submitted work against the new rules while it holds the
       // conference's row. Sharing that row here makes the two wait for each other, so this
       // change is checked against the configuration in force when it commits.
-      if (locked) {
-        await tx
-          .select({ id: conferences.id })
-          .from(conferences)
-          .where(eq(conferences.id, locked.conferenceId))
-          .for("share");
-      }
+      if (locked) await shareConference(tx, locked.conferenceId);
       const loaded = await loadSubmission(tx, submissionId);
       if (!loaded || submissionAccess(viewer, loaded.rec) === "none") {
         throw new Refusal(404, "not_found");

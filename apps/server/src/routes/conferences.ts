@@ -33,6 +33,7 @@ import {
   loadSubmissionRecords,
   lockConference,
   movePhase,
+  shareConference,
   writeConfig,
 } from "../repo";
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
@@ -218,14 +219,21 @@ export const conferenceRoutes = new Hono<AppEnv>()
     if (!k || !visible(viewer, k)) throw new Refusal(404, "not_found");
     const input = CreateSubmissionInput.parse(await c.req.json());
     const now = deps.now();
-    if (!isCallOpen(k.config, k.phase, now)) throw new Refusal(409, "call_closed");
-    const issues = [];
-    if (!findType(k.config, input.typeKey)) issues.push({ path: "typeKey", code: "unknown_type" });
-    if (!k.config.languages.includes(input.language))
-      issues.push({ path: "language", code: "unknown_language" });
-    if (issues.length) throw new Refusal(422, "invalid", { issues });
     const id = await deps.db.transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
+      // Like every write to a submission, a new one shares the conference's row (spec 02,
+      // §1.9): it is checked against the phase and the configuration in force when it commits.
+      const live = await shareConference(tx, k.id);
+      if (!live || !visible(viewer, live)) throw new Refusal(404, "not_found");
+      if (!isCallOpen(live.config, live.phase, now)) throw new Refusal(409, "call_closed");
+      const issues = [];
+      if (!findType(live.config, input.typeKey)) {
+        issues.push({ path: "typeKey", code: "unknown_type" });
+      }
+      if (!live.config.languages.includes(input.language)) {
+        issues.push({ path: "language", code: "unknown_language" });
+      }
+      if (issues.length) throw new Refusal(422, "invalid", { issues });
       const [row] = await tx
         .insert(submissions)
         .values({
