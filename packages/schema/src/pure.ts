@@ -14,6 +14,18 @@ export {
   type SelfIdWarning,
   selfIdentificationWarnings,
 } from "./selfid";
+export {
+  type ConfigChange,
+  chairMayChange,
+  configChanges,
+  keyedPath,
+  type Setting,
+  type SettingId,
+  type SettingKind,
+  settingAt,
+  stageOneSettings,
+  withSetting,
+} from "./settings";
 export { localize, localizeWithLang } from "./text";
 export { type SubmissionIssue, sizeIssues, validateSubmission } from "./validate";
 export { countWords } from "./words";

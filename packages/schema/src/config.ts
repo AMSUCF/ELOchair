@@ -214,9 +214,24 @@ const ConferenceConfigShape = z.object({
 
 type Shape = z.infer<typeof ConferenceConfigShape>;
 
+/** Problems between values of a configuration that the settings screen explains by name. */
+export type ConfigIssueCode =
+  | "default_language_required"
+  | "min_over_max"
+  | "deadline_order"
+  | "dates_order"
+  | "final_before_conference";
+
 function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
-  const issue = (path: (string | number)[], message: string) =>
-    ctx.addIssue({ code: "custom", path, message });
+  /**
+   * `params.code` names the problem for screens that explain it in the reader's language (the
+   * settings screen); `params.leaf` is the value under `path` to show it beside.
+   */
+  const issue = (
+    path: (string | number)[],
+    message: string,
+    params?: { code: ConfigIssueCode; leaf?: string },
+  ) => ctx.addIssue({ code: "custom", path, message, ...(params ? { params } : {}) });
 
   if (!c.languages.includes(c.defaultLanguage)) {
     issue(["defaultLanguage"], "defaultLanguage must be one of languages");
@@ -224,7 +239,10 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
 
   const text = (path: (string | number)[], t: Record<string, string> | undefined) => {
     if (t && !(c.defaultLanguage in t)) {
-      issue(path, `missing text in the default language (${c.defaultLanguage})`);
+      issue(path, `missing text in the default language (${c.defaultLanguage})`, {
+        code: "default_language_required",
+        leaf: c.defaultLanguage,
+      });
     }
   };
   const unique = (path: (string | number)[], keys: string[]) => {
@@ -302,9 +320,17 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       issue([...at, "reviewPool"], `unknown review pool "${t.reviewPool}"`);
     }
     if (t.abstract.minWords !== undefined && t.abstract.minWords > t.abstract.maxWords) {
-      issue([...at, "abstract"], "minWords must not exceed maxWords");
+      issue([...at, "abstract"], "minWords must not exceed maxWords", {
+        code: "min_over_max",
+        leaf: "minWords",
+      });
     }
-    if (t.team.min > t.team.max) issue([...at, "team"], "team.min must not exceed team.max");
+    if (t.team.min > t.team.max) {
+      issue([...at, "team"], "team.min must not exceed team.max", {
+        code: "min_over_max",
+        leaf: "min",
+      });
+    }
     unique(
       [...at, "fields"],
       t.fields.map((f) => f.key),
@@ -314,7 +340,7 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       text([...fat, "label"], f.label);
       text([...fat, "help"], f.help);
       if (f.min !== undefined && f.max !== undefined && f.min > f.max) {
-        issue(fat, "min must not exceed max");
+        issue(fat, "min must not exceed max", { code: "min_over_max", leaf: "min" });
       }
       if ((f.min !== undefined || f.max !== undefined) && f.kind !== "number") {
         issue(fat, "min and max are for number fields");
@@ -343,13 +369,17 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
   ];
   for (const [a, b] of order) {
     if (Date.parse(d[a]) > Date.parse(d[b]))
-      issue(["deadlines", b], `${b} must not be before ${a}`);
+      issue(["deadlines", b], `${b} must not be before ${a}`, { code: "deadline_order" });
   }
-  if (c.dates.start > c.dates.end) issue(["dates", "end"], "end must not be before start");
+  if (c.dates.start > c.dates.end) {
+    issue(["dates", "end"], "end must not be before start", { code: "dates_order" });
+  }
   // Compare calendar dates in the conference's own time zone: due strictly before day one.
   const finalDay = dateIn(d.finalMaterials, c.timezone);
   if (finalDay && finalDay >= c.dates.start) {
-    issue(["deadlines", "finalMaterials"], "final materials must be due before the conference");
+    issue(["deadlines", "finalMaterials"], "final materials must be due before the conference", {
+      code: "final_before_conference",
+    });
   }
 }
 
