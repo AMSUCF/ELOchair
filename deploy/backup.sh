@@ -145,10 +145,14 @@ prune() {
 }
 
 # One dump, restore or prune at a time, across containers too: the lock is on the directory itself.
+# Where flock is installed this never succeeds without holding the lock: a directory that is not
+# there cannot be locked, and saying yes would let the caller run beside a dump that creates it.
 lock_dir() {
   command -v flock >/dev/null 2>&1 || return 0
-  # A directory that is not there has nothing in it to work on, and nothing to wait for.
-  [ -d "$DIR" ] || return 0
+  if [ ! -d "$DIR" ]; then
+    log "ERROR: $DIR does not exist, so it cannot be locked"
+    return 1
+  fi
   exec 9<"$DIR"
   local waited=0
   until flock -n 9; do
@@ -360,7 +364,15 @@ case "${1:-}" in
     # A prune run by hand deletes, so it takes the lock that a dump and a restore take, and waits
     # for them. The lock is taken here and not in prune(): a dump prunes while it already holds
     # it. --dry-run only reads, so it waits for nobody.
-    if [ "${1:-}" != --dry-run ]; then lock_dir || exit 1; fi
+    if [ "${1:-}" != --dry-run ]; then
+      # No directory yet means nothing to prune, and nothing to lock: stop here. Going on would
+      # be a prune without the lock, beside the first dump if that creates the directory now.
+      if [ ! -d "$DIR" ]; then
+        log "no backup directory at $DIR yet: nothing to prune"
+        exit 0
+      fi
+      lock_dir || exit 1
+    fi
     prune "$@"
     ;;
   restore)

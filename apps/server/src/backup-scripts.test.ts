@@ -567,8 +567,25 @@ describe.skipIf(!posix)("deploy/backup.sh: taking, pruning and watching dumps", 
   it("prunes nothing, and waits for nothing, where there is no backup directory yet", () => {
     const r = backup(["prune"], { BACKUP_DIR: join(dir, "not-there") });
     expect(r.status).toBe(0);
+    // It stops before the policy is asked anything: it never goes on without the lock.
+    expect(r.out).toContain("nothing to prune");
     expect(existsSync(join(dir, "not-there"))).toBe(false);
   });
+
+  it.skipIf(!hasFlock)(
+    "refuses, at once, work that needs the lock where there is no directory to lock",
+    () => {
+      const elsewhere = join(dir, "elsewhere.dump");
+      writeFileSync(elsewhere, "x");
+      const r = backup(["restore", "--into", "elochair_check", elsewhere], {
+        BACKUP_DIR: join(dir, "not-there"),
+        PGDATABASE: "elochair",
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.out).toContain("cannot be locked");
+      expect(existsSync(join(dir, "not-there"))).toBe(false);
+    },
+  );
 
   it("removes a .partial left over for more than a day, going by its name and not its file time", () => {
     const stale = `${ago(86_400 + 60)}.partial`;
