@@ -113,7 +113,7 @@ describe("what a chair may change", () => {
       expect(chairMayChange(path, config), path).toBe(false);
     }
     // The same paths are a chair's where the conference has those languages.
-    const wider = { languages: ["en", "es", "fr", "pt", "pt-BR", "de"] };
+    const wider = { ...config, languages: ["en", "es", "fr", "pt", "pt-BR", "de"] };
     expect(chairMayChange("title.fr", wider)).toBe(true);
     expect(chairMayChange("theme.pt-BR", wider)).toBe(true);
     // The list of languages itself stays an admin's, so a chair cannot widen it first.
@@ -130,6 +130,58 @@ describe("what a chair may change", () => {
     expect(ConferenceConfig.safeParse(crafted).success).toBe(true);
     const changed = configChanges(config, crafted).map((c) => c.path);
     expect(changed).toEqual(["title.fr", `submissionTypes.${type.key}.name.fr`]);
+    expect(changed.filter((path) => !chairMayChange(path, config))).toEqual(changed);
+  });
+
+  it("allows a field's setting only on a stored field of a kind that has it", () => {
+    // "needs" is a long text, "seats" a number, "link" a web address.
+    const field = (key: string, setting: string) => `submissionTypes.talk.fields.${key}.${setting}`;
+    for (const path of [
+      field("needs", "maxWords"),
+      field("seats", "min"),
+      field("seats", "max"),
+      field("seats", "integer"),
+    ]) {
+      expect(chairMayChange(path, config), path).toBe(true);
+    }
+    for (const path of [
+      field("seats", "maxWords"),
+      field("link", "maxWords"),
+      field("needs", "min"),
+      field("needs", "max"),
+      field("needs", "integer"),
+      field("link", "min"),
+      field("link", "integer"),
+      // A field the format does not have has no settings.
+      field("nope", "maxWords"),
+      "submissionTypes.nope.fields.needs.maxWords",
+    ]) {
+      expect(chairMayChange(path, config), path).toBe(false);
+    }
+    // It is the stored field's kind that counts: a field that is a number here has a range.
+    const other = structuredClone(config);
+    const needs = other.submissionTypes[0]?.fields[0];
+    if (!needs) throw new Error("no field");
+    needs.kind = "number";
+    expect(chairMayChange(field("needs", "min"), other)).toBe(true);
+    expect(chairMayChange(field("needs", "maxWords"), other)).toBe(false);
+  });
+
+  it("sees a crafted configuration that gives a field a setting its kind lacks as a change it refuses", () => {
+    const crafted = structuredClone(config);
+    const fields = crafted.submissionTypes[0]?.fields ?? [];
+    const seats = fields.find((f) => f.key === "seats");
+    const link = fields.find((f) => f.key === "link");
+    if (!seats || !link) throw new Error("no field");
+    seats.maxWords = 42;
+    link.maxWords = 7;
+    // The schema takes a word limit on any field: it is this check that keeps it off these two.
+    expect(ConferenceConfig.safeParse(crafted).success).toBe(true);
+    const changed = configChanges(config, crafted).map((c) => c.path);
+    expect(changed).toEqual([
+      "submissionTypes.talk.fields.seats.maxWords",
+      "submissionTypes.talk.fields.link.maxWords",
+    ]);
     expect(changed.filter((path) => !chairMayChange(path, config))).toEqual(changed);
   });
 

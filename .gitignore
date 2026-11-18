@@ -6,3 +6,6 @@ dist/
 coverage/
 test-results/
 playwright-report/
+
+# Dropped into a checkout by agent tooling; never part of the project.
+.mcp.json

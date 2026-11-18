@@ -80,6 +80,14 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
 const unsavedKeys = (page: Page) =>
   page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("elochair:unsaved:")));
 
+/** The values of the one buffer this browser keeps (the settings screen's), or null for none. */
+const unsavedValues = (page: Page) =>
+  page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => k.startsWith("elochair:unsaved:"));
+    const kept = key ? localStorage.getItem(key) : null;
+    return kept ? (JSON.parse(kept) as { values: Record<string, unknown> }).values : null;
+  });
+
 /** The collapsible section of one format on the settings screen. */
 const formatSection = (page: Page) =>
   page.locator("details").filter({ has: page.locator("summary", { hasText: FORMAT }) });
@@ -303,6 +311,144 @@ test.describe("conference settings", () => {
     await largest.fill("30");
     await chair.getByRole("button", { name: "Review changes" }).click();
     await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+  });
+
+  test("a deadline that is refused says why at each of its three inputs", async () => {
+    await openSettings(chair);
+    const decisions = chair.getByRole("group", { name: "Decisions sent" });
+    const date = decisions.getByLabel("Date");
+    const before = await date.inputValue();
+    // Decisions cannot be sent before the call has closed.
+    await date.fill("2001-01-01");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    const why = "This must not be before the deadline above it.";
+    await expect(summary).toContainText(`Decisions sent: ${why}`);
+    await expect(decisions.locator(".field-error")).toHaveText(why);
+    // Someone who comes back from the summary to correct it hears the reason at each input,
+    // after the instant it makes (and, at the offset, before what an offset is).
+    const error = await decisions.locator(".field-error").getAttribute("id");
+    expect(error).toBeTruthy();
+    for (const name of ["Date", "Time", "Offset from UTC"]) {
+      const input = decisions.getByLabel(name);
+      await expect(input).toHaveAttribute("aria-invalid", "true");
+      await expect(input).toHaveAttribute("aria-describedby", new RegExp(`(^| )${error}( |$)`));
+      await expect(input).toHaveAccessibleDescription(new RegExp(`Conference time.*${why}`));
+    }
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // Taken back, nothing is wrong and nothing is described as wrong.
+    await date.fill(before);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect(date).not.toHaveAttribute("aria-invalid", "true");
+    await expect(date).not.toHaveAccessibleDescription(new RegExp(why));
+  });
+
+  test("what is typed while a save is on its way stays in the form, to be reviewed in its turn", async () => {
+    test.slow();
+    await openSettings(chair);
+    await chair.locator("summary", { hasText: FORMAT }).click();
+    const most = formatSection(chair).getByLabel("Most words in the abstract");
+    const people = formatSection(chair).getByLabel("Most people");
+    await most.fill("310");
+    await people.fill("7");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    // Typed and not saved yet: this browser keeps it.
+    const MOST = "submissionTypes.performance.abstract.maxWords";
+    const PEOPLE = "submissionTypes.performance.team.max";
+    const DAY = "deadlines.notification#date";
+    await expect.poll(() => unsavedValues(chair)).toEqual({ [MOST]: "310", [PEOPLE]: "7" });
+
+    // The save is held on its way to the server, as on a slow connection.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let left = () => {};
+    const leaving = new Promise<void>((resolve) => {
+      left = resolve;
+    });
+    const saving = `**/api/conferences/${CALL}/config`;
+    await chair.route(saving, async (route) => {
+      if (route.request().method() === "PUT") {
+        left();
+        await held;
+      }
+      await route.continue();
+    });
+    await chair.getByRole("button", { name: "Save changes" }).click();
+    await leaving;
+
+    // Meanwhile the form is still open: one of the values is typed again, and another is changed.
+    await most.fill("320");
+    const decisions = chair.getByRole("group", { name: "Decisions sent" });
+    const date = decisions.getByLabel("Date");
+    const before = await date.inputValue();
+    const after = new Date(Date.parse(`${before}T00:00:00Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await date.fill(after);
+    // The browser keeps what is in the form: what is being saved, and what was typed since.
+    await expect
+      .poll(() => unsavedValues(chair))
+      .toEqual({ [MOST]: "320", [PEOPLE]: "7", [DAY]: after });
+    release();
+
+    // The page says what was saved and what was not, without taking the person out of the form.
+    await expect(chair.getByRole("status")).toHaveText(
+      "Settings saved. What you changed while they were being saved is still in the form, not saved yet.",
+    );
+    await expect(date).toBeFocused();
+    await chair.unroute(saving);
+    // What was reviewed is what was saved...
+    const stored = (await (
+      await chair.request.get(`/api/conferences/${CALL}/settings`)
+    ).json()) as {
+      config: {
+        submissionTypes: { key: string; abstract: { maxWords: number }; team: { max: number } }[];
+      };
+    };
+    const performance = stored.config.submissionTypes.find((type) => type.key === "performance");
+    expect(performance?.abstract.maxWords).toBe(310);
+    expect(performance?.team.max).toBe(7);
+    // ...and what was typed since is still in the form, as changes to what was saved.
+    await expect(most).toHaveValue("320");
+    await expect(people).toHaveValue("7");
+    await expect(date).toHaveValue(after);
+    await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const review = chair.getByRole("region", { name: "Review your changes" });
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveCount(2);
+    await expect(review).toContainText("from “310” to “320”");
+    await expect(review).toContainText("Decisions sent");
+    // The browser now keeps only that: the value that was saved untouched is no longer in it.
+    await expect.poll(() => unsavedValues(chair)).toEqual({ [MOST]: "320", [DAY]: after });
+    // A reload brings exactly that back, on top of what was saved, and the page says so.
+    await chair.reload();
+    await expect(chair.getByText(RESTORED)).toBeVisible();
+    await expect(most).toHaveValue("320");
+    await expect(people).toHaveValue("7");
+    await expect(date).toHaveValue(after);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(review.getByRole("listitem")).toHaveCount(2);
+    await expect(review).toContainText("from “310” to “320”");
+
+    // Back as they were, for the tests that run beside this one. With everything saved, the
+    // browser keeps nothing.
+    await most.fill("300");
+    await people.fill("6");
+    await date.fill(before);
+    await reviewAndSave(chair);
+    await expect.poll(() => unsavedValues(chair)).toBeNull();
+    await chair.goto(`/en/c/${CALL}`);
+    await expect(listedFormat(chair)).toContainText("300 words at most");
   });
 
   test("settings that someone else changed meanwhile are reloaded, and what was typed stays", async () => {

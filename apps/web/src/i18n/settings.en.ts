@@ -68,6 +68,9 @@ export const settingsEn = {
   settingsNo: "no",
   settingsSave: "Save changes",
   settingsSaved: "Settings saved.",
+  settingsSavedMore:
+    "Settings saved. What you changed while they were being saved is still in the form, not saved yet.",
+  settingsNotSaved: "These changes were not saved. Review your changes again.",
   settingsFixFirst: "Please fix the following before these changes can be saved:",
   settingsBlocked:
     "These changes cannot be saved. Submitted proposals that would no longer be valid: {count}.",
@@ -80,7 +83,7 @@ export const settingsEn = {
   settingsWarnDrafts:
     "Drafts that would have a new problem to fix before they can be submitted: {n}.",
   settingsWarnCloses:
-    "This closes the call as soon as you save: nobody will be able to start, edit, submit or withdraw a proposal.",
+    "This closes the call as soon as you save: nobody will be able to start, edit or submit a proposal, or confirm an invitation to one.",
   settingsWarnOpens: "This opens the call as soon as you save.",
   settingsWarnPast: "“{deadline}” would be in the past.",
   settingsForbidden: "Only a conference admin may change: {paths}.",

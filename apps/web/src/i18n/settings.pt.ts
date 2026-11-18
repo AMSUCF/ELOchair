@@ -70,6 +70,9 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsNo: "não",
   settingsSave: "Guardar as alterações",
   settingsSaved: "Configuração guardada.",
+  settingsSavedMore:
+    "Configuração guardada. O que alterou enquanto era guardada continua no formulário, ainda por guardar.",
+  settingsNotSaved: "Estas alterações não foram guardadas. Reveja outra vez as suas alterações.",
   settingsFixFirst: "Corrija o seguinte antes de guardar estas alterações:",
   settingsBlocked:
     "Estas alterações não podem ser guardadas. Propostas submetidas que deixariam de ser válidas: {count}.",
@@ -82,7 +85,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsWarnDrafts:
     "Rascunhos que teriam um problema novo a resolver antes de poderem ser submetidos: {n}.",
   settingsWarnCloses:
-    "Isto fecha a chamada assim que guardar: ninguém poderá iniciar, editar, submeter ou retirar uma proposta.",
+    "Isto fecha a chamada assim que guardar: ninguém poderá iniciar, editar ou submeter uma proposta, nem confirmar um convite para uma.",
   settingsWarnOpens: "Isto abre a chamada assim que guardar.",
   settingsWarnPast: "«{deadline}» ficaria no passado.",
   settingsForbidden: "Só uma pessoa administradora do congresso pode alterar: {paths}.",
