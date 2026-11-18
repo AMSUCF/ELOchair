@@ -88,8 +88,18 @@ becomes() {
   done
   return 1
 }
-versions_has() { mc ls --versions "local/$BUCKET/$1/" | grep -q -- "$2"; }
-restore_lists() { dc exec -T db pg_restore --list <"$1" | grep -q 'TABLE DATA public marker'; }
+# These two read the whole output before searching it: under pipefail, grep -q leaving at the
+# first match would fail the command that is still writing.
+versions_has() {
+  local listing
+  listing="$(mc ls --versions "local/$BUCKET/$1/")"
+  grep -q -- "$2" <<<"$listing"
+}
+restore_lists() {
+  local listing
+  listing="$(dc exec -T db pg_restore --list <"$1")"
+  grep -q 'TABLE DATA public marker' <<<"$listing"
+}
 
 name() { printf 'elochair-%s.dump' "$1"; }
 # real_dump <stamp>: a real pg_dump of the test database, written the way backups are.
