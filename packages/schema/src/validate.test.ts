@@ -30,6 +30,26 @@ describe("validateSubmission", () => {
     expect(long[0]?.code).toBe("too_many_words");
   });
 
+  it("with a minimum, an empty abstract is too short; with none, it is missing", () => {
+    expect(validateSubmission(config, { ...base, abstract: "" }, lead)).toEqual([
+      { path: "abstract", code: "too_few_words", params: { count: 0, min: 250 } },
+    ]);
+    const withMin = (minWords: number | undefined) => {
+      const input = structuredClone(elo2026);
+      const talk = input.submissionTypes.find((t) => t.key === "talk");
+      if (!talk) throw new Error("no talk");
+      talk.abstract.minWords = minWords;
+      return ConferenceConfig.parse(input);
+    };
+    const none = withMin(undefined);
+    expect(validateSubmission(none, { ...base, abstract: " " }, lead)).toEqual([
+      { path: "abstract", code: "required" },
+    ]);
+    expect(validateSubmission(none, { ...base, abstract: "One." }, lead)).toEqual([]);
+    // A minimum of 0 is a different thing: the abstract may be left empty.
+    expect(validateSubmission(withMin(0), { ...base, abstract: "" }, lead)).toEqual([]);
+  });
+
   it("enforces team size and a lead", () => {
     const panel = { ...base, typeKey: "panel", abstract: words(400) };
     const codes = validateSubmission(config, panel, [{ role: "panelist" }]).map((i) => i.code);

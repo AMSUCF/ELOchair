@@ -3,7 +3,7 @@ import { conferences } from "@elochair/schema";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditLog, conflicts, contributions, people } from "./db/schema";
-import { seedOpenCall } from "./fixtures";
+import { fixtureCall, seedTestCall } from "./fixtures";
 import type { MemoryTransport } from "./mail";
 import { createApiToken, getConference, grantRole, saveConference } from "./repo";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
@@ -11,8 +11,7 @@ import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 let t: TestApp;
 let slug: string;
 const words = (n: number, w = "verse") => Array.from({ length: n }, () => w).join(" ");
-const AGREEMENTS =
-  conferences.elo2027.agreements?.map((a) => ({ key: a.key, version: a.version })) ?? [];
+const AGREEMENTS = fixtureCall.agreements?.map((a) => ({ key: a.key, version: a.version })) ?? [];
 
 /** Markers that must never appear in the audit log. */
 const secrets: string[] = [];
@@ -75,7 +74,7 @@ const mailTo = async (email: string) => {
 beforeAll(async () => {
   t = await makeTestApp();
   await saveConference(t.db, conferences.elo2027, "draft");
-  ({ slug } = await seedOpenCall(t.db, { now: new Date("2027-02-01T12:00:00Z") }));
+  ({ slug } = await seedTestCall(t.db, { now: new Date("2027-02-01T12:00:00Z") }));
 }, 120_000);
 afterAll(() => t.close());
 
@@ -455,7 +454,7 @@ describe("profiles, checks, and closing", () => {
         body: { version: sub.json.submission.version },
       });
       expect(wd.json.status).toBe("withdrawn");
-      const contact = await mailTo(conferences.elo2027.contactEmail);
+      const contact = await mailTo(fixtureCall.contactEmail);
       expect(contact.at(-1)?.subject).toMatch(/withdrawn/);
     } finally {
       t.setNow(new Date("2027-02-01T12:00:00Z"));

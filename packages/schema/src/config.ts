@@ -131,6 +131,11 @@ export const CustomField = z.object({
   public: z.boolean().default(false),
   options: z.array(z.object({ key: Key, label: LocalizedText })).optional(),
   maxWords: z.int().positive().optional(),
+  /** For number fields: the smallest and largest value accepted (both inclusive). */
+  min: z.number().optional(),
+  max: z.number().optional(),
+  /** For number fields: true when only whole numbers are accepted (a head count). */
+  integer: z.boolean().optional(),
 });
 export type CustomField = z.infer<typeof CustomField>;
 
@@ -143,7 +148,11 @@ export const SubmissionType = z.object({
   blindMode: BlindMode.optional(),
   abstract: z.object({
     label: LocalizedText,
-    minWords: z.int().min(0),
+    /**
+     * The fewest words accepted. Left out when the call gives no minimum: the abstract then only
+     * has to be there. (0 says something else: the abstract may be left empty.)
+     */
+    minWords: z.int().min(0).optional(),
     maxWords: z.int().positive(),
   }),
   /** Length of the slot on the program. Absent for things that are not scheduled (exhibition). */
@@ -191,15 +200,39 @@ const ConferenceConfigShape = z.object({
   topics: z.array(z.object({ key: Key, label: LocalizedText })).default([]),
   reviewPools: z.array(ReviewPool).min(1),
   submissionTypes: z.array(SubmissionType).min(1),
+  /**
+   * Formats the call offers that are not submitted through ELOchair (ELO 2027 takes curatorial
+   * pitches by email). The conference page lists them so the call is complete; nothing else
+   * uses them.
+   */
+  otherFormats: z
+    .array(z.object({ key: Key, name: LocalizedText, description: LocalizedText }))
+    .default([]),
   /** True while the content is a stand-in (e.g. dates not yet announced). The UI says so. */
   placeholder: z.boolean().default(false),
 });
 
 type Shape = z.infer<typeof ConferenceConfigShape>;
 
+/** Problems between values of a configuration that the settings screen explains by name. */
+export type ConfigIssueCode =
+  | "default_language_required"
+  | "min_over_max"
+  | "no_whole_number"
+  | "deadline_order"
+  | "dates_order"
+  | "final_before_conference";
+
 function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
-  const issue = (path: (string | number)[], message: string) =>
-    ctx.addIssue({ code: "custom", path, message });
+  /**
+   * `params.code` names the problem for screens that explain it in the reader's language (the
+   * settings screen); `params.leaf` is the value under `path` to show it beside.
+   */
+  const issue = (
+    path: (string | number)[],
+    message: string,
+    params?: { code: ConfigIssueCode; leaf?: string },
+  ) => ctx.addIssue({ code: "custom", path, message, ...(params ? { params } : {}) });
 
   if (!c.languages.includes(c.defaultLanguage)) {
     issue(["defaultLanguage"], "defaultLanguage must be one of languages");
@@ -207,7 +240,10 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
 
   const text = (path: (string | number)[], t: Record<string, string> | undefined) => {
     if (t && !(c.defaultLanguage in t)) {
-      issue(path, `missing text in the default language (${c.defaultLanguage})`);
+      issue(path, `missing text in the default language (${c.defaultLanguage})`, {
+        code: "default_language_required",
+        leaf: c.defaultLanguage,
+      });
     }
   };
   const unique = (path: (string | number)[], keys: string[]) => {
@@ -249,6 +285,20 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     c.submissionTypes.map((t) => t.key),
   );
 
+  // A format is either submitted here or it is not: the two lists share one set of keys.
+  const typeKeys = new Set(c.submissionTypes.map((t) => t.key));
+  unique(
+    ["otherFormats"],
+    c.otherFormats.map((f) => f.key),
+  );
+  c.otherFormats.forEach((f, i) => {
+    if (typeKeys.has(f.key)) {
+      issue(["otherFormats", i, "key"], `"${f.key}" is already a submission type`);
+    }
+    text(["otherFormats", i, "name"], f.name);
+    text(["otherFormats", i, "description"], f.description);
+  });
+
   c.reviewPools.forEach((p, i) => {
     text(["reviewPools", i, "name"], p.name);
     unique(
@@ -270,10 +320,18 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     if (!pools.has(t.reviewPool)) {
       issue([...at, "reviewPool"], `unknown review pool "${t.reviewPool}"`);
     }
-    if (t.abstract.minWords > t.abstract.maxWords) {
-      issue([...at, "abstract"], "minWords must not exceed maxWords");
+    if (t.abstract.minWords !== undefined && t.abstract.minWords > t.abstract.maxWords) {
+      issue([...at, "abstract"], "minWords must not exceed maxWords", {
+        code: "min_over_max",
+        leaf: "minWords",
+      });
     }
-    if (t.team.min > t.team.max) issue([...at, "team"], "team.min must not exceed team.max");
+    if (t.team.min > t.team.max) {
+      issue([...at, "team"], "team.min must not exceed team.max", {
+        code: "min_over_max",
+        leaf: "min",
+      });
+    }
     unique(
       [...at, "fields"],
       t.fields.map((f) => f.key),
@@ -282,6 +340,30 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       const fat = [...at, "fields", j];
       text([...fat, "label"], f.label);
       text([...fat, "help"], f.help);
+      if (f.min !== undefined && f.max !== undefined && f.min > f.max) {
+        issue(fat, "min must not exceed max", { code: "min_over_max", leaf: "min" });
+      }
+      if ((f.min !== undefined || f.max !== undefined) && f.kind !== "number") {
+        issue(fat, "min and max are for number fields");
+      }
+      if (f.integer !== undefined && f.kind !== "number") {
+        issue(fat, "integer is for number fields");
+      }
+      // Whole numbers only, between two ends with no whole number between them (15.1 to 15.9):
+      // every answer would be refused, so nobody could submit the format.
+      if (
+        f.kind === "number" &&
+        f.integer === true &&
+        f.min !== undefined &&
+        f.max !== undefined &&
+        f.min <= f.max &&
+        Math.ceil(f.min) > Math.floor(f.max)
+      ) {
+        issue(fat, "a whole-number field needs a whole number between min and max", {
+          code: "no_whole_number",
+          leaf: "min",
+        });
+      }
       const hasOptions = (f.options?.length ?? 0) > 0;
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {
         issue([...fat, "options"], "select fields need options");
@@ -303,13 +385,17 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
   ];
   for (const [a, b] of order) {
     if (Date.parse(d[a]) > Date.parse(d[b]))
-      issue(["deadlines", b], `${b} must not be before ${a}`);
+      issue(["deadlines", b], `${b} must not be before ${a}`, { code: "deadline_order" });
   }
-  if (c.dates.start > c.dates.end) issue(["dates", "end"], "end must not be before start");
+  if (c.dates.start > c.dates.end) {
+    issue(["dates", "end"], "end must not be before start", { code: "dates_order" });
+  }
   // Compare calendar dates in the conference's own time zone: due strictly before day one.
   const finalDay = dateIn(d.finalMaterials, c.timezone);
   if (finalDay && finalDay >= c.dates.start) {
-    issue(["deadlines", "finalMaterials"], "final materials must be due before the conference");
+    issue(["deadlines", "finalMaterials"], "final materials must be due before the conference", {
+      code: "final_before_conference",
+    });
   }
 }
 

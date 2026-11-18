@@ -1,5 +1,4 @@
 import { findLeaks } from "@elochair/policy/testing";
-import { conferences } from "@elochair/schema";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { eq } from "drizzle-orm";
@@ -7,7 +6,7 @@ import type { Hono } from "hono";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AppEnv } from "./context";
 import { auditLog, people, submissions } from "./db/schema";
-import { type SandboxSummary, seedSandbox } from "./fixtures";
+import { fixtureCall, type SandboxSummary, seedSandbox } from "./fixtures";
 import { createApiToken, grantRole, saveConference } from "./repo";
 import { call, makeTestApp, personId, type TestApp } from "./testkit";
 
@@ -33,7 +32,7 @@ const parse = (result: Awaited<ReturnType<Client["callTool"]>>) =>
 
 beforeAll(async () => {
   t = await makeTestApp();
-  await saveConference(t.db, conferences.elo2027, "draft");
+  await saveConference(t.db, fixtureCall, "draft");
   s = await seedSandbox(t.db);
   const chairId = await personId(t, s.chairEmail);
   tokenM = (
@@ -264,7 +263,7 @@ describe("MCP for chairs' agents", () => {
 
   it("accepts type and track keys up to the shared limit, as REST does (#6)", async () => {
     const key = `t${"x".repeat(63)}`;
-    const config = structuredClone(conferences.elo2027);
+    const config = structuredClone(fixtureCall);
     config.slug = "longkeys";
     config.submissionTypes = [{ ...config.submissionTypes[0]!, key }];
     const k = await saveConference(t.db, config, "reviewing");

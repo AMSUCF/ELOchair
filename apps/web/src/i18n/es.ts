@@ -1,9 +1,11 @@
 import type { Messages } from "./en";
+import { settingsEs } from "./settings.es";
 import { submissionEs } from "./submission.es";
 
 /** Machine-drafted; to be reviewed by the ELO 2027 team. */
 export const es: Messages = {
   ...submissionEs,
+  ...settingsEs,
   appName: "ELOchair",
   tagline: "Envíos y revisión por pares para el congreso de la Electronic Literature Organization.",
   skipToContent: "Saltar al contenido",
@@ -109,6 +111,9 @@ export const es: Messages = {
   confFullCallNote:
     "El texto del tema, los temas sugeridos y la inscripción están en el sitio de la conferencia.",
   statWords: "palabras",
+  confWordsMax: "hasta {max} palabras",
+  statWordsMax: "palabras como máximo",
+  confNotHere: "No se envía aquí",
   statMinutes: "minutos",
   statPeople: "personas",
   statPerson: "persona",

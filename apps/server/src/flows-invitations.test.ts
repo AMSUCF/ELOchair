@@ -1,5 +1,4 @@
 import { findLeaks } from "@elochair/policy/testing";
-import { conferences } from "@elochair/schema";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -10,7 +9,7 @@ import {
   outbox,
   people,
 } from "./db/schema";
-import { seedOpenCall } from "./fixtures";
+import { fixtureCall, seedTestCall } from "./fixtures";
 import type { MemoryTransport } from "./mail";
 import { RateLimiter } from "./ratelimit";
 import { createApiToken, grantRole } from "./repo";
@@ -26,8 +25,7 @@ let slug: string;
 let conferenceId: string;
 const NOW = new Date("2027-02-01T12:00:00Z");
 const words = (n: number, w = "verse") => Array.from({ length: n }, () => w).join(" ");
-const AGREEMENTS =
-  conferences.elo2027.agreements?.map((a) => ({ key: a.key, version: a.version })) ?? [];
+const AGREEMENTS = fixtureCall.agreements?.map((a) => ({ key: a.key, version: a.version })) ?? [];
 /** Markers that must never appear in the audit log. */
 const secrets: string[] = [];
 
@@ -123,7 +121,7 @@ const get = (cookie: string, s: Sub) =>
 
 beforeAll(async () => {
   t = await makeTestApp();
-  ({ slug, conferenceId } = await seedOpenCall(t.db, { now: NOW }));
+  ({ slug, conferenceId } = await seedTestCall(t.db, { now: NOW }));
   // These flows write a lot from one account, and sign many people in from one address; the
   // per-minute write limit has its own test here, and the sign-in limits theirs in auth.test.ts.
   t.deps.limits.writesPerPerson = new RateLimiter(100_000, 60_000);
@@ -499,7 +497,7 @@ describe("answering invitations", () => {
     expect(toInvitee?.subject).toMatch(/foi retirada uma proposta/);
     expect(`${toInvitee?.subject} ${toInvitee?.text}`).not.toMatch(/555-0100|prize/);
     expect((await mailTo("wd-coauthor@example.org")).at(-1)?.text).toMatch(/555-0100/);
-    expect((await mailTo(conferences.elo2027.contactEmail)).at(-1)?.text).toMatch(/555-0100/);
+    expect((await mailTo(fixtureCall.contactEmail)).at(-1)?.text).toMatch(/555-0100/);
 
     // By link, while the call is open: the withdrawn work cannot be confirmed, only declined.
     const token = await inviteToken("wd-invitee@example.org");
@@ -782,10 +780,10 @@ describe("what mail carries", () => {
       /confirmó|rechazó|dejó/.test(m.subject),
     );
     expect(notices.map((m) => m.subject)).toEqual([
-      `ELO 2027 (convocatoria de prueba): ${byLink} confirmó su participación en tu propuesta`,
-      `ELO 2027 (convocatoria de prueba): ${decliner} rechazó participar en tu propuesta`,
-      `ELO 2027 (convocatoria de prueba): ${inApp} confirmó su participación en tu propuesta`,
-      `ELO 2027 (convocatoria de prueba): ${inApp} dejó tu propuesta`,
+      `Convocatoria de prueba: ${byLink} confirmó su participación en tu propuesta`,
+      `Convocatoria de prueba: ${decliner} rechazó participar en tu propuesta`,
+      `Convocatoria de prueba: ${inApp} confirmó su participación en tu propuesta`,
+      `Convocatoria de prueba: ${inApp} dejó tu propuesta`,
     ]);
     for (const m of notices) {
       expect(m.text).toContain(`${ORIGIN}/es/s/${s.id}`);
@@ -817,7 +815,7 @@ describe("what mail carries", () => {
       body: { version: s.version },
     });
     expect(wd.json.status).toBe("withdrawn");
-    const contact = (await mailTo(conferences.elo2027.contactEmail)).at(-1)?.text ?? "";
+    const contact = (await mailTo(fixtureCall.contactEmail)).at(-1)?.text ?? "";
     expect(contact).toContain(title);
     expect(contact).toContain(`${ORIGIN}/en/s/${s.id}`);
     const toCoauthor = (await mailTo("title-coauthor@example.org")).at(-1)?.text ?? "";

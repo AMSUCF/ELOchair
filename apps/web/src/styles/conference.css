@@ -401,3 +401,11 @@
 .contact {
   margin-top: 32px;
 }
+
+/* A format the call offers but this portal does not take: outlined, not a solid card. */
+.format-elsewhere {
+  border-style: dashed;
+  border-color: var(--control-border);
+  background: none;
+  box-shadow: none;
+}

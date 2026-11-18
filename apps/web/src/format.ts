@@ -32,3 +32,10 @@ export function formatCoordinates({ lat, lon }: { lat: number; lon: number }): s
 export function daysUntil(iso: string, now: number): number {
   return Math.max(0, Math.ceil((Date.parse(iso) - now) / 86_400_000));
 }
+
+/**
+ * Whether a format's abstract has a minimum length to show. Some calls give only a maximum:
+ * their configuration then has no `minWords`, and the abstract only has to be there.
+ */
+export const hasMinimum = (minWords: number | undefined): minWords is number =>
+  minWords !== undefined && minWords > 0;

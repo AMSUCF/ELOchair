@@ -7,7 +7,7 @@ import type {
 import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { api, type ConferenceDetail } from "../api";
+import { api, type ConferenceDetail, type Me } from "../api";
 import { type MessageKey, useT } from "../i18n";
 import { type IssueCode, issueLabelKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
@@ -172,8 +172,17 @@ export function ManagePage() {
   const cap = useApi<{ over: { personId: string }[] }>(
     `/api/conferences/${slug}/cap-report?statuses=submitted,accepted,confirmed,published`,
   );
+  const me = useApi<Me>("/api/me");
   const [query, setQuery] = useState("status=submitted");
   const { listing, failed, loadingMore, moreFailed, more } = useListing(slug, query);
+  // The conference's settings are for its chairs and admins; track chairs manage submissions only.
+  const mayConfigure =
+    me?.ok &&
+    me.data.kind === "person" &&
+    (me.data.siteAdmin ||
+      me.data.roles.some(
+        (r) => r.conference === slug && (r.role === "admin" || r.role === "chair"),
+      ));
 
   if (!conf || !overview) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) return <PageHeading>{t("confNotFound")}</PageHeading>;
@@ -220,6 +229,11 @@ export function ManagePage() {
         >
           {t("manageContribCsv")}
         </a>
+        {mayConfigure && (
+          <Link className="button secondary" to={`/${lang}/c/${slug}/settings`}>
+            {t("manageSettingsLink")}
+          </Link>
+        )}
       </p>
       <Filters config={config} onApply={setQuery} />
       {failed ? (

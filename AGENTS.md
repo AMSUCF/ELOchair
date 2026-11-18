@@ -59,7 +59,7 @@ These are invariants. Do not trade them away for convenience.
 
 5. **People approve irreversible actions.**
    - Sending mail to participants, recording decisions and publishing follow *plan → approve*. An agent may create the plan; only a person, in the web UI, approves it.
-   - Conference configuration changes are human-only.
+   - Conference configuration changes are human-only. Chairs change the stage-one values in the app, admins anything (spec 02, §1.9); a change never makes submitted work invalid.
 
 6. **Everything is audited.** Every mutation calls `audit()`. Agent requests are audited automatically by middleware. The audit table is append-only, enforced by a database trigger.
 
@@ -86,7 +86,7 @@ These are invariants. Do not trade them away for convenience.
 
 Spec 02 has the details.
 - **Ownership.** The person who creates a submission owns it. Only the owner edits, invites, submits, withdraws or deletes. Agents never write.
-- **Writes.** Every write goes through `mutateSubmission()`, which runs one transaction that locks the row and checks the policy (`canActOnSubmission`), the call window or phase, and the version. Submitted work must stay valid.
+- **Writes.** Every write goes through `mutateSubmission()`, which runs one transaction that locks the row and checks the policy (`canActOnSubmission`), the call window or phase, and the version. Submitted work must stay valid. A settings save checks submitted work while it holds the conference's row, so any write to `submissions` or `contributions` shares that row first: `mutateSubmission()` does, and the two writes outside it (an invitation answer, creating a proposal) call `shareConference()` themselves. Lock the submission's row, then the conference's, in that order (spec 02, §1.9).
 - **Invitations.** Invitees are shown only as the owner typed them until they confirm. Inviting someone creates a conflict that outlives a decline. Declining is always possible.
 - **Consent.** Consent to the conference's agreements is recorded on submit and on confirm.
 - **Lists.** Lists, CSV exports and MCP tools all go through `querySubmissions()`, which projects first and filters afterwards.
@@ -111,6 +111,7 @@ Put self-contained static files in `docs/design/visitor-preview/` (the exact fil
 
 - Server tests drive both listeners in-process with `app.request()` against an in-memory PGlite database. Use `apps/server/src/testkit.ts`.
 - Fixtures are deterministic, shaped like ELO 2026: 200 submissions and 41 reviewers. Three fictional people deliberately exceed the presenter cap.
+- Server tests that need an open call use `seedTestCall()`, which opens the made-up call in `apps/server/src/fixture-call.ts`; one that needs any valid configuration uses `fixtureCall`. Never build a test on what a real conference's configuration says (the formats, limits, fields or agreements of `conferences.elo2027`): it changes whenever the organisers decide something. What ELO 2027's call says is recorded in one place, `packages/schema/src/elo2027.test.ts`. A real configuration may still be used whole where its content does not matter to the test: that it parses, that `seed` installs it, as a draft conference to keep hidden, and in the property tests that run over every configuration. Development and the e2e tests use `seedOpenCall()`, which is ELO 2027's own configuration on dates that follow the clock.
 - `npm run e2e` uses the browsers installed for Playwright 1.63; `playwright-core` is pinned to match.
 - MCP tests drive `/api/mcp` with the real SDK `Client`, whose `fetch` is pointed at `app.request`. Every tool result goes through `findLeaks()`.
 - When you edit files with scripts, assert that each replacement matched. Biome reformats code, and a silent no-op edit cost an hour once.

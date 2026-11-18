@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contributorsCsv, submissionsCsv } from "./csv";
 import { cursorsFor, internalCursors } from "./cursor";
 import { auditLog, contributions, people, submissions } from "./db/schema";
-import { type SandboxSummary, seedOpenCall, seedSandbox } from "./fixtures";
+import { type SandboxSummary, seedSandbox, seedTestCall } from "./fixtures";
 import {
   createApiToken,
   getConference,
@@ -516,7 +516,7 @@ describe("paging the chair list (#12)", () => {
       ids(await list("status=submitted&limit=3")),
     );
     // Replayed on another conference's list, by the same chair, it does not open either.
-    const other = await seedOpenCall(t.db, {
+    const other = await seedTestCall(t.db, {
       slug: "cursor-other",
       now: new Date(),
       chairEmails: ["chair@example.org"],

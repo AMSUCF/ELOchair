@@ -3,10 +3,12 @@ import {
   type ChairSubmission,
   isConferenceAdmin,
   isConferenceChair,
+  type PersonViewer,
   projectSubmission,
   type Viewer,
 } from "@elochair/policy";
 import {
+  ConferenceConfig,
   ConferencePhase,
   CreateSubmissionInput,
   findType,
@@ -29,10 +31,13 @@ import {
   listConferences,
   loadSubmission,
   loadSubmissionRecords,
+  lockConference,
   movePhase,
-  saveConference,
+  shareConference,
+  writeConfig,
 } from "../repo";
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
+import { configToken, reviewConfig } from "../services/settings";
 import {
   COUNTED_STATUSES,
   CursorRefused,
@@ -51,6 +56,37 @@ function canChair(viewer: Viewer, conferenceId: string): boolean {
 }
 
 const visible = (viewer: Viewer, k: ConferenceRow) => k.phase !== "draft" || canChair(viewer, k.id);
+
+/**
+ * The person changing a conference's configuration, or a refusal. Configuration changes are
+ * human-only: an agent may read a conference but never reconfigure it. Chairs may change the
+ * stage-one values (packages/schema settings.ts); admins, anything.
+ */
+async function configEditor(
+  c: Context<AppEnv>,
+): Promise<{ viewer: PersonViewer; k: ConferenceRow }> {
+  const viewer = c.get("viewer");
+  const k = await getConference(c.get("deps").db, c.req.param("slug") ?? "");
+  // Draft conferences do not exist for people who cannot see them.
+  if (!k || !visible(viewer, k)) throw new Refusal(404, "not_found");
+  if (viewer.kind !== "person" || !isConferenceChair(viewer, k.id)) {
+    throw new Refusal(403, "forbidden");
+  }
+  return { viewer, k };
+}
+
+/** The token (configToken) of the configuration a change was based on, from If-Match. */
+function baseToken(c: Context<AppEnv>): string | null {
+  const raw = c.req.header("if-match")?.trim();
+  return raw ? raw.replace(/^W\//, "").replace(/^"|"$/g, "") : null;
+}
+
+/** A configuration from a request body, which must be for the conference in the address. */
+async function configBody(c: Context<AppEnv>, k: ConferenceRow): Promise<unknown> {
+  const body = (await c.req.json()) as { slug?: unknown } | null;
+  if (body?.slug !== k.slug) throw new Refusal(400, "slug_mismatch");
+  return body;
+}
 
 function summary(k: ConferenceRow, now: Date) {
   const c = k.config;
@@ -93,32 +129,79 @@ export const conferenceRoutes = new Hono<AppEnv>()
     const callOpen = isCallOpen(k.config, k.phase, c.get("deps").now());
     return c.json({ slug: k.slug, phase: k.phase, config: k.config, callOpen });
   })
-  .put("/:slug/config", async (c) => {
-    const viewer = c.get("viewer");
-    const { db } = c.get("deps");
-    const k = await getConference(db, c.req.param("slug"));
-    // Draft conferences do not exist for people who cannot see them.
-    if (!k || !visible(viewer, k)) return c.json({ error: "not_found" }, 404);
-    // Configuration changes are human-only: agents can read but not reconfigure a conference.
-    if (viewer.kind !== "person" || !isConferenceAdmin(viewer, k.id)) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-    const body = (await c.req.json()) as { slug?: unknown };
-    if (body.slug !== k.slug) return c.json({ error: "slug_mismatch" }, 400);
-    const saved = await saveConference(db, body);
-    const before = k.config as Record<string, unknown>;
-    const after = saved.config as Record<string, unknown>;
-    const changed = Object.keys(after).filter(
-      (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
-    );
-    await audit(db, viewer, {
-      action: "conference.config_updated",
-      conferenceId: k.id,
-      targetType: "conference",
-      targetId: k.id,
-      details: { changed },
+  .get("/:slug/settings", async (c) => {
+    const { viewer, k } = await configEditor(c);
+    return c.json({
+      slug: k.slug,
+      phase: k.phase,
+      callOpen: isCallOpen(k.config, k.phase, c.get("deps").now()),
+      config: k.config,
+      token: configToken(k.config),
+      scope: isConferenceAdmin(viewer, k.id) ? "all" : "stage_one",
     });
-    return c.json({ slug: saved.slug, phase: saved.phase, config: saved.config });
+  })
+  .post("/:slug/config/preview", async (c) => {
+    const { viewer, k } = await configEditor(c);
+    const { db, now } = c.get("deps");
+    const input = await configBody(c, k);
+    // What a save would do, without saving: changed values, problems, what blocks, what warns.
+    const { review } = reviewConfig({
+      viewer,
+      conference: k,
+      records: await loadSubmissionRecords(db, k),
+      input,
+      base: baseToken(c),
+      now: now(),
+    });
+    return c.json(review);
+  })
+  .put("/:slug/config", async (c) => {
+    const { viewer, k } = await configEditor(c);
+    const deps = c.get("deps");
+    const input = await configBody(c, k);
+    const base = baseToken(c);
+    // Two people saving at once: each says which configuration they started from.
+    if (!base) throw new Refusal(428, "base_required");
+    const next = ConferenceConfig.parse(input);
+    const now = deps.now();
+    // Under the conference's row lock, against the configuration and the submissions as they
+    // are at that moment: submitted work stays valid, or nothing is saved (spec 02, §1.9).
+    const warnings = await deps.db.transaction(async (txRaw) => {
+      const tx = txRaw as unknown as Db;
+      const stored = await lockConference(tx, k.id);
+      if (!stored) throw new Refusal(404, "not_found");
+      const { review } = reviewConfig({
+        viewer,
+        conference: stored,
+        records: await loadSubmissionRecords(tx, stored),
+        input: next,
+        base,
+        now,
+      });
+      if (review.stale) throw new Refusal(409, "stale", { token: review.token });
+      if (review.forbidden.length) throw new Refusal(403, "forbidden", { paths: review.forbidden });
+      if (review.blocked) {
+        throw new Refusal(409, "submitted_work_invalid", { blocked: review.blocked });
+      }
+      if (review.changes.length === 0) return review.warnings;
+      await writeConfig(tx, stored.id, next, now);
+      await audit(tx, viewer, {
+        action: "conference.config_updated",
+        conferenceId: stored.id,
+        targetType: "conference",
+        targetId: stored.id,
+        // Configuration holds no personal data: the values themselves are the record.
+        details: { changes: review.changes, draftsAffected: review.warnings.drafts },
+      });
+      return review.warnings;
+    });
+    return c.json({
+      slug: k.slug,
+      phase: k.phase,
+      config: next,
+      token: configToken(next),
+      warnings,
+    });
   })
   .get("/:slug/overview", async (c) => {
     const viewer = c.get("viewer");
@@ -136,14 +219,21 @@ export const conferenceRoutes = new Hono<AppEnv>()
     if (!k || !visible(viewer, k)) throw new Refusal(404, "not_found");
     const input = CreateSubmissionInput.parse(await c.req.json());
     const now = deps.now();
-    if (!isCallOpen(k.config, k.phase, now)) throw new Refusal(409, "call_closed");
-    const issues = [];
-    if (!findType(k.config, input.typeKey)) issues.push({ path: "typeKey", code: "unknown_type" });
-    if (!k.config.languages.includes(input.language))
-      issues.push({ path: "language", code: "unknown_language" });
-    if (issues.length) throw new Refusal(422, "invalid", { issues });
     const id = await deps.db.transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
+      // Like every write to a submission, a new one shares the conference's row (spec 02,
+      // §1.9): it is checked against the phase and the configuration in force when it commits.
+      const live = await shareConference(tx, k.id);
+      if (!live || !visible(viewer, live)) throw new Refusal(404, "not_found");
+      if (!isCallOpen(live.config, live.phase, now)) throw new Refusal(409, "call_closed");
+      const issues = [];
+      if (!findType(live.config, input.typeKey)) {
+        issues.push({ path: "typeKey", code: "unknown_type" });
+      }
+      if (!live.config.languages.includes(input.language)) {
+        issues.push({ path: "language", code: "unknown_language" });
+      }
+      if (issues.length) throw new Refusal(422, "invalid", { issues });
       const [row] = await tx
         .insert(submissions)
         .values({

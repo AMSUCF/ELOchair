@@ -18,6 +18,7 @@ import { InvitationPage } from "./pages/Invitation";
 import { ManagePage } from "./pages/Manage";
 import { MePage } from "./pages/Me";
 import { MyPage } from "./pages/My";
+import { SettingsPage } from "./pages/Settings";
 import { SignInPage } from "./pages/SignIn";
 import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
@@ -37,6 +38,7 @@ export function App() {
         <Route path="my" element={<MyPage />} />
         <Route path="c/:slug/submit" element={<StartPage />} />
         <Route path="c/:slug/manage" element={<ManagePage />} />
+        <Route path="c/:slug/settings" element={<SettingsPage />} />
         <Route path="s/:id" element={<SubmissionPage />} />
         <Route path="invitation" element={<InvitationPage />} />
       </Route>

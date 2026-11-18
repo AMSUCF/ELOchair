@@ -14,6 +14,10 @@ export type SubmissionIssue = {
     | "too_many_words"
     | "required"
     | "wrong_kind"
+    /** A number outside the range its field allows (params: min, max where set). */
+    | "out_of_range"
+    /** A number with a fraction where its field takes whole numbers only. */
+    | "not_integer"
     | "unknown_option"
     | "team_size"
     | "no_lead"
@@ -87,8 +91,18 @@ function checkField(f: CustomField, v: FieldValue | undefined, lang: string): Su
     case "multiselect":
       if (!Array.isArray(v)) return [{ path, code: "wrong_kind" }];
       return v.every((x) => options.has(x)) ? [] : [{ path, code: "unknown_option" }];
-    case "number":
-      return typeof v === "number" && Number.isFinite(v) ? [] : [{ path, code: "wrong_kind" }];
+    case "number": {
+      if (typeof v !== "number" || !Number.isFinite(v)) return [{ path, code: "wrong_kind" }];
+      const issues: SubmissionIssue[] = [];
+      if (f.integer && !Number.isInteger(v)) issues.push({ path, code: "not_integer" });
+      if ((f.min !== undefined && v < f.min) || (f.max !== undefined && v > f.max)) {
+        const params: Record<string, number> = {};
+        if (f.min !== undefined) params.min = f.min;
+        if (f.max !== undefined) params.max = f.max;
+        issues.push({ path, code: "out_of_range", params });
+      }
+      return issues;
+    }
   }
 }
 
@@ -130,11 +144,15 @@ export function validateSubmission(
   });
 
   const words = countWords(submission.abstract, submission.language);
-  if (words < type.abstract.minWords) {
+  const minWords = type.abstract.minWords;
+  if (minWords === undefined) {
+    // No minimum length: the abstract only has to be there. Without it, it is missing, not short.
+    if (words === 0) issues.push({ path: "abstract", code: "required" });
+  } else if (words < minWords) {
     issues.push({
       path: "abstract",
       code: "too_few_words",
-      params: { count: words, min: type.abstract.minWords },
+      params: { count: words, min: minWords },
     });
   }
   if (words > type.abstract.maxWords) {

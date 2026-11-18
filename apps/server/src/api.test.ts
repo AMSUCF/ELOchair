@@ -212,21 +212,35 @@ describe("conference configuration", () => {
 
   it("lets admins update the configuration, validates it, and audits the change", async () => {
     const path = `/api/conferences/${s.slug}/config`;
-    const current = (
-      await call(t.public, "GET", `/api/conferences/${s.slug}`, { cookie: adminCookie })
-    ).json.config;
+    const settings = await call(t.public, "GET", `/api/conferences/${s.slug}/settings`, {
+      cookie: adminCookie,
+    });
+    const current = settings.json.config;
     const updated = { ...current, contactEmail: "sandbox@example.org" };
-    const ok = await call(t.public, "PUT", path, { cookie: adminCookie, body: updated });
+    // A save says which configuration it started from; without that it is not attempted.
+    const blind = await call(t.public, "PUT", path, { cookie: adminCookie, body: updated });
+    expect(blind.status).toBe(428);
+    const ok = await call(t.public, "PUT", path, {
+      cookie: adminCookie,
+      ifMatch: settings.json.token,
+      body: updated,
+    });
     expect(ok.status).toBe(200);
     expect(ok.json.config.contactEmail).toBe("sandbox@example.org");
     const rows = await t.db
       .select()
       .from(auditLog)
       .where(eq(auditLog.action, "conference.config_updated"));
-    expect(rows.at(-1)?.details).toEqual({ changed: ["contactEmail"] });
+    expect(rows.at(-1)?.details).toEqual({
+      changes: [
+        { path: "contactEmail", before: current.contactEmail, after: "sandbox@example.org" },
+      ],
+      draftsAffected: 0,
+    });
 
     const bad = await call(t.public, "PUT", path, {
       cookie: adminCookie,
+      ifMatch: ok.json.token,
       body: {
         ...current,
         submissionTypes: [{ ...current.submissionTypes[0], reviewPool: "nope" }],
@@ -238,13 +252,19 @@ describe("conference configuration", () => {
     );
   });
 
-  it("refuses configuration changes from chairs who are not admins", async () => {
-    const current = (await call(t.public, "GET", `/api/conferences/${s.slug}`)).json.config;
+  it("refuses changes from chairs to what only admins may change", async () => {
+    // What chairs may change, and the rest of the rules, are in settings.test.ts.
+    const settings = await call(t.public, "GET", `/api/conferences/${s.slug}/settings`, {
+      cookie: chairCookie,
+    });
+    expect(settings.json.scope).toBe("stage_one");
     const res = await call(t.public, "PUT", `/api/conferences/${s.slug}/config`, {
       cookie: chairCookie,
-      body: current,
+      ifMatch: settings.json.token,
+      body: { ...settings.json.config, timezone: "Europe/Lisbon" },
     });
     expect(res.status).toBe(403);
+    expect(res.json).toEqual({ error: "forbidden", paths: ["timezone"] });
   });
 });
 

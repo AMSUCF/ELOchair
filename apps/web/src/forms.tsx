@@ -2,6 +2,7 @@ import { removeStrayInvisible } from "@elochair/schema/pure";
 import { useEffect, useRef } from "react";
 import type { Issue } from "./api";
 import { isMessageKey, useT } from "./i18n";
+import { issueMessageKey } from "./issues";
 
 /**
  * A typed or pasted name as it is sent. Pasting often brings invisible format characters along
@@ -31,7 +32,7 @@ export const fieldId = (path: string) => `field-${path.replace(/[^a-zA-Z0-9_-]+/
 export function useIssueText() {
   const { t } = useT();
   return (issue: Issue) => {
-    const key = `issue_${issue.code}`;
+    const key = issueMessageKey(issue);
     return isMessageKey(key) ? t(key, issue.params) : t("issue_generic");
   };
 }
@@ -40,7 +41,16 @@ export function useIssueText() {
  * The GOV.UK-style error summary: a titled list of links to the fields with problems. It takes
  * focus when it appears so screen reader and keyboard users hear what to fix.
  */
-export function ErrorSummary({ issues, title }: { issues: Issue[]; title: string }) {
+export function ErrorSummary({
+  issues,
+  title,
+  where,
+}: {
+  issues: Issue[];
+  title: string;
+  /** On a long form: the name of the value at a path, said before its message. */
+  where?: (path: string) => string | undefined;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const text = useIssueText();
   useEffect(() => {
@@ -69,7 +79,7 @@ export function ErrorSummary({ issues, title }: { issues: Issue[]; title: string
                 }
               }}
             >
-              {text(i)}
+              {where?.(i.path) ? `${where(i.path)}: ${text(i)}` : text(i)}
             </a>
           </li>
         ))}

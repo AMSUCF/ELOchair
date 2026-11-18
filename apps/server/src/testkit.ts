@@ -10,8 +10,13 @@ import { loadEnv } from "./env";
 /** Test harness: an in-memory database and both listeners, driven without sockets. */
 export const ORIGIN = "https://chair.example.org";
 
-export async function makeTestApp(envOverrides: Record<string, string> = {}) {
-  const database = openDatabase({});
+export async function makeTestApp(
+  envOverrides: Record<string, string> = {},
+  /** `databaseUrl`: a real Postgres instead of the in-memory one, for tests of what waits. */
+  opts: { databaseUrl?: string } = {},
+) {
+  let listener: ((sql: string) => void) | undefined;
+  const database = openDatabase({ url: opts.databaseUrl, onQuery: (sql) => listener?.(sql) });
   await database.migrate();
   const env = loadEnv({
     NODE_ENV: "test",
@@ -30,6 +35,17 @@ export async function makeTestApp(envOverrides: Record<string, string> = {}) {
     setNow: (d: Date) => {
       clock = d;
     },
+    /** Every statement sent while `run` runs, in order. */
+    statements: async (run: () => Promise<unknown>): Promise<string[]> => {
+      const sent: string[] = [];
+      listener = (sql) => sent.push(sql);
+      try {
+        await run();
+      } finally {
+        listener = undefined;
+      }
+      return sent;
+    },
     close: () => database.close(),
   };
   return t;
@@ -42,6 +58,8 @@ type ReqOpts = {
   token?: string;
   origin?: string | null;
   contentType?: string;
+  /** The configuration a save is based on (configToken), sent as If-Match. */
+  ifMatch?: string;
 };
 
 export async function call(app: Hono<AppEnv>, method: string, path: string, opts: ReqOpts = {}) {
@@ -49,6 +67,7 @@ export async function call(app: Hono<AppEnv>, method: string, path: string, opts
   if (opts.origin !== null) headers.origin = opts.origin ?? ORIGIN;
   if (opts.cookie) headers.cookie = opts.cookie;
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  if (opts.ifMatch) headers["if-match"] = `"${opts.ifMatch}"`;
   if (opts.body !== undefined) headers["content-type"] = opts.contentType ?? "application/json";
   const res = await app.request(path, {
     method,
