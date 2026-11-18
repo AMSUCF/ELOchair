@@ -148,7 +148,11 @@ export const SubmissionType = z.object({
   blindMode: BlindMode.optional(),
   abstract: z.object({
     label: LocalizedText,
-    minWords: z.int().min(0),
+    /**
+     * The fewest words accepted. Left out when the call gives no minimum: the abstract then only
+     * has to be there. (0 says something else: the abstract may be left empty.)
+     */
+    minWords: z.int().min(0).optional(),
     maxWords: z.int().positive(),
   }),
   /** Length of the slot on the program. Absent for things that are not scheduled (exhibition). */
@@ -297,7 +301,7 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     if (!pools.has(t.reviewPool)) {
       issue([...at, "reviewPool"], `unknown review pool "${t.reviewPool}"`);
     }
-    if (t.abstract.minWords > t.abstract.maxWords) {
+    if (t.abstract.minWords !== undefined && t.abstract.minWords > t.abstract.maxWords) {
       issue([...at, "abstract"], "minWords must not exceed maxWords");
     }
     if (t.team.min > t.team.max) issue([...at, "team"], "team.min must not exceed team.max");

@@ -144,11 +144,15 @@ export function validateSubmission(
   });
 
   const words = countWords(submission.abstract, submission.language);
-  if (words < type.abstract.minWords) {
+  const minWords = type.abstract.minWords;
+  if (minWords === undefined) {
+    // No minimum length: the abstract only has to be there. Without it, it is missing, not short.
+    if (words === 0) issues.push({ path: "abstract", code: "required" });
+  } else if (words < minWords) {
     issues.push({
       path: "abstract",
       code: "too_few_words",
-      params: { count: words, min: type.abstract.minWords },
+      params: { count: words, min: minWords },
     });
   }
   if (words > type.abstract.maxWords) {

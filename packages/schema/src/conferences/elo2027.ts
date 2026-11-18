@@ -164,7 +164,8 @@ export const elo2027: ConferenceConfigInput = {
    * The call's formats (https://elo27.eliterature.org/, read 2026-11-10). Names and limits are
    * the call's. Where the call says nothing, the defaults agreed on 2026-11-08 stand, and each
    * is a question for the organisers:
-   * - Minimum lengths: none given, so an abstract only has to be there (minWords 1).
+   * - Minimum lengths: none given, so the formats have no minWords: an abstract only has to be
+   *   there.
    * - Review: the call's "academic" formats go to the scientific pool (anonymized, three
    *   reviews), its "artistic" ones to the artistic pool (names visible, two reviews).
    * - Team sizes, and panels not counting toward the cap of two. A panel may have up to 24
@@ -190,7 +191,6 @@ export const elo2027: ConferenceConfigInput = {
           es: "Resumen (anonimizado)",
           pt: "Resumo (anonimizado)",
         },
-        minWords: 1,
         maxWords: 300,
       },
       durationMinutes: 15,
@@ -211,7 +211,6 @@ export const elo2027: ConferenceConfigInput = {
           es: "Resumen (anonimizado)",
           pt: "Resumo (anonimizado)",
         },
-        minWords: 1,
         maxWords: 150,
       },
       durationMinutes: 5,
@@ -232,7 +231,6 @@ export const elo2027: ConferenceConfigInput = {
           es: "Justificación del panel (anonimizada)",
           pt: "Justificação do painel (anonimizada)",
         },
-        minWords: 1,
         maxWords: 150,
       },
       // At least three papers, so three people. At most six talks, each with up to four authors
@@ -274,7 +272,6 @@ export const elo2027: ConferenceConfigInput = {
           es: "Resumen (anonimizado)",
           pt: "Resumo (anonimizado)",
         },
-        minWords: 1,
         maxWords: 300,
       },
       durationMinutes: 15,
@@ -295,7 +292,6 @@ export const elo2027: ConferenceConfigInput = {
           es: "Descripción del taller y sus objetivos (anonimizada)",
           pt: "Descrição da oficina e dos seus objetivos (anonimizada)",
         },
-        minWords: 1,
         maxWords: 300,
       },
       durationMinutes: 60,
@@ -342,7 +338,6 @@ export const elo2027: ConferenceConfigInput = {
       reviewPool: "artistic",
       abstract: {
         label: { en: "Abstract", es: "Resumen", pt: "Resumo" },
-        minWords: 1,
         maxWords: 300,
       },
       team: { min: 1, max: 6 },
@@ -385,7 +380,6 @@ export const elo2027: ConferenceConfigInput = {
       reviewPool: "artistic",
       abstract: {
         label: { en: "Abstract", es: "Resumen", pt: "Resumo" },
-        minWords: 1,
         maxWords: 300,
       },
       team: { min: 1, max: 8 },

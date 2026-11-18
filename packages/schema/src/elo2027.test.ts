@@ -64,7 +64,9 @@ describe("the ELO 2027 call's formats", () => {
       ["exhibition", 300, null],
     ]);
     // The call gives no minimum: an abstract only has to be there.
-    expect(new Set(config.submissionTypes.map((t) => t.abstract.minWords))).toEqual(new Set([1]));
+    expect(config.submissionTypes.map((t) => t.abstract.minWords)).toEqual(
+      config.submissionTypes.map(() => undefined),
+    );
   });
 
   it("reviews the call's academic formats anonymized and its artistic ones with names", () => {
@@ -129,9 +131,12 @@ describe("submitting to ELO 2027", () => {
     expect(codes(config, submission("talk", { abstract: words(301) }), lead)).toEqual([
       "abstract: too_many_words",
     ]);
-    expect(codes(config, submission("talk", { abstract: "  " }), lead)).toEqual([
-      "abstract: too_few_words",
-    ]);
+    // Missing, not short: there is no minimum to fall under.
+    for (const abstract of ["", "  ", " \n\t "]) {
+      expect(validateSubmission(config, submission("talk", { abstract }), lead)).toEqual([
+        { path: "abstract", code: "required" },
+      ]);
+    }
   });
 
   it("a lightning talk takes up to 150 words", () => {

@@ -392,7 +392,7 @@ export async function seedSandbox(
     for (let i = 0; i < (counts[type.key] ?? 0); i++, k++) {
       const language = r.next() < 0.7 ? "en" : r.next() < 0.67 ? "es" : "pt";
       const words = WORDS[language] as string[];
-      const nWords = r.int(type.abstract.minWords, type.abstract.maxWords);
+      const nWords = r.int(type.abstract.minWords ?? 1, type.abstract.maxWords);
       const abstract = Array.from({ length: nWords }, () => r.pick(words)).join(" ");
       const title = `${cap(r.pick(words))} ${r.pick(words)}: ${r.pick(words)} ${r.pick(words)}`;
       const fields: Record<string, string> = {};

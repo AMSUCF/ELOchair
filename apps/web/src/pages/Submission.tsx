@@ -223,22 +223,23 @@ function WordCount({
 }: {
   text: string;
   lang: string;
-  min: number;
+  /** The format's minimum length, when it has one. */
+  min: number | undefined;
   max: number;
   id: string;
 }) {
   const { t } = useT();
   const n = countWords(text, lang);
-  // With no real minimum there is nothing to be under: an empty abstract is simply not there yet.
+  // With no minimum there is nothing to be under: an empty abstract is simply not there yet.
   const state = hasMinimum(min) && n < min ? "under" : n > max ? "over" : "ok";
   const label =
-    state === "under"
-      ? t("editWordsUnder", { count: n, min })
-      : state === "over"
-        ? t("editWordsOver", { count: n, max })
-        : hasMinimum(min)
-          ? t("editWords", { count: n, min, max })
-          : t("editWordsMax", { count: n, max });
+    state === "over"
+      ? t("editWordsOver", { count: n, max })
+      : !hasMinimum(min)
+        ? t("editWordsMax", { count: n, max })
+        : state === "under"
+          ? t("editWordsUnder", { count: n, min })
+          : t("editWords", { count: n, min, max });
   // Announced only when the count crosses a limit, not on every keystroke.
   const previous = useRef(state);
   const [announcement, setAnnouncement] = useState("");
@@ -628,7 +629,7 @@ function Editor({
     });
   }
 
-  const abstractMin = type?.abstract.minWords ?? 0;
+  const abstractMin = type?.abstract.minWords;
   const abstractMax = type?.abstract.maxWords ?? 0;
   const allAgreed = config.agreements.every((a) => agreed.has(a.key));
   const cap =

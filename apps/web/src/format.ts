@@ -34,7 +34,8 @@ export function daysUntil(iso: string, now: number): number {
 }
 
 /**
- * Whether a format's abstract has a real minimum length. Some calls give only a maximum; their
- * configuration then asks for one word at least, which only means "not empty".
+ * Whether a format's abstract has a minimum length to show. Some calls give only a maximum:
+ * their configuration then has no `minWords`, and the abstract only has to be there.
  */
-export const hasMinimum = (minWords: number): boolean => minWords > 1;
+export const hasMinimum = (minWords: number | undefined): minWords is number =>
+  minWords !== undefined && minWords > 0;
