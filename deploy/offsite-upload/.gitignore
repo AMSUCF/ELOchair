@@ -1,0 +1,2 @@
+# The uploader's bucket key and encryption password live in .env here. Never commit it.
+.env

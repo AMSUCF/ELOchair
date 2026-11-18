@@ -1,35 +1,20 @@
 # Optional: the uploader, which copies finished database dumps from deploy/backups/ to
 # S3-compatible object storage. It only ever adds to the bucket; the pruner that keeps the bucket
-# to a fixed rolling set runs on another machine (deploy/offsite-prune/). Setup, the variables
-# for deploy/.env and the restore drill are in deploy/backup-offsite.md.
+# to a fixed rolling set runs on another machine (deploy/offsite-prune/). Setup, the settings
+# file and the restore drill are in deploy/backup-offsite.md.
+#   cp deploy/offsite-upload/.env.example deploy/offsite-upload/.env    # then edit it
 #   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.offsite.yml up -d backup-offsite
 services:
   backup-offsite:
     image: rclone/rclone:1.75.2
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/backup-offsite.sh"]
-    # This container holds the bucket key and nothing else. It gets only the variables named
-    # here (never env_file: .env, which has the database password and SECRET_KEY), and its own
-    # network, from which the database cannot be reached.
-    environment:
-      BACKUP_OFFSITE_DEST: ${BACKUP_OFFSITE_DEST:?set BACKUP_OFFSITE_DEST in deploy/.env (see deploy/backup-offsite.md)}
-      BACKUP_OFFSITE_INTERVAL: ${BACKUP_OFFSITE_INTERVAL:-900}
-      # The bucket: an rclone remote named "offsite". Unset variables are not passed on.
-      RCLONE_CONFIG_OFFSITE_TYPE:
-      RCLONE_CONFIG_OFFSITE_PROVIDER:
-      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID:
-      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY:
-      RCLONE_CONFIG_OFFSITE_REGION:
-      RCLONE_CONFIG_OFFSITE_ENDPOINT:
-      RCLONE_CONFIG_OFFSITE_FORCE_PATH_STYLE:
-      RCLONE_CONFIG_OFFSITE_SERVER_SIDE_ENCRYPTION:
-      RCLONE_CONFIG_OFFSITE_STORAGE_CLASS:
-      # Optional client-side encryption: an rclone crypt remote named "offsitecrypt" over it.
-      RCLONE_CONFIG_OFFSITECRYPT_TYPE:
-      RCLONE_CONFIG_OFFSITECRYPT_REMOTE:
-      RCLONE_CONFIG_OFFSITECRYPT_PASSWORD:
-      RCLONE_CONFIG_OFFSITECRYPT_PASSWORD2:
-      RCLONE_CONFIG_OFFSITECRYPT_FILENAME_ENCRYPTION:
+    # The bucket key, the destination and the encryption password are in a file of their own,
+    # which this service alone is given. They must never go in deploy/.env: the app container
+    # is given everything in that file, and it is the one that faces the internet. Nothing from
+    # deploy/.env comes here either, and this service is on a network of its own, from which the
+    # database cannot be reached.
+    env_file: offsite-upload/.env
     volumes:
       - ./backup-offsite.sh:/backup-offsite.sh:ro
       # Read-only, and never created here: a missing deploy/backups means no backup has run.

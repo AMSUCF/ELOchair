@@ -11,6 +11,7 @@ on:
       - deploy/backup-retention.sh
       - deploy/docker-compose.offsite.yml
       - deploy/offsite-prune/**
+      - deploy/offsite-upload/**
       - .github/workflows/backup-offsite.yml
   pull_request:
     paths:
@@ -18,6 +19,7 @@ on:
       - deploy/backup-retention.sh
       - deploy/docker-compose.offsite.yml
       - deploy/offsite-prune/**
+      - deploy/offsite-upload/**
       - .github/workflows/backup-offsite.yml
 
 permissions:

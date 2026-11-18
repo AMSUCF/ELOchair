@@ -7,7 +7,9 @@
 #    limited to what the documentation says it needs, using real pg_dump output.
 #
 # Everything runs in a temporary copy of deploy/ under its own compose project names, so a real
-# deploy/.env, deploy/backups and running stack are never touched. OFFSITE_TEST_KEEP=1 leaves
+# deploy/.env, deploy/offsite-upload/.env, deploy/backups and running stack are never touched.
+# The uploader and the pruner are told it is 2026-11-18 12:00:00 UTC (BACKUP_OFFSITE_NOW), so
+# that which dump names are "stamped ahead" does not depend on the day the tests run. OFFSITE_TEST_KEEP=1 leaves
 # the containers and the temporary copy in place afterwards, to look around.
 set -uo pipefail
 
@@ -16,6 +18,7 @@ PROJECT="${OFFSITE_TEST_PROJECT:-elochair-test-offsite}"
 PRUNE_PROJECT="$PROJECT-prune"
 RCLONE_IMAGE="$(awk '$1 == "image:" { print $2; exit }' "$HERE/docker-compose.offsite.yml")"
 BUCKET=elochair-backups
+NOW=1795003200 # 2026-11-18T12:00:00Z
 T="$(mktemp -d)"
 D="$T/deploy"
 failures=0
@@ -56,7 +59,7 @@ set_env() {
   printf '%s=%s\n' "$2" "$3" >>"$1.new"
   mv "$1.new" "$1"
 }
-uploader_env() { set_env "$D/.env" "$1" "$2"; }
+uploader_env() { set_env "$D/offsite-upload/.env" "$1" "$2"; }
 pruner_env() { set_env "$D/offsite-prune/.env" "$1" "$2"; }
 
 # The uploader and the pruner, one round each. Output goes to $T/out; the status is returned.
@@ -101,6 +104,23 @@ restore_lists() {
   grep -q 'TABLE DATA public marker' <<<"$listing"
 }
 
+# others_get: the rendered configuration of every service except the uploader (and the test's
+# own bucket). No offsite setting, and no key, may appear in it.
+others_get() {
+  dc config 2>/dev/null | awk '
+    /^[^ ]/ { top = $1; service = "" }
+    top == "services:" && /^  [^ ]/ { service = $1 }
+    top == "services:" && service != "" && service != "backup-offsite:" && service != "minio:"
+  '
+}
+# script_refuses <interval> <mode>: runs the script in its image with that interval; succeeds if
+# it refuses to start. Output goes to $T/out.
+script_refuses() {
+  ! docker run --rm -e BACKUP_OFFSITE_INTERVAL="$1" -e BACKUP_OFFSITE_DEST=offsite:bucket/prefix \
+    -v "$D/backup-offsite.sh:/backup-offsite.sh:ro" --entrypoint /bin/sh "$RCLONE_IMAGE" \
+    /backup-offsite.sh "$2" >"$T/out" 2>&1
+}
+
 name() { printf 'elochair-%s.dump' "$1"; }
 # real_dump <stamp>: a real pg_dump of the test database, written the way backups are.
 real_dump() {
@@ -140,16 +160,17 @@ docker run --rm -v "$HERE:/deploy:ro" --entrypoint sh postgres:16 /deploy/backup
 # --- 2. a temporary deployment with MinIO ------------------------------------------------------
 
 section "setting up: Postgres, MinIO, and one key per role"
-mkdir -p "$D/backups" "$D/offsite-prune"
+mkdir -p "$D/backups" "$D/offsite-prune" "$D/offsite-upload"
 chmod 700 "$D/backups"
 cp "$HERE/docker-compose.yml" "$HERE/docker-compose.offsite.yml" "$HERE/backup-offsite.test.yml" \
   "$HERE/backup-offsite.sh" "$HERE/backup-retention.sh" "$D/"
 cp "$HERE/offsite-prune/docker-compose.yml" "$D/offsite-prune/"
 cp "$HERE/.env.example" "$D/.env"
-# The uploader's settings, in deploy/.env as on a server.
-cat >>"$D/.env" <<EOF
+# The uploader's settings, in its own file as on a server: never in deploy/.env.
+cat >"$D/offsite-upload/.env" <<EOF
 BACKUP_OFFSITE_DEST=offsite:$BUCKET/elochair
 BACKUP_OFFSITE_INTERVAL=2
+BACKUP_OFFSITE_NOW=$NOW
 RCLONE_CONFIG_OFFSITE_TYPE=s3
 RCLONE_CONFIG_OFFSITE_PROVIDER=Minio
 RCLONE_CONFIG_OFFSITE_ENDPOINT=http://minio:9000
@@ -161,6 +182,7 @@ EOF
 cat >"$D/offsite-prune/.env" <<EOF
 BACKUP_OFFSITE_DEST=offsite:$BUCKET/elochair
 BACKUP_OFFSITE_INTERVAL=2
+BACKUP_OFFSITE_NOW=$NOW
 RCLONE_CONFIG_OFFSITE_TYPE=s3
 RCLONE_CONFIG_OFFSITE_PROVIDER=Minio
 RCLONE_CONFIG_OFFSITE_ENDPOINT=http://minio:9000
@@ -377,9 +399,81 @@ stored elochair >"$T/now"
 check "and the tiered history is still in the bucket" cmp "$T/want" "$T/now"
 
 section "the looping pruner"
+# 0009 is nine seconds: read as octal it would be an error in the loop's arithmetic.
+pruner_env BACKUP_OFFSITE_INTERVAL 0009
 pc up -d prune >/dev/null 2>&1
-check "the looping service is healthy after a good round" becomes pc prune healthy
+check "the looping service is healthy after a good round, with an interval written 0009" becomes pc prune healthy
 pc stop prune >/dev/null 2>&1
+
+section "an interval that is not at least one second is refused"
+for interval in 0 00 000 abc 1.5 -5; do
+  for mode in once prune; do
+    if script_refuses "$interval" "$mode"; then
+      check "$mode refuses an interval of \"$interval\" and says why" said "BACKUP_OFFSITE_INTERVAL must be a whole number of seconds, at least 1"
+    else
+      fail "$mode refuses an interval of \"$interval\""
+    fi
+  done
+done
+
+section "an object whose name cannot be a date does not block uploads"
+# The review's replay: the bucket holds only a name no clock could have written.
+uploader_env BACKUP_OFFSITE_DEST "offsite:$BUCKET/replay"
+uploader_env BACKUP_OFFSITE_INTERVAL 0900
+put_stored replay "$(name 99999999T999999Z)"
+rm -f "$D/backups/"elochair-*
+copy_dump 20261118T030000Z
+check "the uploader runs, with an interval written 0900" upload_once
+stored_is "the dump here is uploaded past the impossible name" replay \
+  "$(name 20261118T030000Z)" "$(name 99999999T999999Z)"
+check "the impossible name is reported" said "WARNING: 1 object(s) in offsite:$BUCKET/replay are named like dumps but their date or time cannot exist: $(name 99999999T999999Z)"
+put_stored replay "$(name 20260230T000000Z)" # 30 February
+copy_dump 20261118T040000Z
+check "the next round uploads the next dump" upload_once
+check "and reports both impossible names" said "WARNING: 2 object(s) in offsite:$BUCKET/replay"
+cp "$T/first.dump" "$D/backups/$(name 20261340T000000Z)" # month 13, on the server itself
+check "a file here with an impossible name is not uploaded, and the round still succeeds" upload_once
+check "and is reported" said "WARNING: 1 file(s) in /backups are named like dumps but their date or time cannot exist"
+rm -f "$D/backups/$(name 20261340T000000Z)"
+pruner_env BACKUP_OFFSITE_DEST "offsite:$BUCKET/replay"
+pruner_env BACKUP_KEEP_HOURLY 1
+pruner_env BACKUP_KEEP_DAILY 0
+pruner_env BACKUP_KEEP_WEEKLY 0
+pruner_env BACKUP_KEEP_MONTHLY 0
+check "the pruner runs on that prefix" prune_once
+stored_is "it prunes among the real dumps and leaves the impossible names alone" replay \
+  "$(name 20260230T000000Z)" "$(name 20261118T040000Z)" "$(name 99999999T999999Z)"
+check "and says it neither counted nor deleted them" said "WARNING: 2 object(s) in offsite:$BUCKET/replay are named like dumps but their date or time cannot exist"
+
+section "a dump stamped later than the clock does not block uploads or push real dumps out"
+# The test clock is 2026-11-18 12:00 UTC: a dump stamped March 2027 was written by a wrong clock.
+uploader_env BACKUP_OFFSITE_DEST "offsite:$BUCKET/ahead"
+put_stored ahead "$(name 20261118T020000Z)"
+put_stored ahead "$(name 20270301T000000Z)"
+rm -f "$D/backups/"elochair-*
+copy_dump 20261118T010000Z
+copy_dump 20261118T050000Z
+check "the uploader runs" upload_once
+stored_is "it uploads what is newer than the newest dump that is not stamped ahead, and nothing older" ahead \
+  "$(name 20261118T020000Z)" "$(name 20261118T050000Z)" "$(name 20270301T000000Z)"
+check "and reports the dump stamped ahead" said "WARNING: 1 dump(s) in offsite:$BUCKET/ahead are stamped later than this server's clock: $(name 20270301T000000Z)"
+upload_once
+check "a second round uploads nothing more" said "uploaded 0 dump"
+pruner_env BACKUP_OFFSITE_DEST "offsite:$BUCKET/ahead"
+check "the pruner runs on that prefix" prune_once
+stored_is "keeping the latest one, it keeps the newest real dump, not the one stamped ahead, which it leaves alone" ahead \
+  "$(name 20261118T050000Z)" "$(name 20270301T000000Z)"
+check "and reports the dump stamped ahead" said "WARNING: 1 dump(s) in offsite:$BUCKET/ahead are stamped later than this machine's clock: $(name 20270301T000000Z)"
+
+uploader_env BACKUP_OFFSITE_DEST "offsite:$BUCKET/onlyahead"
+put_stored onlyahead "$(name 20270301T000000Z)"
+check "the uploader runs against a bucket with nothing but a dump stamped ahead" upload_once
+stored_is "it uploads only its newest dump, not its history" onlyahead \
+  "$(name 20261118T050000Z)" "$(name 20270301T000000Z)"
+check "and says so" said "only the newest dump here is uploaded, not the history"
+upload_once
+check "a second round uploads nothing more" said "uploaded 0 dump"
+uploader_env BACKUP_OFFSITE_INTERVAL 2
 
 # --- encryption -------------------------------------------------------------------------------
 
@@ -431,6 +525,28 @@ check "the uploader runs again" upload_once
 stored_is "and uploads nothing the pruner removed" encrypted \
   "$(name 20261105T030000Z).bin" "$(name 20261105T040000Z).bin"
 
+# --- who is given the key ---------------------------------------------------------------------
+
+section "the bucket key and the encryption password reach the uploader and no other service"
+dc config >"$T/all" 2>/dev/null
+others_get >"$T/others"
+for service in app db caddy; do
+  check "the rendered configuration has the $service service" grep -qx "  $service:" "$T/others"
+done
+check "the uploader is given the key" grep -q "RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: uploader-secret" "$T/all"
+check "and the encryption password" grep -qF -- "$password" "$T/all"
+check "no other service is given any offsite setting" refuses grep -qE 'RCLONE_CONFIG_|BACKUP_OFFSITE_|OFFSITE_' "$T/others"
+check "nor the key or the password under any name" refuses grep -qF -e uploader-secret -e "$password" "$T/others"
+dc exec -T db env >"$T/out" 2>&1
+check "the running database container has none of them" refuses grep -qE 'RCLONE|OFFSITE' "$T/out"
+# The mistake this guards against: the same settings in deploy/.env, which the app is given.
+cp "$D/.env" "$T/env.keep"
+grep -E '^(RCLONE_CONFIG_|BACKUP_OFFSITE_DEST)' "$D/offsite-upload/.env" >>"$D/.env"
+others_get >"$T/others"
+check "the same settings in deploy/.env would be given to the app, and this check sees it" \
+  grep -qF -- "$password" "$T/others"
+cp "$T/env.keep" "$D/.env"
+
 # --- when the bucket cannot be reached --------------------------------------------------------
 
 section "a key the bucket refuses"
@@ -440,9 +556,17 @@ check "the uploader becomes unhealthy" becomes dc backup-offsite unhealthy
 dc logs --no-log-prefix backup-offsite >"$T/out" 2>&1
 check "and its log says plainly that nothing was uploaded" said "FAILED: could not list offsitecrypt:, so nothing was uploaded"
 
-section "the documented command, with the main compose file"
+section "the documented commands, with the main compose file"
 check "docker-compose.yml and docker-compose.offsite.yml load together" \
   docker compose -f "$D/docker-compose.yml" -f "$D/docker-compose.offsite.yml" config --quiet
+mkdir -p "$T/doc/offsite-upload"
+cp "$HERE/docker-compose.yml" "$HERE/docker-compose.offsite.yml" "$T/doc/"
+cp "$HERE/.env.example" "$T/doc/.env"
+check "without offsite-upload/.env the uploader's compose file refuses to load" \
+  refuses docker compose -f "$T/doc/docker-compose.yml" -f "$T/doc/docker-compose.offsite.yml" config --quiet
+cp "$HERE/offsite-upload/.env.example" "$T/doc/offsite-upload/.env"
+check "with offsite-upload/.env.example copied to .env it loads" \
+  docker compose -f "$T/doc/docker-compose.yml" -f "$T/doc/docker-compose.offsite.yml" config --quiet
 
 echo
 if [ "$failures" -ne 0 ]; then

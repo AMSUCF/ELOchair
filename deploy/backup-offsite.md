@@ -10,7 +10,7 @@ Two small services share the work, on two machines, and each has its own bucket 
 
 | | Runs on | Its key can | Its key cannot |
 | --- | --- | --- | --- |
-| **Uploader** (`docker-compose.offsite.yml`) | the ELOchair server | list the bucket, put objects | delete, read |
+| **Uploader** (`docker-compose.offsite.yml`, `offsite-upload/`) | the ELOchair server | list the bucket, put objects | delete, read |
 | **Pruner** (`offsite-prune/`) | any other machine with Docker | list the bucket, delete objects | put, read |
 
 No single machine can both add to the bucket and empty it, and neither can read a dump back.
@@ -20,6 +20,13 @@ No single machine can both add to the bucket and empty it, and neither can read 
 **The pruner only deletes.** Every hour (or from cron) it lists the bucket, asks [`backup-retention.sh`](backup-retention.sh) which of those names the retention policy no longer keeps, and deletes exactly those. It decides from the bucket's own names, never from what is on the server. If it cannot list the bucket, or the policy refuses its settings, it deletes nothing.
 
 **If the pruner is not running, nothing is lost.** The bucket grows by the dumps uploaded in the meantime and is cut back to the bound on the pruner's next run. Every failure here leaves more in the bucket, not less.
+
+**Which names count.** A dump is an object named `elochair-<UTC yyyymmddThhmmssZ>.dump` whose date and time can exist. Both services treat two kinds of name as not counting, report them in the log on every round, and never delete them:
+
+- A name shaped like a dump whose date or time cannot exist (`elochair-99999999T999999Z.dump`). It is ignored.
+- A dump stamped more than five minutes later than the clock of the machine looking at it, which is what a server with a wrong clock leaves behind. The uploader does not take it for the newest dump, so later uploads carry on. The pruner does not hand it to the retention policy, where it would count as "the newest" and push real dumps out. It counts like any other dump once the clock has passed it.
+
+So a bucket can hold a few objects beyond the bound until someone deletes them with a key that can; the log names them. If the bucket holds nothing but dumps stamped ahead, the uploader cannot tell whether they or its own clock are wrong, and uploads only its newest dump, not its history.
 
 The retention policy is shared with the server's own rolling backups in `deploy/backups/`, so the disk and the bucket keep the same set: the newest dump of each of the last 48 hours, 14 days, 8 weeks and 12 months that have a dump, and always the newest dump. The four settings are `BACKUP_KEEP_HOURLY`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` and `BACKUP_KEEP_MONTHLY`. **The pruner's machine and the server must use the same four values.** The defaults are the same on both, so leave them alone unless you change them in both places.
 
@@ -94,10 +101,16 @@ The settings and notes below are from rclone's and the providers' documentation 
 
 ## 2. Start the uploader on the server
 
-Add to `deploy/.env`, with the uploader's key:
+The uploader's settings go in a file of their own, `deploy/offsite-upload/.env`, which only the uploader is given:
 
 ```bash
-# Offsite copies of the database dumps (deploy/backup-offsite.md).
+cp deploy/offsite-upload/.env.example deploy/offsite-upload/.env
+chmod 600 deploy/offsite-upload/.env
+```
+
+Then edit it, with the uploader's key:
+
+```bash
 BACKUP_OFFSITE_DEST=offsite:my-elochair-backups/elochair
 RCLONE_CONFIG_OFFSITE_TYPE=s3
 RCLONE_CONFIG_OFFSITE_PROVIDER=AWS
@@ -105,10 +118,12 @@ RCLONE_CONFIG_OFFSITE_REGION=us-east-1
 RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID=...
 RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY=...
 # RCLONE_CONFIG_OFFSITE_ENDPOINT=...      # every provider except AWS
-# BACKUP_OFFSITE_INTERVAL=900             # seconds between rounds
+# BACKUP_OFFSITE_INTERVAL=900             # seconds between rounds, at least 1
 ```
 
-`BACKUP_OFFSITE_DEST` is `remote:bucket/prefix`. The remote is named `offsite`, and each `RCLONE_CONFIG_OFFSITE_*` variable is one of [rclone's S3 settings](https://rclone.org/s3/). The compose file passes on the ones listed in it and nothing else from `deploy/.env`.
+**Never put any of these in `deploy/.env`.** Everything in `deploy/.env` is given to the app container, which faces the internet and has no use for a bucket key: anyone who broke into the app could then write to the bucket. Git ignores `deploy/offsite-upload/.env`, as it does `deploy/.env`.
+
+`BACKUP_OFFSITE_DEST` is `remote:bucket/prefix`. The remote is named `offsite`, and each `RCLONE_CONFIG_OFFSITE_*` variable is one of [rclone's S3 settings](https://rclone.org/s3/).
 
 `deploy/backups/` must exist, with at least one dump in it. Then start the one service by name:
 
@@ -118,7 +133,13 @@ docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.offsite.yml
 
 Name the service every time. On a server where another web server sits in front of ELOchair and only the app and database containers run, a bare `docker compose up -d` would also start Caddy. If you start services with more `-f` files than these, keep them and add `-f deploy/docker-compose.offsite.yml`.
 
-The container gets the bucket key and nothing else. It has none of the other values in `deploy/.env`, it is on a network of its own from which the database cannot be reached, and it mounts `deploy/backups/` read-only.
+The container gets `deploy/offsite-upload/.env` and nothing else. It has none of the values in `deploy/.env`, it is on a network of its own from which the database cannot be reached, and it mounts `deploy/backups/` read-only. No other container is given the bucket key. To see that for yourself, this must print nothing:
+
+```bash
+for service in app db caddy; do
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.offsite.yml config "$service" | grep -E 'RCLONE|OFFSITE'
+done
+```
 
 **Check that it works:**
 
@@ -129,7 +150,9 @@ docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.offsite.yml
 
 The log has one line for each upload (`Copied (new)`) and one for each round, such as `ok: uploaded 1 dump(s); the newest here (elochair-20261117T030000Z.dump) is in offsite:my-elochair-backups/elochair`. A round that fails says `FAILED:` and why. The service is `healthy` while the newest dump on the server is in the bucket, and turns `unhealthy` after three rounds without that: when the bucket refuses the key, when the network is down, and also when `deploy/backups/` has no dump or only dumps older than the bucket's newest, which means the backups themselves have stopped.
 
-If a round says the newest dump here "is older than the newest in the bucket", either the backups on the server have stopped, or the bucket holds a dump whose name carries a time in the future, uploaded while the server's clock was wrong. The uploader never uploads behind the bucket's newest dump, so fix the clock and delete that one object with a key that can.
+If a round says the newest dump here "is older than the newest in the bucket", the backups on the server have stopped, or another server is uploading to this bucket, or this server's clock has been set back by more than five minutes. The uploader never uploads behind the bucket's newest dump.
+
+A `WARNING:` about dumps "stamped later than this server's clock", or about names whose "date or time cannot exist", does not stop uploads: see "Which names count" above. Check the server's clock, and delete those objects with a key that can.
 
 Then prove the key cannot do more than it should. Both of these must fail with an access error:
 
@@ -141,7 +164,7 @@ $dc run --rm --entrypoint rclone backup-offsite cat offsite:my-elochair-backups/
 
 ## 3. Encrypt the dumps before they leave (recommended)
 
-The dumps hold personal data and confidential reviews. Your provider encrypting its own disks protects them from a stolen disk, not from the provider or from anyone who gets a key that can read the bucket. To encrypt on the server, before upload, add an rclone [crypt](https://rclone.org/crypt/) remote on top of the bucket and point the destination at it:
+The dumps hold personal data and confidential reviews. Your provider encrypting its own disks protects them from a stolen disk, not from the provider or from anyone who gets a key that can read the bucket. To encrypt on the server, before upload, add an rclone [crypt](https://rclone.org/crypt/) remote on top of the bucket and point the destination at it, in the same `deploy/offsite-upload/.env`:
 
 ```bash
 BACKUP_OFFSITE_DEST=offsitecrypt:
@@ -155,10 +178,10 @@ The password must be in rclone's obscured form. Make a long random one and obscu
 
 ```bash
 openssl rand -base64 32          # the password: store this somewhere safe first
-docker run --rm rclone/rclone:1.75.2 obscure '<the password>'    # the value for deploy/.env
+docker run --rm rclone/rclone:1.75.2 obscure '<the password>'    # the value for deploy/offsite-upload/.env
 ```
 
-**Keep the password somewhere that is not the server**, such as the password manager of whoever would do a restore. It is the only way to read these backups. If the server is lost and the password was only in its `deploy/.env`, the backups are lost with it. Nobody can reset it.
+**Keep the password somewhere that is not the server**, such as the password manager of whoever would do a restore. It is the only way to read these backups. If the server is lost and the password was only in its `deploy/offsite-upload/.env`, the backups are lost with it. Nobody can reset it.
 
 Leave `FILENAME_ENCRYPTION=off`. The contents are encrypted either way; with it off, a dump is stored under its own name plus `.bin`, so the time in the name stays readable. The pruner needs that, because it works without the password. Everything in section 2 stays the same, and so does the uploader's policy.
 
@@ -175,6 +198,8 @@ docker compose run --rm -T prune-once
 ```
 
 `BACKUP_OFFSITE_DEST` here is always the bucket itself, `offsite:my-elochair-backups/elochair`, also when the server encrypts: never give the pruner the encryption password. Keep the four `BACKUP_KEEP_*` values the same as the server's.
+
+The pruner compares dump names with its own clock (see "Which names count"), so keep that machine's clock right: if it is far behind, the pruner sets every dump aside as "stamped later" and prunes nothing, which costs storage and loses nothing.
 
 With `OFFSITE_DRY_RUN=1` the run lists what it would delete (`dry run: would delete elochair-....dump`) and deletes nothing. Read that list. When it is what you expect, set `OFFSITE_DRY_RUN=0` and choose one way to run it:
 
@@ -230,6 +255,8 @@ One dump of a conference of ELO's size is a few megabytes. At most 82 of them, p
 - Nothing the pruner removed is uploaded again.
 - With encryption, the bucket does not hold the dump in the clear, a dump fetched back and decrypted is byte for byte the one uploaded and `pg_restore` reads it, and the pruner prunes the encrypted bucket without the password.
 - A key the bucket refuses makes the uploader unhealthy and says so in the log.
-- The uploader container has none of the server's other secrets and cannot reach the database.
+- The uploader container has none of the server's other secrets and cannot reach the database. With the key and the encryption password in `deploy/offsite-upload/.env`, the rendered configuration gives them to the uploader and to no other service, and the check used for that does catch the same settings put in `deploy/.env`.
+- An interval of `0`, `00`, `000` or anything that is not a whole number of seconds is refused by the uploader and the pruner; `0009` and `0900` are read as 9 and 900.
+- A bucket holding only `elochair-99999999T999999Z.dump` does not stop an upload, and the pruner neither counts nor deletes that object. A dump stamped March 2027, seen in November 2026, does not stop uploads or get old dumps uploaded again, and the pruner keeps the newest real dump, not that one. A bucket with nothing but a dump stamped ahead gets only the server's newest dump.
 
 Not tested: any real provider. The settings for AWS, Linode, Google Cloud Storage, R2 and B2 come from documentation, and the lifecycle rule was not run against AWS. Dumps over 5 GiB are not supported (each is one upload); a database that size needs a different approach.
