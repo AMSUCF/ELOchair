@@ -1,0 +1,63 @@
+# Optional: the uploader, which copies finished database dumps from deploy/backups/ to
+# S3-compatible object storage. It only ever adds to the bucket; the pruner that keeps the bucket
+# to a fixed rolling set runs on another machine (deploy/offsite-prune/). Setup, the variables
+# for deploy/.env and the restore drill are in deploy/backup-offsite.md.
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.offsite.yml up -d backup-offsite
+services:
+  backup-offsite:
+    image: rclone/rclone:1.75.2
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup-offsite.sh"]
+    # This container holds the bucket key and nothing else. It gets only the variables named
+    # here (never env_file: .env, which has the database password and SECRET_KEY), and its own
+    # network, from which the database cannot be reached.
+    environment:
+      BACKUP_OFFSITE_DEST: ${BACKUP_OFFSITE_DEST:?set BACKUP_OFFSITE_DEST in deploy/.env (see deploy/backup-offsite.md)}
+      BACKUP_OFFSITE_INTERVAL: ${BACKUP_OFFSITE_INTERVAL:-900}
+      # The bucket: an rclone remote named "offsite". Unset variables are not passed on.
+      RCLONE_CONFIG_OFFSITE_TYPE:
+      RCLONE_CONFIG_OFFSITE_PROVIDER:
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID:
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY:
+      RCLONE_CONFIG_OFFSITE_REGION:
+      RCLONE_CONFIG_OFFSITE_ENDPOINT:
+      RCLONE_CONFIG_OFFSITE_FORCE_PATH_STYLE:
+      RCLONE_CONFIG_OFFSITE_SERVER_SIDE_ENCRYPTION:
+      RCLONE_CONFIG_OFFSITE_STORAGE_CLASS:
+      # Optional client-side encryption: an rclone crypt remote named "offsitecrypt" over it.
+      RCLONE_CONFIG_OFFSITECRYPT_TYPE:
+      RCLONE_CONFIG_OFFSITECRYPT_REMOTE:
+      RCLONE_CONFIG_OFFSITECRYPT_PASSWORD:
+      RCLONE_CONFIG_OFFSITECRYPT_PASSWORD2:
+      RCLONE_CONFIG_OFFSITECRYPT_FILENAME_ENCRYPTION:
+    volumes:
+      - ./backup-offsite.sh:/backup-offsite.sh:ro
+      # Read-only, and never created here: a missing deploy/backups means no backup has run.
+      - type: bind
+        source: ./backups
+        target: /backups
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - offsite
+    # Dumps are owner-only files that may belong to another user. Of root's powers the container
+    # keeps just the one that reads them; it cannot write to them, and its own disk is read-only.
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/backup-offsite.sh", "healthy"]
+      interval: 1m
+      timeout: 10s
+      retries: 1
+      start_period: 2m
+
+networks:
+  offsite:

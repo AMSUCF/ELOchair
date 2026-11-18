@@ -1,0 +1,22 @@
+# Fixtures for deploy/backup-offsite.test.sh only: a local S3 server (MinIO) on the offsite
+# network, and a healthcheck fast enough to test. Never part of a deployment.
+services:
+  minio:
+    # The community-maintained build: MinIO no longer publishes its own images.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${TEST_MINIO_ROOT_USER:-testroot}
+      MINIO_ROOT_PASSWORD: ${TEST_MINIO_ROOT_PASSWORD:-testroot-secret}
+    networks:
+      - offsite
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  backup-offsite:
+    healthcheck:
+      interval: 2s
+      start_period: 0s

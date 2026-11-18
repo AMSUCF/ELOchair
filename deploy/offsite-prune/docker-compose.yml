@@ -1,0 +1,43 @@
+# The offsite pruner: keeps the bucket of database dumps to the fixed rolling set of
+# deploy/backup-retention.sh. Run it on a machine that is NOT the ELOchair server, with a
+# bucket key that can list and delete but cannot read. Setup is in deploy/backup-offsite.md.
+#   cd deploy/offsite-prune && cp .env.example .env    # then edit .env
+#   docker compose up -d                                # prunes now, then every hour
+#   docker compose run --rm -T prune-once               # or: one run and exit, for cron
+name: elochair-offsite-prune
+
+x-pruner: &pruner
+  image: rclone/rclone:1.75.2
+  entrypoint: ["/bin/sh", "/backup-offsite.sh"]
+  # This directory's own .env: the pruner's key, the bucket and the four keep settings.
+  env_file: .env
+  volumes:
+    - ../backup-offsite.sh:/backup-offsite.sh:ro
+    - ../backup-retention.sh:/backup-retention.sh:ro
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+  tmpfs:
+    - /tmp
+
+services:
+  prune:
+    <<: *pruner
+    command: ["prune-loop"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/backup-offsite.sh", "healthy"]
+      interval: 1m
+      timeout: 10s
+      retries: 1
+      start_period: 2m
+
+  # Not started by "up": only by "docker compose run --rm -T prune-once".
+  prune-once:
+    <<: *pruner
+    command: ["prune"]
+    restart: "no"
+    profiles:
+      - once

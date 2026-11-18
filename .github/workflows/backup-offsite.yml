@@ -1,0 +1,43 @@
+name: Offsite backup
+
+# The uploader and the pruner of deploy/backup-offsite.md, against a local S3 server (MinIO).
+# No real bucket and no secrets: everything runs in containers on the runner.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - deploy/backup-offsite*
+      - deploy/backup-retention.sh
+      - deploy/docker-compose.offsite.yml
+      - deploy/offsite-prune/**
+      - .github/workflows/backup-offsite.yml
+  pull_request:
+    paths:
+      - deploy/backup-offsite*
+      - deploy/backup-retention.sh
+      - deploy/docker-compose.offsite.yml
+      - deploy/offsite-prune/**
+      - .github/workflows/backup-offsite.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-offsite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Lint the shell scripts
+        run: |
+          shellcheck --shell=sh deploy/backup-offsite.sh deploy/backup-retention.sh deploy/backup-offsite.test-retention.sh
+          shellcheck deploy/backup-offsite.test.sh
+      - name: Retention policy, uploader and pruner end to end
+        run: bash deploy/backup-offsite.test.sh
