@@ -385,10 +385,17 @@ function FieldInput({
             id={id}
             type={field.kind === "url" ? "url" : field.kind === "number" ? "number" : "text"}
             inputMode={
-              field.kind === "url" ? "url" : field.kind === "number" ? "numeric" : undefined
+              field.kind === "url"
+                ? "url"
+                : field.kind === "number"
+                  ? field.integer
+                    ? "numeric"
+                    : "decimal"
+                  : undefined
             }
             min={field.kind === "number" ? field.min : undefined}
             max={field.kind === "number" ? field.max : undefined}
+            step={field.kind === "number" ? (field.integer ? 1 : "any") : undefined}
             value={String(value ?? "")}
             onChange={(e) =>
               onChange(

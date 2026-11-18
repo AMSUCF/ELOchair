@@ -16,6 +16,8 @@ export type SubmissionIssue = {
     | "wrong_kind"
     /** A number outside the range its field allows (params: min, max where set). */
     | "out_of_range"
+    /** A number with a fraction where its field takes whole numbers only. */
+    | "not_integer"
     | "unknown_option"
     | "team_size"
     | "no_lead"
@@ -91,13 +93,15 @@ function checkField(f: CustomField, v: FieldValue | undefined, lang: string): Su
       return v.every((x) => options.has(x)) ? [] : [{ path, code: "unknown_option" }];
     case "number": {
       if (typeof v !== "number" || !Number.isFinite(v)) return [{ path, code: "wrong_kind" }];
+      const issues: SubmissionIssue[] = [];
+      if (f.integer && !Number.isInteger(v)) issues.push({ path, code: "not_integer" });
       if ((f.min !== undefined && v < f.min) || (f.max !== undefined && v > f.max)) {
         const params: Record<string, number> = {};
         if (f.min !== undefined) params.min = f.min;
         if (f.max !== undefined) params.max = f.max;
-        return [{ path, code: "out_of_range", params }];
+        issues.push({ path, code: "out_of_range", params });
       }
-      return [];
+      return issues;
     }
   }
 }

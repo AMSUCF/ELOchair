@@ -398,6 +398,14 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await expect(page.locator(".badge.status-draft")).toBeVisible();
   await expectAccessible(page);
 
+  // People are counted whole: a fraction inside the range is refused too.
+  await people.fill("15.5");
+  await saveDraft(page);
+  await acceptAgreements(page);
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+  await expect(page.getByText("Enter a whole number.").first()).toBeVisible();
+  await expect(page.locator(".badge.status-draft")).toBeVisible();
+
   await people.fill("20");
   await saveDraft(page);
   await acceptAgreements(page);

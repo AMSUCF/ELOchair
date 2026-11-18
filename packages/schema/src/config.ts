@@ -134,6 +134,8 @@ export const CustomField = z.object({
   /** For number fields: the smallest and largest value accepted (both inclusive). */
   min: z.number().optional(),
   max: z.number().optional(),
+  /** For number fields: true when only whole numbers are accepted (a head count). */
+  integer: z.boolean().optional(),
 });
 export type CustomField = z.infer<typeof CustomField>;
 
@@ -312,6 +314,9 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       }
       if ((f.min !== undefined || f.max !== undefined) && f.kind !== "number") {
         issue(fat, "min and max are for number fields");
+      }
+      if (f.integer !== undefined && f.kind !== "number") {
+        issue(fat, "integer is for number fields");
       }
       const hasOptions = (f.options?.length ?? 0) > 0;
       if ((f.kind === "select" || f.kind === "multiselect") && !hasOptions) {

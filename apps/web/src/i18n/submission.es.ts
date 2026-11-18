@@ -147,6 +147,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   issue_owner_cannot_be_removed: "No se puede quitar a quien creó la propuesta.",
   issue_unknown_field: "Este formato no tiene ese campo.",
   issue_out_of_range: "Escribe un número entre {min} y {max}.",
+  issue_not_integer: "Escribe un número entero.",
   issue_generic: "Revisa este valor.",
 
   myTitle: "Mis envíos",
@@ -233,6 +234,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   issueLabel_owner_cannot_be_removed: "Se quitó a quien creó la propuesta",
   issueLabel_unknown_field: "Campo desconocido",
   issueLabel_out_of_range: "Un número fuera de rango",
+  issueLabel_not_integer: "Un número que no es entero",
   issueLabel_empty_title: "Sin título",
   issueLabel_self_identification: "Aviso de autoidentificación",
 };

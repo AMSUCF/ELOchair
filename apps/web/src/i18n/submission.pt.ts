@@ -147,6 +147,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issue_owner_cannot_be_removed: "Não é possível remover quem criou a proposta.",
   issue_unknown_field: "Este formato não tem esse campo.",
   issue_out_of_range: "Escreva um número entre {min} e {max}.",
+  issue_not_integer: "Escreva um número inteiro.",
   issue_generic: "Verifique este valor.",
 
   myTitle: "As minhas submissões",
@@ -233,6 +234,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   issueLabel_owner_cannot_be_removed: "Foi removida quem criou a proposta",
   issueLabel_unknown_field: "Campo desconhecido",
   issueLabel_out_of_range: "Um número fora do intervalo",
+  issueLabel_not_integer: "Um número que não é inteiro",
   issueLabel_empty_title: "Sem título",
   issueLabel_self_identification: "Aviso de autoidentificação",
 };

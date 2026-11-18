@@ -142,6 +142,7 @@ export const submissionEn = {
   issue_owner_cannot_be_removed: "The owner cannot be removed.",
   issue_unknown_field: "This format has no such field.",
   issue_out_of_range: "Enter a number from {min} to {max}.",
+  issue_not_integer: "Enter a whole number.",
   issue_generic: "Check this value.",
 
   myTitle: "My submissions",
@@ -228,6 +229,7 @@ export const submissionEn = {
   issueLabel_owner_cannot_be_removed: "Owner removed",
   issueLabel_unknown_field: "Unknown field",
   issueLabel_out_of_range: "A number out of range",
+  issueLabel_not_integer: "A number that is not whole",
   issueLabel_empty_title: "No title",
   issueLabel_self_identification: "Self-identification warning",
 } as const;

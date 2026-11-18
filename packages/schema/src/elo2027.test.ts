@@ -202,6 +202,19 @@ describe("submitting to ELO 2027", () => {
     }
   });
 
+  it("a workshop's participants are whole people", () => {
+    const withPeople = (participants: number) =>
+      validateSubmission(
+        config,
+        submission("workshop", { fields: { participants, needs: "A projector." } }),
+        lead,
+      );
+    expect(withPeople(20)).toEqual([]);
+    expect(withPeople(15.5)).toEqual([{ path: "fields.participants", code: "not_integer" }]);
+    // Both things wrong are both said.
+    expect(withPeople(30.5).map((i) => i.code)).toEqual(["not_integer", "out_of_range"]);
+  });
+
   it("readings, performances and exhibition works need only an abstract; a link is optional", () => {
     for (const key of ["performance", "exhibition", "artist_talk"]) {
       expect(codes(config, submission(key, { abstract: words(300) }), lead)).toEqual([]);
@@ -233,9 +246,38 @@ describe("a range on a number field", () => {
   });
 
   it("belongs to number fields only", () => {
-    expect(withField({ kind: "text" })).toEqual([
+    expect(withField({ kind: "text", integer: undefined })).toEqual([
       "submissionTypes.4.fields.0: min and max are for number fields",
     ]);
+  });
+});
+
+describe("a number field for whole numbers", () => {
+  const parsed = (field: Record<string, unknown>) => {
+    const input = structuredClone(elo2027);
+    const workshop = input.submissionTypes.find((t) => t.key === "workshop");
+    if (!workshop?.fields?.[0]) throw new Error("no workshop field");
+    Object.assign(workshop.fields[0], field);
+    return ConferenceConfig.safeParse(input);
+  };
+  const withPeople = (c: ConferenceConfig, participants: number) =>
+    validateSubmission(
+      c,
+      submission("workshop", { fields: { participants, needs: "A projector." } }),
+      lead,
+    ).map((i) => i.code);
+
+  it("is asked for, not assumed: without it a number may have a fraction", () => {
+    const r = parsed({ integer: undefined });
+    if (!r.success) throw new Error("the configuration should parse");
+    expect(withPeople(r.data, 15.5)).toEqual([]);
+  });
+
+  it("belongs to number fields only", () => {
+    const r = parsed({ kind: "text", min: undefined, max: undefined });
+    expect(r.success ? [] : r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual(
+      ["submissionTypes.4.fields.0: integer is for number fields"],
+    );
   });
 });
 

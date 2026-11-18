@@ -312,6 +312,7 @@ export const elo2027: ConferenceConfigInput = {
           required: true,
           min: 15,
           max: 30,
+          integer: true,
         },
         {
           key: "needs",
