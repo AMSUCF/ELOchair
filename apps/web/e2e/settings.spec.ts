@@ -11,7 +11,9 @@ import {
 /*
  * Conference settings (spec 02, §1.9), as a chair uses them on a phone. The tests share one
  * server with the others and run beside them, so they change only what no other test reads
- * (the length of a reading or performance, the day decisions are sent) and put it back.
+ * (the length of a reading or performance, the day decisions are sent, a pool's guidelines and
+ * the label of one criterion) and put it back. No blind mode is ever saved: other tests read
+ * who is shown to reviewers.
  */
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -92,6 +94,47 @@ const unsavedValues = (page: Page) =>
 const formatSection = (page: Page) =>
   page.locator("details").filter({ has: page.locator("summary", { hasText: FORMAT }) });
 
+/** The collapsible section of a review pool, by the pool's name; opened if it is closed. */
+async function openPool(page: Page, name: string) {
+  const summary = page.locator("summary", { hasText: name });
+  const section = page.locator("details").filter({ has: summary });
+  await expectTouchTarget(summary);
+  if ((await section.getAttribute("open")) === null) await summary.click();
+  return section;
+}
+
+/** What the tests read of a stored configuration, to change it and put it back whatever it says. */
+type Stored = {
+  token: string;
+  config: {
+    reviewPools: {
+      key: string;
+      name: Record<string, string>;
+      blindMode: "double" | "single" | "open";
+      reviewsPerSubmission: number;
+      guidelines?: Record<string, string>;
+      criteria: { key: string; label: Record<string, string>; min: number; max: number }[];
+    }[];
+    submissionTypes: {
+      key: string;
+      name: Record<string, string>;
+      reviewPool: string;
+      blindMode?: "double" | "single" | "open";
+    }[];
+  };
+};
+
+const stored = async (page: Page, call: string) =>
+  (await (await page.request.get(`/api/conferences/${call}/settings`)).json()) as Stored;
+
+/** How each blind mode is said to a chair. */
+const SHOWN = {
+  double:
+    "Anonymized: reviewers do not see who the authors are, or the answers marked as identifying (such as a link to the work)",
+  single: "Reviewers see the authors' names and affiliations",
+  open: "Reviewers see the authors' names, affiliations and bios",
+};
+
 /** The format's card on the public page of the call (other cards mention it in their text). */
 const listedFormat = (page: Page) =>
   page.locator(".formats > li").filter({ has: page.locator("h3", { hasText: FORMAT }) });
@@ -138,7 +181,7 @@ test.describe("conference settings", () => {
     // Every chair is told the same thing about what this screen does not offer.
     await expect(
       chair.getByText(
-        "Formats, fields and languages are added or removed by importing a configuration on the server, not here.",
+        "Formats, fields, languages, review pools and criteria are added or removed by importing a configuration on the server, not here.",
       ),
     ).toBeVisible();
     await expectAccessibleInBothThemes(chair);
@@ -546,5 +589,184 @@ test.describe("conference settings", () => {
     ).toBeVisible();
     await expect(chair.getByText(RESTORED)).toHaveCount(0);
     await elsewhere(6);
+  });
+
+  test("a chair writes guidelines for a pool's reviewers and renames a criterion, and puts both back", async () => {
+    test.slow();
+    // Whatever the call says now: the test reads it, changes two texts and puts them back.
+    const before = await stored(chair, CALL);
+    const pool = before.config.reviewPools[0];
+    const criterion = pool?.criteria[0];
+    if (!pool || !criterion) throw new Error("the call has no review pool with a criterion");
+    const poolName = pool.name.en ?? "";
+    const label = criterion.label.en ?? "";
+    const was = pool.guidelines?.en ?? "";
+    const reviewed = before.config.submissionTypes.filter((type) => type.reviewPool === pool.key);
+
+    await openSettings(chair);
+    await expect(
+      chair.getByRole("heading", { level: 2, name: "Review", exact: true }),
+    ).toBeVisible();
+
+    // A pool's values are in its own section, closed until asked for. Its first line says which
+    // formats they apply to.
+    await expect(chair.getByLabel("Guidelines for reviewers (English)").first()).toBeHidden();
+    const section = await openPool(chair, poolName);
+    await expect(section.locator("p.meta").first()).toContainText(
+      `This pool reviews these formats: ${reviewed.map((type) => type.name.en).join(", ")}.`,
+    );
+
+    // How authors appear to reviewers is three sentences to choose from, the stored one chosen.
+    // It is only read here.
+    const modes = section.getByRole("group", { name: "How authors appear to reviewers" });
+    await expect(modes.getByRole("radio")).toHaveCount(3);
+    for (const sentence of Object.values(SHOWN)) {
+      await expect(modes.getByRole("radio", { name: sentence, exact: true })).toBeVisible();
+    }
+    await expect(
+      modes.getByRole("radio", { name: SHOWN[pool.blindMode], exact: true }),
+    ).toBeChecked();
+    await expectTouchTarget(modes.locator("label.choice").first());
+    // The one thing about this choice that cannot be undone is said under it.
+    await expect(modes).toContainText(
+      "An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors.",
+    );
+    await expect(section.getByLabel("Reviews per proposal")).toHaveValue(
+      String(pool.reviewsPerSubmission),
+    );
+
+    // The guidelines: a hint says where the text will appear, and the box is described by it.
+    const guidelines = section.getByLabel("Guidelines for reviewers (English)");
+    await expect(guidelines).toHaveValue(was);
+    await expect(guidelines).toHaveAccessibleDescription(
+      /^Optional\. This pool's reviewers see this text above every proposal assigned to them/,
+    );
+    await expectTouchTarget(guidelines);
+    const text = "Read the whole proposal before you score it.\n\nSay what would make it stronger.";
+    await guidelines.fill(text);
+
+    // A criterion: its label in each language, and the two ends of its scale.
+    const group = section.getByRole("group", { name: `Criterion: ${label}` });
+    const labelled = group.getByLabel("Label (English)");
+    await expect(labelled).toHaveValue(label);
+    await expect(group.getByLabel("Smallest score")).toHaveValue(String(criterion.min));
+    await expect(group.getByLabel("Largest score")).toHaveValue(String(criterion.max));
+    const renamed = `${label} (browser test)`;
+    await labelled.fill(renamed);
+    await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // Both are reviewed, by name, before anything is saved.
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const review = chair.getByRole("region", { name: "Review your changes" });
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveCount(2);
+    await expect(review).toContainText(`${poolName} · Guidelines for reviewers (English)`);
+    await expect(review).toContainText("Read the whole proposal before you score it.");
+    await expect(review).toContainText(`${poolName} · ${label} · Label (English)`);
+    await expect(review).toContainText(`from “${label}” to “${renamed}”`);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.getByRole("button", { name: "Save changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Settings saved.");
+    await expect(chair.getByRole("status")).toBeFocused();
+
+    // After a reload they are what the conference holds: nothing is left unsaved in the browser,
+    // and the text has its line breaks.
+    await chair.reload();
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
+    await openPool(chair, poolName);
+    await expect(guidelines).toHaveValue(text);
+    await expect(
+      section.getByRole("group", { name: `Criterion: ${renamed}` }).getByLabel("Label (English)"),
+    ).toHaveValue(renamed);
+    const saved = (await stored(chair, CALL)).config.reviewPools[0];
+    expect(saved?.guidelines).toEqual({ ...pool.guidelines, en: text });
+    expect(saved?.criteria[0]?.label.en).toBe(renamed);
+
+    // Back exactly as they were, for the tests that run beside this one.
+    await guidelines.fill(was);
+    await labelled.fill(label);
+    await reviewAndSave(chair);
+    const after = await stored(chair, CALL);
+    expect(after.config.reviewPools).toEqual(before.config.reviewPools);
+    expect(after.token).toBe(before.token);
+    await expect.poll(() => unsavedValues(chair)).toBeNull();
+  });
+
+  test("showing the authors of an anonymized review is refused beside the choice once reviewers are assigned", async () => {
+    // The sandbox is in review, and its proposals have reviewers. Nothing here is saved: the
+    // review refuses the change, and no save is offered.
+    const SANDBOX = "sandbox";
+    const before = await stored(chair, SANDBOX);
+    const pool = before.config.reviewPools.find((x) => x.blindMode === "double");
+    if (!pool) throw new Error("the sandbox has no pool reviewed anonymized");
+    const poolName = pool.name.en ?? "";
+
+    await chair.goto(`/en/c/${SANDBOX}/settings`);
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+
+    // A pool whose format has a mode of its own says so, in the line under its name; and the
+    // guidelines seeded for the sandbox are there to be read and changed.
+    const own = before.config.submissionTypes.find((type) => type.blindMode === "double");
+    const ownPool = before.config.reviewPools.find((x) => x.key === own?.reviewPool);
+    if (!own || !ownPool) throw new Error("the sandbox has no format with a mode of its own");
+    const other = await openPool(chair, ownPool.name.en ?? "");
+    await expect(other.locator("p.meta").first()).toContainText(
+      `${own.name.en} is always anonymized, whatever is chosen below.`,
+    );
+    const seeded = before.config.reviewPools.find((x) => x.guidelines);
+    if (!seeded?.guidelines) throw new Error("the sandbox has no guidelines for reviewers");
+    await expect(
+      (await openPool(chair, seeded.name.en ?? "")).getByLabel(
+        "Guidelines for reviewers (English)",
+      ),
+    ).toHaveValue(seeded.guidelines.en ?? "");
+
+    const section = await openPool(chair, poolName);
+    const modes = section.getByRole("group", { name: "How authors appear to reviewers" });
+    const anonymized = modes.getByRole("radio", { name: SHOWN.double, exact: true });
+    await expect(anonymized).toBeChecked();
+    await modes.getByRole("radio", { name: SHOWN.single, exact: true }).check();
+    await chair.getByRole("button", { name: "Review changes" }).click();
+
+    // The reason is said in the summary, which takes focus, and beside the choice.
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    const why =
+      "Reviewers are already assigned to proposals that are reviewed anonymized here. They and the authors were told that the review is anonymized, so the authors cannot be shown now.";
+    await expect(summary).toContainText(`${poolName} · How authors appear to reviewers: ${why}`);
+    await expect(modes.locator(".field-error")).toHaveText(why);
+    for (const radio of await modes.getByRole("radio").all()) {
+      await expect(radio).toHaveAttribute("aria-invalid", "true");
+      // Each choice says the rule, then why this change is refused.
+      await expect(radio).toHaveAccessibleDescription(
+        `An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors. ${why}`,
+      );
+    }
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expect(chair.getByRole("region", { name: "Review your changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    // The summary's link leads to the choice.
+    await summary.getByRole("link").click();
+    await expect(modes).toBeFocused();
+
+    // Taken back, nothing has changed, nothing is kept in the browser, and the sandbox is as it was.
+    await anonymized.check();
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+    expect((await stored(chair, SANDBOX)).token).toBe(before.token);
   });
 });

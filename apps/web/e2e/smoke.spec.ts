@@ -119,6 +119,37 @@ test("sign in by typing the code (for the installed app)", async ({ page, reques
   await page.getByRole("button", { name: "Sign in with code" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
   await expect(page.getByText("sandbox: Reviewer")).toBeVisible();
+
+  // Checked here because this test has a reviewer of the sandbox's scientific pool signed in, and
+  // the suite is close to the server's limit on sign-in links: the chairs wrote no guidelines
+  // for that pool, so its reviewer is shown none above a proposal. (review.spec.ts reads the
+  // guidelines of the pool that has them.)
+  const conference = (await (await page.request.get("/api/conferences/sandbox")).json()) as {
+    config: {
+      reviewPools: { key: string; guidelines?: Record<string, string> }[];
+      submissionTypes: { key: string; reviewPool: string }[];
+    };
+  };
+  const listed = await page.request.get("/api/conferences/sandbox/submissions?limit=100");
+  const assigned = (
+    (await listed.json()) as {
+      items: { view: string; id: string; typeKey: string; title: string }[];
+    }
+  ).items.find((x) => x.view === "reviewer");
+  expect(assigned, "a proposal assigned to this reviewer").toBeTruthy();
+  if (!assigned) return;
+  const pool = conference.config.submissionTypes.find((x) => x.key === assigned.typeKey);
+  expect(
+    conference.config.reviewPools.find((x) => x.key === pool?.reviewPool),
+    "the pool that reviews it has no guidelines",
+  ).not.toHaveProperty("guidelines");
+  await page.goto(`/en/s/${assigned.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: assigned.title })).toBeVisible();
+  await expect(
+    page.getByText("You are reading this proposal as one of its reviewers."),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Guidelines for reviewers" })).toHaveCount(0);
+  await expect(page.locator(".guidelines")).toHaveCount(0);
 });
 
 test("a link for another account warns before switching", async ({ page, request }) => {

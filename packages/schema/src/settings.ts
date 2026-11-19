@@ -20,12 +20,16 @@ export type SettingKind =
   | "datetime"
   | "email"
   | "url"
-  | "modality";
+  | "modality"
+  | "blindMode";
 
 type Definition = {
   /** Names the setting whatever format or field it belongs to; screens label it by this. */
   id: string;
-  /** "*" stands for the key of an existing format, field, track or topic; "@" for a language. */
+  /**
+   * "*" stands for the key of an existing format, field, track, topic, review pool or
+   * criterion; "@" for a language.
+   */
   pattern: string;
   kind: SettingKind;
   /** May be left empty: the value is then absent from the configuration. */
@@ -36,9 +40,10 @@ type Definition = {
 
 /**
  * Stage one: the values the settings screen offers. Everything else in a configuration (adding,
- * removing, reordering or re-keying anything; languages and the time zone; review pools and
- * blind modes; agreements; what kind a field is and who sees it) has no screen yet. This list is
- * what is offered, not a permission: the server lets a chair save any valid configuration.
+ * removing, reordering or re-keying anything; languages and the time zone; which pool reviews a
+ * format, and a format's own blind mode; agreements; what kind a field is and who sees it) has
+ * no screen yet. This list is what is offered, not a permission: the server lets a chair save
+ * any valid configuration.
  */
 const STAGE_ONE = [
   { id: "title", pattern: "title.@", kind: "text" },
@@ -110,6 +115,22 @@ const STAGE_ONE = [
     kind: "bool",
     fieldKinds: ["number"],
   },
+  { id: "pool.name", pattern: "reviewPools.*.name.@", kind: "text" },
+  { id: "pool.blindMode", pattern: "reviewPools.*.blindMode", kind: "blindMode" },
+  {
+    id: "pool.reviewsPerSubmission",
+    pattern: "reviewPools.*.reviewsPerSubmission",
+    kind: "int",
+  },
+  {
+    id: "pool.guidelines",
+    pattern: "reviewPools.*.guidelines.@",
+    kind: "longtext",
+    optional: true,
+  },
+  { id: "criterion.label", pattern: "reviewPools.*.criteria.*.label.@", kind: "text" },
+  { id: "criterion.min", pattern: "reviewPools.*.criteria.*.min", kind: "int" },
+  { id: "criterion.max", pattern: "reviewPools.*.criteria.*.max", kind: "int" },
   { id: "other.name", pattern: "otherFormats.*.name.@", kind: "text" },
   { id: "other.description", pattern: "otherFormats.*.description.@", kind: "longtext" },
   { id: "track.name", pattern: "tracks.*.name.@", kind: "text" },
@@ -140,7 +161,8 @@ const isKeyed = (v: unknown): v is ({ key: string } & Record<string, unknown>)[]
 
 /**
  * Every value of a configuration that the settings screen offers, in the order of STAGE_ONE:
- * texts once per language of the conference, and the settings of each existing format and field.
+ * texts once per language of the conference, and the settings of each existing format, field,
+ * review pool and criterion.
  * - A text is offered only in the languages the conference has: one in any other language would
  *   add a language to the conference.
  * - A setting that only some kinds of field have (most words; a number's range) is offered only

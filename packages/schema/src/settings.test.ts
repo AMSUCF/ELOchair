@@ -10,7 +10,10 @@ import {
   withSetting,
 } from "./settings";
 
-/** A small made-up conference: two languages, one format with a field of each relevant kind. */
+/**
+ * A small made-up conference: two languages, one format with a field of each relevant kind, and
+ * two review pools (one with guidelines and a scale of its own).
+ */
 const input: ConferenceConfigInput = {
   slug: "settings-test",
   year: 2031,
@@ -37,7 +40,18 @@ const input: ConferenceConfigInput = {
       name: { en: "Committee" },
       blindMode: "double",
       reviewsPerSubmission: 2,
-      criteria: [{ key: "fit", label: { en: "Fit" } }],
+      criteria: [
+        { key: "fit", label: { en: "Fit" } },
+        { key: "clarity", label: { en: "Clarity", es: "Claridad" } },
+      ],
+    },
+    {
+      key: "jury",
+      name: { en: "Jury", es: "Jurado" },
+      blindMode: "single",
+      reviewsPerSubmission: 1,
+      guidelines: { en: "Read it twice.\n\nThen score it.", es: "Léelo dos veces." },
+      criteria: [{ key: "merit", label: { en: "Merit" }, min: 0, max: 10 }],
     },
   ],
   tracks: [{ key: "main", name: { en: "Main track" } }],
@@ -191,8 +205,13 @@ describe("what the settings screen offers", () => {
       "rules.bio.requested",
       "agreements.privacy.version",
       "agreements.privacy.text.en",
-      "reviewPools.committee.blindMode",
-      "reviewPools.committee.criteria.fit.label.en",
+      "reviewPools",
+      "reviewPools.committee.key",
+      "reviewPools.committee.name",
+      "reviewPools.committee.guidelines",
+      "reviewPools.committee.criteria",
+      "reviewPools.committee.criteria.fit.key",
+      "reviewPools.committee.criteria.fit.label",
       "submissionTypes",
       "submissionTypes.talk.key",
       "submissionTypes.talk.reviewPool",
@@ -213,7 +232,7 @@ describe("what the settings screen offers", () => {
     }
     // The values it leaves alone are there, in the configuration: they only have no control.
     expect(settingAt(fuller, "agreements.privacy.version")).toBe("1");
-    expect(settingAt(fuller, "reviewPools.committee.blindMode")).toBe("double");
+    expect(settingAt(fuller, "submissionTypes.talk.reviewPool")).toBe("committee");
     expect(settingAt(fuller, "rules.presenterCap.countedRoles")).toEqual(["lead"]);
   });
 });
@@ -329,6 +348,7 @@ describe("the settings of a configuration", () => {
       email: "another@example.org",
       url: "https://another.example.org/",
       modality: "flip",
+      blindMode: "flip",
     };
     for (const c of all) {
       for (const s of stageOneSettings(c)) {
@@ -339,7 +359,11 @@ describe("the settings of a configuration", () => {
               ? s.value === "hybrid"
                 ? "online"
                 : "hybrid"
-              : other[s.kind];
+              : s.kind === "blindMode"
+                ? s.value === "open"
+                  ? "double"
+                  : "open"
+                : other[s.kind];
         const changed = withSetting(c, s.path, next);
         expect(configChanges(c, changed), s.path).toEqual([
           { path: s.path, ...(s.value === undefined ? {} : { before: s.value }), after: next },
@@ -348,6 +372,208 @@ describe("the settings of a configuration", () => {
         expect(settingAt(c, s.path)).toEqual(s.value);
       }
     }
+  });
+});
+
+/*
+ * The review settings: of each existing pool its name, how authors appear to its reviewers, the
+ * reviews a proposal gets and the guidelines; of each existing criterion its label and scale.
+ */
+describe("the review settings", () => {
+  const settings = stageOneSettings(config);
+  const under = (prefix: string) => settings.filter((s) => s.path.startsWith(prefix));
+
+  it("lists every pool's name, blind mode, reviews per proposal and guidelines", () => {
+    const pool = (key: string) => under(`reviewPools.${key}.`).filter((s) => /^pool\./.test(s.id));
+    expect(pool("committee")).toEqual([
+      {
+        path: "reviewPools.committee.name.en",
+        id: "pool.name",
+        kind: "text",
+        optional: false,
+        lang: "en",
+        value: "Committee",
+      },
+      {
+        path: "reviewPools.committee.name.es",
+        id: "pool.name",
+        kind: "text",
+        optional: false,
+        lang: "es",
+        value: undefined,
+      },
+      {
+        path: "reviewPools.committee.blindMode",
+        id: "pool.blindMode",
+        kind: "blindMode",
+        optional: false,
+        value: "double",
+      },
+      {
+        path: "reviewPools.committee.reviewsPerSubmission",
+        id: "pool.reviewsPerSubmission",
+        kind: "int",
+        optional: false,
+        value: 2,
+      },
+      // No guidelines yet: they are offered all the same, in each language, to be written.
+      {
+        path: "reviewPools.committee.guidelines.en",
+        id: "pool.guidelines",
+        kind: "longtext",
+        optional: true,
+        lang: "en",
+        value: undefined,
+      },
+      {
+        path: "reviewPools.committee.guidelines.es",
+        id: "pool.guidelines",
+        kind: "longtext",
+        optional: true,
+        lang: "es",
+        value: undefined,
+      },
+    ]);
+    expect(pool("jury").map((s) => [s.path, s.value])).toEqual([
+      ["reviewPools.jury.name.en", "Jury"],
+      ["reviewPools.jury.name.es", "Jurado"],
+      ["reviewPools.jury.blindMode", "single"],
+      ["reviewPools.jury.reviewsPerSubmission", 1],
+      ["reviewPools.jury.guidelines.en", "Read it twice.\n\nThen score it."],
+      ["reviewPools.jury.guidelines.es", "Léelo dos veces."],
+    ]);
+  });
+
+  it("lists every criterion's label and the two ends of its scale", () => {
+    const criterion = (pool: string, key: string) =>
+      under(`reviewPools.${pool}.criteria.${key}.`).map((s) => [s.id, s.kind, s.path, s.value]);
+    // A scale that the configuration left out is the default one, 1 to 5.
+    expect(criterion("committee", "fit")).toEqual([
+      ["criterion.label", "text", "reviewPools.committee.criteria.fit.label.en", "Fit"],
+      ["criterion.label", "text", "reviewPools.committee.criteria.fit.label.es", undefined],
+      ["criterion.min", "int", "reviewPools.committee.criteria.fit.min", 1],
+      ["criterion.max", "int", "reviewPools.committee.criteria.fit.max", 5],
+    ]);
+    expect(criterion("committee", "clarity").map(([, , path]) => path)).toEqual([
+      "reviewPools.committee.criteria.clarity.label.en",
+      "reviewPools.committee.criteria.clarity.label.es",
+      "reviewPools.committee.criteria.clarity.min",
+      "reviewPools.committee.criteria.clarity.max",
+    ]);
+    expect(criterion("jury", "merit")).toEqual([
+      ["criterion.label", "text", "reviewPools.jury.criteria.merit.label.en", "Merit"],
+      ["criterion.label", "text", "reviewPools.jury.criteria.merit.label.es", undefined],
+      ["criterion.min", "int", "reviewPools.jury.criteria.merit.min", 0],
+      ["criterion.max", "int", "reviewPools.jury.criteria.merit.max", 10],
+    ]);
+    // That is all there is under a pool: nothing adds, removes or reorders pools or criteria.
+    expect(under("reviewPools.").length).toBe(6 + 4 + 4 + 6 + 4);
+    // A pool or a criterion the conference does not have has no settings.
+    expect(
+      paths(settings).filter((p) => /^reviewPools\.(nope|committee\.criteria\.nope)\./.test(p)),
+    ).toEqual([]);
+  });
+
+  it("does not offer a format's own blind mode, or the pool that reviews it", () => {
+    const own = structuredClone(config);
+    const talk = own.submissionTypes[0];
+    if (!talk) throw new Error("no format");
+    talk.blindMode = "open";
+    talk.reviewPool = "jury";
+    expect(ConferenceConfig.safeParse(own).success).toBe(true);
+    // A save names both, and the screen has a control for neither, before or after.
+    const changed = configChanges(config, own).map((c) => c.path);
+    expect(changed).toEqual(["submissionTypes.talk.reviewPool", "submissionTypes.talk.blindMode"]);
+    for (const offered of [settings, stageOneSettings(own)]) {
+      for (const path of changed) expect(paths(offered), path).not.toContain(path);
+    }
+  });
+
+  it("writes guidelines where a pool has none, and clears them language by language", () => {
+    const at = "reviewPools.committee.guidelines";
+    const written = withSetting(config, `${at}.en`, "Be kind.\nBe exact.");
+    expect(configChanges(config, written)).toEqual([
+      { path: `${at}.en`, after: "Be kind.\nBe exact." },
+    ]);
+    expect(ConferenceConfig.parse(written).reviewPools[0]?.guidelines).toEqual({
+      en: "Be kind.\nBe exact.",
+    });
+    // Cleared in its last language, the pool has no guidelines at all, as before.
+    const cleared = withSetting(written, `${at}.en`, undefined);
+    expect(settingAt(cleared, "reviewPools.committee")).not.toHaveProperty("guidelines");
+    expect(configChanges(config, cleared)).toEqual([]);
+  });
+});
+
+describe("a review pool's guidelines and scales in the schema", () => {
+  /** The made-up conference with its first pool changed. */
+  const withPool = (change: Record<string, unknown>) => ({
+    ...input,
+    reviewPools: input.reviewPools.map((pool, i) => (i === 0 ? { ...pool, ...change } : pool)),
+  });
+  const refusals = (candidate: unknown) => {
+    const parsed = ConferenceConfig.safeParse(candidate);
+    return parsed.success
+      ? []
+      : parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          ...(issue.code === "custom" && issue.params ? { params: issue.params } : {}),
+        }));
+  };
+
+  it("takes a pool without guidelines, and keeps guidelines as they were written", () => {
+    expect(config.reviewPools[0]).not.toHaveProperty("guidelines");
+    // Line breaks and all, in the main language and any other.
+    expect(config.reviewPools[1]?.guidelines).toEqual({
+      en: "Read it twice.\n\nThen score it.",
+      es: "Léelo dos veces.",
+    });
+    expect(refusals(withPool({ guidelines: { en: "Only in the main language." } }))).toEqual([]);
+  });
+
+  it("needs guidelines in the conference's main language, like any other text", () => {
+    expect(refusals(withPool({ guidelines: { es: "Solo en español." } }))).toEqual([
+      {
+        path: "reviewPools.0.guidelines",
+        params: { code: "default_language_required", leaf: "en" },
+      },
+    ]);
+    // No language at all is no text in the main language either.
+    expect(refusals(withPool({ guidelines: {} }))).toEqual([
+      {
+        path: "reviewPools.0.guidelines",
+        params: { code: "default_language_required", leaf: "en" },
+      },
+    ]);
+  });
+
+  it("refuses guidelines that are empty, or not a text in each language", () => {
+    expect(refusals(withPool({ guidelines: { en: "" } }))).toEqual([
+      { path: "reviewPools.0.guidelines.en" },
+    ]);
+    expect(refusals(withPool({ guidelines: "Read it twice." }))).toEqual([
+      { path: "reviewPools.0.guidelines" },
+    ]);
+  });
+
+  it("names a scale whose smallest score is not below its largest, beside the smallest", () => {
+    const scale = (min: number, max: number) =>
+      refusals(withPool({ criteria: [{ key: "fit", label: { en: "Fit" }, min, max }] }));
+    const named = [
+      { path: "reviewPools.0.criteria.0", params: { code: "min_not_below_max", leaf: "min" } },
+    ];
+    expect(scale(5, 5)).toEqual(named);
+    expect(scale(6, 5)).toEqual(named);
+    expect(scale(0, 1)).toEqual([]);
+  });
+
+  it("takes the three blind modes, and no other", () => {
+    for (const mode of ["double", "single", "open"]) {
+      expect(refusals(withPool({ blindMode: mode })), mode).toEqual([]);
+    }
+    expect(refusals(withPool({ blindMode: "triple" }))).toEqual([
+      { path: "reviewPools.0.blindMode" },
+    ]);
   });
 });
 

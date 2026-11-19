@@ -59,7 +59,7 @@ These are invariants. Do not trade them away for convenience.
 
 5. **People approve irreversible actions.**
    - Sending mail to participants, recording decisions and publishing follow *plan → approve*. An agent may create the plan; only a person, in the web UI, approves it.
-   - Conference configuration and phase changes are human-only, and for the conference's chairs. The `chair` and `admin` roles and site admins are one group (`isConferenceChair`): a chair may do whatever an admin may, and `admin` means nothing more than `chair`. The settings screen offers the stage-one values; formats, fields and languages are added or removed by importing a configuration. The phase is moved from "Manage submissions" (spec 02, §1.3 and §1.9). A change never makes submitted work invalid.
+   - Conference configuration and phase changes are human-only, and for the conference's chairs. The `chair` and `admin` roles and site admins are one group (`isConferenceChair`): a chair may do whatever an admin may, and `admin` means nothing more than `chair`. The settings screen offers the stage-one values, the review pools' among them; formats, fields, languages, review pools and criteria are added or removed by importing a configuration. The phase is moved from "Manage submissions" (spec 02, §1.3 and §1.9). A change never makes submitted work invalid, and never shows a reviewer the authors of a proposal they were assigned as anonymized.
 
 6. **Everything is audited.** Every mutation calls `audit()`. Agent requests are audited automatically by middleware. The audit table is append-only, enforced by a database trigger.
 
