@@ -31,6 +31,43 @@ const submission = (typeKey: string, more: Record<string, unknown> = {}) => ({
 const codes = (...args: Parameters<typeof validateSubmission>) =>
   validateSubmission(...args).map((i) => `${i.path}: ${i.code}`);
 
+describe("the ELO 2027 call's details", () => {
+  it("carries what the published call states", () => {
+    expect(config.theme).toMatchObject({
+      en: "Ecologies of Attention",
+      es: "Ecologías de la atención",
+    });
+    expect(config.dates).toEqual({ start: "2027-08-03", end: "2027-08-06" });
+    // February 14, 2027, 23:59 anywhere on Earth is 11:59 UTC the next day.
+    expect(new Date(config.deadlines.submissionsClose).toISOString()).toBe(
+      "2027-02-15T11:59:00.000Z",
+    );
+    expect(config.contactEmail).toBe("elo27@uninorte.edu.co");
+    expect(config.website).toBe("https://elo27.eliterature.org/");
+    expect(config.coordinates).toEqual({ lat: 10.96, lon: -74.8 });
+  });
+
+  it("is still marked provisional", () => {
+    expect(config.placeholder).toBe(true);
+  });
+
+  it("has every text of the conference in en, es and pt", () => {
+    const missing: string[] = [];
+    const walk = (v: unknown, path: string) => {
+      if (Array.isArray(v)) {
+        for (const [i, x] of v.entries()) walk(x, `${path}.${i}`);
+      } else if (v && typeof v === "object") {
+        const o = v as Record<string, unknown>;
+        if ("en" in o && typeof o.en === "string") {
+          for (const l of ["es", "pt"]) if (typeof o[l] !== "string") missing.push(`${path}.${l}`);
+        } else for (const [k, x] of Object.entries(o)) walk(x, `${path}.${k}`);
+      }
+    };
+    walk(elo2027, "elo2027");
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("the ELO 2027 call's formats", () => {
   it("offers the seven formats submitted here, in the call's order, and one by email", () => {
     expect(config.submissionTypes.map((t) => [t.key, t.name.en, t.name.es])).toEqual([
