@@ -39,3 +39,21 @@ export function daysUntil(iso: string, now: number): number {
  */
 export const hasMinimum = (minWords: number | undefined): minWords is number =>
   minWords !== undefined && minWords > 0;
+
+/**
+ * The limits and the step a number input shows for a field. For a whole-number field they are
+ * the whole numbers its range holds (14.5 to 15.5 takes 15 and nothing else): the control then
+ * steps only to values the server accepts.
+ */
+export function numberLimits(field: {
+  min?: number | undefined;
+  max?: number | undefined;
+  integer?: boolean | undefined;
+}): { min: number | undefined; max: number | undefined; step: number | "any" } {
+  if (!field.integer) return { min: field.min, max: field.max, step: "any" };
+  return {
+    min: field.min === undefined ? undefined : Math.ceil(field.min),
+    max: field.max === undefined ? undefined : Math.floor(field.max),
+    step: 1,
+  };
+}

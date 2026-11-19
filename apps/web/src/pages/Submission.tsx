@@ -20,7 +20,7 @@ import {
   type Profile,
   type Role,
 } from "../api";
-import { formatDateTime, hasMinimum, viewerTimeZone } from "../format";
+import { formatDateTime, hasMinimum, numberLimits, viewerTimeZone } from "../format";
 import {
   cleanName,
   describedBy,
@@ -420,9 +420,9 @@ function FieldInput({
                     : "decimal"
                   : undefined
             }
-            min={field.kind === "number" ? field.min : undefined}
-            max={field.kind === "number" ? field.max : undefined}
-            step={field.kind === "number" ? (field.integer ? 1 : "any") : undefined}
+            min={field.kind === "number" ? numberLimits(field).min : undefined}
+            max={field.kind === "number" ? numberLimits(field).max : undefined}
+            step={field.kind === "number" ? numberLimits(field).step : undefined}
             value={String(value ?? "")}
             onChange={(e) =>
               onChange(
