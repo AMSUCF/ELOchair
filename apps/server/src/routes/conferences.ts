@@ -302,6 +302,7 @@ export const conferenceRoutes = new Hono<AppEnv>()
       const tx = txRaw as unknown as Db;
       const moved = await movePhase(tx, k.id, {
         to: input.phase,
+        from: input.from,
         force: input.force,
         reason: input.reason,
         now,
@@ -341,6 +342,8 @@ export const conferenceRoutes = new Hono<AppEnv>()
 const PhaseInput = z
   .object({
     phase: ConferencePhase,
+    /** The phase the person saw when they asked: the move is refused (409 stale) if it has changed. */
+    from: ConferencePhase.optional(),
     force: z.boolean().optional(),
     reason: OneLine(500).optional(),
   })

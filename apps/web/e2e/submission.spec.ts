@@ -1291,7 +1291,8 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await expect(
     phase.getByRole("button", { name: "Move to “Confirming participants”" }),
   ).toBeVisible();
-  expect(sent.at(-1)).toEqual({ phase: "deciding" });
+  // The request names the phase the page showed, so the server moves only from it.
+  expect(sent.at(-1)).toEqual({ phase: "deciding", from: "reviewing" });
   expect(await phaseNow()).toBe("deciding");
 
   // Going back asks for a reason, and is not sent without one that the server would take.
@@ -1325,7 +1326,12 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await takeBack.click();
   await expect(phase.getByText(NEEDED)).toBeVisible();
   await expect(reason).toBeFocused();
-  expect(sent.at(-1)).toEqual({ phase: "reviewing", force: true, reason: "?!" });
+  expect(sent.at(-1)).toEqual({
+    phase: "reviewing",
+    from: "deciding",
+    force: true,
+    reason: "?!",
+  });
   expect(await phaseNow()).toBe("deciding");
   // An invisible mark pasted along with the reason is not sent.
   await reason.fill(`${LRM}Moved by a browser test; back as it was `);
@@ -1335,6 +1341,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await shows("In review");
   expect(sent.at(-1)).toEqual({
     phase: "reviewing",
+    from: "deciding",
     force: true,
     reason: "Moved by a browser test; back as it was",
   });

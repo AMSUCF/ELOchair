@@ -186,6 +186,35 @@ describe("who may move the phase through the API", () => {
     expect(await phaseOf(SLUG)).toBe("draft");
     expect((await move({ cookie: cookies.chair }, { phase: "cfp_open" })).status).toBe(200);
   });
+
+  it("moves only from the phase the person saw, when the request names it", async () => {
+    // A page that still showed "In review" asks for the next step; the conference is in cfp_open.
+    const forward = await move({ cookie: cookies.chair }, { phase: "deciding", from: "reviewing" });
+    expect(forward.status).toBe(409);
+    expect(forward.json).toEqual({ error: "stale", from: "cfp_open", to: "deciding" });
+    // Forcing it with a reason does not turn one step back into a jump from somewhere else.
+    const back = await move(
+      { cookie: cookies.chair },
+      { phase: "cfp_open", from: "confirming", force: true, reason: "One step back, I thought" },
+    );
+    expect(back.status).toBe(409);
+    expect(back.json).toEqual({ error: "stale", from: "cfp_open", to: "cfp_open" });
+    expect(await phaseOf(SLUG)).toBe("cfp_open");
+
+    // From the phase it is in, the same requests move it, there and back.
+    const before = (await phaseAudit(SLUG)).length;
+    expect(
+      (await move({ cookie: cookies.chair }, { phase: "reviewing", from: "cfp_open" })).status,
+    ).toBe(200);
+    const returned = await move(
+      { cookie: cookies.chair },
+      { phase: "cfp_open", from: "reviewing", force: true, reason: "Putting it back" },
+    );
+    expect(returned.status).toBe(200);
+    expect(await phaseOf(SLUG)).toBe("cfp_open");
+    // Only the two moves that happened were audited.
+    expect((await phaseAudit(SLUG)).length).toBe(before + 2);
+  });
 });
 
 describe("PUT /api/conferences/:slug/phase", () => {

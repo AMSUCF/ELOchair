@@ -69,7 +69,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - **Phases** move forward only, except `draft ⇄ cfp_open`. Any other move needs `--force` and a non-blank reason. Every move is audited (the API or CLI user, from, to, reason).
   - Every move goes through `movePhase()`, which locks the conference row, so two concurrent moves cannot skip the rule. That covers `PUT /phase`, `set-phase`, `import-config --phase` on an existing conference (a refused import changes neither the configuration nor the phase) and `seed --force`.
   - `seed --force` rebuilds the built-in placeholders and is refused in production.
-  - **In the app a chair moves the phase**, from "Manage submissions": one step forward, or one step back. Pressing the button moves nothing. It opens a confirmation in its place that says, in one sentence, what the phase does as the code is today, and has "yes" and "cancel". A step back also asks for a reason (one line, at most 500 characters), sent with `force`. The result is said in a status line, and the page reads the conference again. Chairs, admins and site admins are one group here as everywhere (§1.9); track chairs and reviewers are not offered the control, and agents are refused.
+  - **In the app a chair moves the phase**, from "Manage submissions": one step forward, or one step back. Pressing the button moves nothing. It opens a confirmation in its place that says, in one sentence, what the phase does as the code is today, and has "yes" and "cancel". A step back also asks for a reason (one line, at most 500 characters), sent with `force`. Each step names the phase the page showed (`from`) and is refused if the conference has left it, so a step confirmed on an out-of-date page never becomes a jump. The result is said in a status line, and the page reads the conference again. Chairs, admins and site admins are one group here as everywhere (§1.9); track chairs and reviewers are not offered the control, and agents are refused.
 - **Visibility.** The policy treats a submission that was never submitted (`submittedAt` null) like a draft, whatever its status. Contributors only.
 
 ### 1.4 What each person learns
@@ -225,7 +225,7 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 | `GET /api/conferences/:slug/settings` | chair or admin (human) | configuration and its token; §1.9 |
 | `POST /api/conferences/:slug/config/preview` | chair or admin (human) | the configuration as it would be saved; saves nothing; §1.9 |
 | `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 409 `stale` or `submitted_work_invalid`; row-locked, audited; §1.9 |
-| `PUT /api/conferences/:slug/phase` | chair or admin (human) | `{phase, force?, reason?}`; forward only unless `force` + `reason` (409 `phase_backwards`); row-locked, audited; moved from "Manage submissions", §1.3 |
+| `PUT /api/conferences/:slug/phase` | chair or admin (human) | `{phase, from?, force?, reason?}`; forward only unless `force` + `reason` (409 `phase_backwards`); with `from`, only from that phase (409 `stale`); row-locked, audited; moved from "Manage submissions", §1.3 |
 | `GET /api/conferences/:slug/submissions` | per policy | `SubmissionQuery` |
 | `GET /api/conferences/:slug/submissions.csv` and `contributors.csv` | chair (human), or tier C on internal | §2.3 |
 

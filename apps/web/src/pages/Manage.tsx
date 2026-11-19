@@ -367,7 +367,12 @@ function PhaseControl({
    * The confirmation that is open, if one is, and the phase it asks about. That phase is kept
    * as it was asked: what is confirmed is what the question said, whatever the page learns since.
    */
-  const [asking, setAsking] = useState<{ step: PhaseStep; to: ConferencePhase } | null>(null);
+  const [asking, setAsking] = useState<{
+    step: PhaseStep;
+    to: ConferencePhase;
+    /** The phase the page showed when the question was asked: the server moves only from it. */
+    from: ConferencePhase;
+  } | null>(null);
   const [reason, setReason] = useState("");
   const [reasonRefused, setReasonRefused] = useState(false);
   const [message, setMessage] = useState("");
@@ -403,7 +408,7 @@ function PhaseControl({
     setReason("");
     setReasonRefused(false);
     focusAfter.current = "question";
-    setAsking({ step, to });
+    setAsking({ step, to, from: phase });
   }
 
   /** Close the confirmation and say why at the status line, which takes focus. */
@@ -429,7 +434,7 @@ function PhaseControl({
   async function confirm(e: FormEvent) {
     e.preventDefault();
     if (!asking || inFlight.current) return;
-    const { step, to } = asking;
+    const { step, to, from } = asking;
     // As for a name: what cannot be seen is taken out before the server refuses it.
     const why = removeStrayInvisible(reason).trim();
     if (step === "back" && !why) return refuseReason();
@@ -438,7 +443,7 @@ function PhaseControl({
     setMessage("");
     const res = await api<{ phase: ConferencePhase }>(`/api/conferences/${slug}/phase`, {
       method: "PUT",
-      body: step === "back" ? { phase: to, force: true, reason: why } : { phase: to },
+      body: step === "back" ? { phase: to, from, force: true, reason: why } : { phase: to, from },
     });
     inFlight.current = false;
     setBusy(false);
