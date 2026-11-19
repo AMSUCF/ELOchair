@@ -64,7 +64,7 @@ Everything below is held to these. They decide what is left out.
 ### 1.6 Decisions
 - A chair **records** accept, waitlist or reject on the proposal's page, with the reviews beside it. Recording tells nobody and can be changed.
 - **Sending decisions is its own step.** The chair sees the message for each outcome, how many proposals and people get each, and confirms. Nothing is sent without that confirmation (house rule 5). Sent decisions are final in the app.
-- **The phase** is moved by a chair from "Manage submissions". The control says what the next phase does, in a sentence, and asks for confirmation. Going back needs a reason, as now.
+- **The phase** is moved by a chair from "Manage submissions", one step at a time. The control says what the phase does, in a sentence, and asks for confirmation. Going back needs a reason, as now. A step is refused if the conference has left the phase the page showed.
 
 ### 1.7 Email
 - **The whole list of messages:**
@@ -109,11 +109,11 @@ Routes are written into this section as each part is built, in the form of spec 
 Each step is one pull request that leaves the app usable.
 
 1. Chairs do everything: permissions, and the phase control on "Manage submissions".
-2. Settings, part two: review settings, guidelines and the day reviews are due.
+2. Settings, part two: review settings and reviewer guidelines.
 3. Settings, part two: email texts, then agreements.
 4. People and invitations.
 5. Assignments.
-6. "My reviews" and the review form, with each person's email choices.
+6. "My reviews" and the review form, with the day reviews are due and each person's email choices.
 7. Decisions, and sending them.
 
 Small fixes that need none of this: [#29](https://github.com/AMSUCF/ELOchair/issues/29) (the chair's proposal page).
