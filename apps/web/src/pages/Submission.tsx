@@ -18,6 +18,7 @@ import {
   type Me,
   type MySubmission,
   type Profile,
+  type ReviewerSubmission,
   type Role,
 } from "../api";
 import { formatDateTime, hasMinimum, numberLimits, viewerTimeZone } from "../format";
@@ -36,6 +37,7 @@ import { Localized, PageHeading } from "../ui";
 import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
 import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsavedProposal";
 import { useUnsaved } from "../useUnsaved";
+import { ReviewerProposal } from "./ReviewerProposal";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
 type SelfIdFinding = { path: string; kind: SelfIdKind };
@@ -115,14 +117,14 @@ const withoutLang = (pathname: string) => pathname.replace(/^\/[a-z]{2}(?=\/|$)/
 export function SubmissionPage() {
   const { id = "" } = useParams();
   const { t } = useT();
-  const [sub, setSub] = useState<MySubmission | null>(null);
+  const [sub, setSub] = useState<MySubmission | ReviewerSubmission | null>(null);
   const [conf, setConf] = useState<ConfInfo | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async () => {
     const [s, k, m] = await Promise.all([
-      api<MySubmission>(`/api/submissions/${id}`),
+      api<MySubmission | ReviewerSubmission>(`/api/submissions/${id}`),
       api<ConfInfo>(`/api/submissions/${id}/conference`),
       api<Me>("/api/me"),
     ]);
@@ -148,6 +150,10 @@ export function SubmissionPage() {
 
   if (missing) return <PageHeading>{t("editNotFound")}</PageHeading>;
   if (!sub || !conf) return <p role="status">{t("loading")}</p>;
+  // A reviewer is given less than everyone else (no people, in anonymized review): its own view.
+  if (sub.view === "reviewer") {
+    return <ReviewerProposal key={sub.id} sub={sub} config={conf.config} />;
+  }
   const isOwner = me !== null && sub.ownerPersonId === me.id;
   // A new copy from the server (another proposal, or a reload) starts a fresh editor.
   return isOwner ? (

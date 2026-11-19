@@ -84,6 +84,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - The editor shows the server's findings only for text unchanged since that check; the live hints cover edited text.
   - The server returns `{ path, kind }` only. Chairs and agents see counts.
   - Reviewers never receive findings or contributor person IDs.
+- **A reviewer who opens an assigned proposal** gets a read-only page that shows the reviewer projection as it arrives: the text and the answers, and the people only when the review mode shows them, never an email. In anonymized review a line says that names are not shown. Listing assigned work and writing a review belong to the review spec.
 - **`/check`** is for human sessions with `submitter` or `chair` access. It is built by `projectCheck()` in `packages/policy`, not hand-assembled. Agents get 403; reviewers and strangers get 404.
 - **Audit details** hold IDs, enum values and the names of changed keys only, never field values, emails or names. The audit log cannot be redacted, so it must never hold content.
 
