@@ -6,7 +6,7 @@ import type { AppEnv } from "../context";
 /** A deliberate refusal with a stable error code; thrown inside transactions to roll back. */
 export class Refusal extends Error {
   constructor(
-    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429,
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 428 | 429,
     readonly code: string,
     readonly extra: Record<string, unknown> = {},
   ) {

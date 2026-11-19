@@ -41,7 +41,16 @@ export function useIssueText() {
  * The GOV.UK-style error summary: a titled list of links to the fields with problems. It takes
  * focus when it appears so screen reader and keyboard users hear what to fix.
  */
-export function ErrorSummary({ issues, title }: { issues: Issue[]; title: string }) {
+export function ErrorSummary({
+  issues,
+  title,
+  where,
+}: {
+  issues: Issue[];
+  title: string;
+  /** On a long form: the name of the value at a path, said before its message. */
+  where?: (path: string) => string | undefined;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const text = useIssueText();
   useEffect(() => {
@@ -70,7 +79,7 @@ export function ErrorSummary({ issues, title }: { issues: Issue[]; title: string
                 }
               }}
             >
-              {text(i)}
+              {where?.(i.path) ? `${where(i.path)}: ${text(i)}` : text(i)}
             </a>
           </li>
         ))}

@@ -49,6 +49,8 @@ elochair export-config elo2027 > elo2027.json                       # and back o
 
 Phases move forward only (`draft ⇄ cfp_open` is the one exception), whether through `set-phase` or `import-config --phase` on an existing conference. Any other move needs `--force --reason "…"`, and every move is audited with from, to and reason. A refused `import-config` changes neither the configuration nor the phase. `seed --force`, which rebuilds the built-in placeholders, is refused in production.
 
+After the first import, chairs can adjust the conference's details, deadlines, limits and texts in the app ("Conference settings", from "Manage submissions"); every save is reviewed first and recorded. Adding or removing formats and fields is still done with `import-config`.
+
 People sign in with a link sent to their email; there are no passwords.
 
 ## Agent tokens for chairs

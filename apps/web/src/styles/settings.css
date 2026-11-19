@@ -1,0 +1,77 @@
+/* The chairs' conference settings screen: sections of values, then a review of what changed. */
+.settings {
+  display: grid;
+  gap: 16px;
+}
+
+.settings h2 {
+  margin-bottom: 0;
+}
+
+.settings details {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.settings summary {
+  padding-inline: 16px;
+}
+
+.settings details > .stack {
+  padding: 0 16px 16px;
+}
+
+/* A deadline: its date, its time and its offset, side by side where there is room. */
+.settings .trio {
+  display: grid;
+  gap: 8px;
+}
+
+.settings .trio > div {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+@media (min-width: 34rem) {
+  .settings .trio {
+    grid-template-columns: 3fr 2fr 2fr;
+  }
+}
+
+.setting-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* What a save would change: one value to a line, long texts wrapped. */
+.changes {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.changes li {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.changes strong {
+  display: block;
+}
+
+.review {
+  display: grid;
+  gap: 8px;
+}
+
+.review .notice {
+  margin: 0;
+}

@@ -23,13 +23,16 @@ export type ApiResult<T> =
 /** JSON over fetch, same-origin cookies. Never throws for HTTP errors; check `ok`. */
 export async function api<T>(
   path: string,
-  init: { method?: string; body?: unknown } = {},
+  init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<ApiResult<T>> {
   try {
     const res = await fetch(path, {
       method: init.method ?? "GET",
       credentials: "same-origin",
-      headers: init.body === undefined ? {} : { "content-type": "application/json" },
+      headers: {
+        ...(init.body === undefined ? {} : { "content-type": "application/json" }),
+        ...init.headers,
+      },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
     const data = res.status === 204 ? null : await res.json().catch(() => null);

@@ -94,6 +94,60 @@ export async function saveConference(
 }
 
 /**
+ * Lock a conference's row until the transaction ends, and read it as it is at that moment.
+ * A configuration save holds this while it checks submitted work against the new rules.
+ */
+export async function lockConference(tx: Db, conferenceId: string): Promise<ConferenceRow | null> {
+  const [row] = await tx
+    .select()
+    .from(conferences)
+    .where(eq(conferences.id, conferenceId))
+    .for("update");
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    phase: row.phase,
+    config: ConferenceConfig.parse(row.config),
+  };
+}
+
+/**
+ * Hold a conference's row in share mode until the transaction ends, and read it as it is at
+ * that moment. Every write to a submission or to its contributions takes this before it reads
+ * or writes anything else about them (spec 02, §1.9): a configuration save holds the same row
+ * for update while it checks submitted work, so the two wait for each other and the save never
+ * checks work that is changing under it. Writers do not wait for one another.
+ */
+export async function shareConference(tx: Db, conferenceId: string): Promise<ConferenceRow | null> {
+  const [row] = await tx
+    .select()
+    .from(conferences)
+    .where(eq(conferences.id, conferenceId))
+    .for("share");
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    phase: row.phase,
+    config: ConferenceConfig.parse(row.config),
+  };
+}
+
+/** Replace a conference's configuration. Run it under lockConference(), after the checks. */
+export async function writeConfig(
+  tx: Db,
+  conferenceId: string,
+  config: ConferenceConfig,
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(conferences)
+    .set({ config, updatedAt: now })
+    .where(eq(conferences.id, conferenceId));
+}
+
+/**
  * Spec 1.3: phases move forward only (draft ⇄ cfp_open aside). Any other move, including one to
  * the phase the conference already holds, needs force and a non-blank reason.
  */

@@ -1,8 +1,10 @@
+import { settingsEn } from "./settings.en";
 import { submissionEn } from "./submission.en";
 
 /** English is the source catalog. es.ts and pt.ts must define every key (the typecheck enforces it). */
 export const en = {
   ...submissionEn,
+  ...settingsEn,
   appName: "ELOchair",
   tagline: "Submissions and peer review for the Electronic Literature Organization conference.",
   skipToContent: "Skip to content",

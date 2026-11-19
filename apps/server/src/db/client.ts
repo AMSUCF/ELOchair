@@ -35,11 +35,15 @@ export function openDatabase(opts: {
   url?: string;
   dataDir?: string;
   migrationsDir?: string;
+  /** Called with every statement as it is sent. For tests that check the order of locks. */
+  onQuery?: (sql: string) => void;
 }): Database {
   const folder = opts.migrationsDir ?? migrationsFolder;
+  const { onQuery } = opts;
+  const logger = onQuery ? { logQuery: (sql: string) => onQuery(sql) } : undefined;
   if (opts.url) {
     const client = postgres(opts.url, { max: 10, onnotice: () => {} });
-    const db = drizzlePostgres({ client, schema });
+    const db = drizzlePostgres({ client, schema, logger });
     return {
       db: db as unknown as Db,
       migrate: () => migratePostgres(db, { migrationsFolder: folder }),
@@ -47,7 +51,7 @@ export function openDatabase(opts: {
     };
   }
   const client = new PGlite(opts.dataDir);
-  const db = drizzlePglite({ client, schema });
+  const db = drizzlePglite({ client, schema, logger });
   return {
     db: db as unknown as Db,
     migrate: () => migratePglite(db, { migrationsFolder: folder }),

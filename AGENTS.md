@@ -59,7 +59,7 @@ These are invariants. Do not trade them away for convenience.
 
 5. **People approve irreversible actions.**
    - Sending mail to participants, recording decisions and publishing follow *plan → approve*. An agent may create the plan; only a person, in the web UI, approves it.
-   - Conference configuration changes are human-only.
+   - Conference configuration changes are human-only. Chairs change the stage-one values in the app, admins anything (spec 02, §1.9); a change never makes submitted work invalid.
 
 6. **Everything is audited.** Every mutation calls `audit()`. Agent requests are audited automatically by middleware. The audit table is append-only, enforced by a database trigger.
 
@@ -86,7 +86,7 @@ These are invariants. Do not trade them away for convenience.
 
 Spec 02 has the details.
 - **Ownership.** The person who creates a submission owns it. Only the owner edits, invites, submits, withdraws or deletes. Agents never write.
-- **Writes.** Every write goes through `mutateSubmission()`, which runs one transaction that locks the row and checks the policy (`canActOnSubmission`), the call window or phase, and the version. Submitted work must stay valid.
+- **Writes.** Every write goes through `mutateSubmission()`, which runs one transaction that locks the row and checks the policy (`canActOnSubmission`), the call window or phase, and the version. Submitted work must stay valid. A settings save checks submitted work while it holds the conference's row, so any write to `submissions` or `contributions` shares that row first: `mutateSubmission()` does, and the two writes outside it (an invitation answer, creating a proposal) call `shareConference()` themselves. Lock the submission's row, then the conference's, in that order (spec 02, §1.9).
 - **Invitations.** Invitees are shown only as the owner typed them until they confirm. Inviting someone creates a conflict that outlives a decline. Declining is always possible.
 - **Consent.** Consent to the conference's agreements is recorded on submit and on confirm.
 - **Lists.** Lists, CSV exports and MCP tools all go through `querySubmissions()`, which projects first and filters afterwards.

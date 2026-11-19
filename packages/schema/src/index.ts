@@ -8,5 +8,6 @@ export * from "./i18n";
 export * from "./inputs";
 export * from "./invisible";
 export * from "./selfid";
+export * from "./settings";
 export * from "./validate";
 export * from "./words";

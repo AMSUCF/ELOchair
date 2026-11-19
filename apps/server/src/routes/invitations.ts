@@ -17,7 +17,7 @@ import type { Db } from "../db/client";
 import { agreementAcks, contributions, people, submissions } from "../db/schema";
 import { findInvitationToken, useInvitationTokens } from "../invitations";
 import { deliverPending, enqueueMail } from "../mail";
-import { loadSubmission, loadSubmissionRecords } from "../repo";
+import { loadSubmission, loadSubmissionRecords, shareConference } from "../repo";
 import { mailContext, personLang } from "../services/mutations";
 import { ownCapCount } from "../services/submissions";
 import { answeredMessage } from "../templates";
@@ -47,11 +47,15 @@ export async function answerInvitation(
   };
   const result = await deps.db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
-    await tx
-      .select({ id: submissions.id })
+    const [locked] = await tx
+      .select({ conferenceId: submissions.conferenceId })
       .from(submissions)
       .where(eq(submissions.id, v.submissionId))
       .for("update");
+    // An answer changes who is on the proposal, which the rules count (a format's fewest
+    // people). Like every other write to a submission it shares the conference's row, so a
+    // configuration save checking submitted work and an answer wait for each other.
+    if (locked) await shareConference(tx, locked.conferenceId);
     const loaded = await loadSubmission(tx, v.submissionId);
     // Missing and not-yours look the same, so this cannot probe for drafts one cannot see.
     const mine = loaded?.rec.contributions.find((c) => c.personId === v.personId);
