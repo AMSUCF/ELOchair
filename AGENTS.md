@@ -102,9 +102,13 @@ Put self-contained static files in `docs/design/visitor-preview/` (the exact fil
 
 **For real app changes (needs SSH as `elochair`):**
 - Repo lives at `~/elochair` on jtm.io. **TODO once this branch is actually deployed:** confirm and record here which branch `git branch --show-current` reports there — as of this branch's creation, production was tracking `ccr-e6ee03db-qhfk2z` (not `main`), and this note needs updating the moment that changes. Don't assume `main` (or this branch) is live without checking.
-- Rebuild/redeploy: `cd ~/elochair/deploy && git pull --ff-only origin <branch> && docker compose -f docker-compose.yml -f docker-compose.local-test.yml up -d --build app`
-- **Only ever target the `app` service.** A bare `docker compose up -d` will also try to start the compose file's `caddy` service, which fights with the host's own nginx for ports 80/443 and fails. nginx (not the in-stack Caddy) already terminates TLS for this deployment.
-- Pushing to `main` is also meant to trigger an auto-deploy webhook (`deploy-webhook` pm2 process on the server, scoped to `up -d --build app` only) — as of 2026-11-16 this hasn't been confirmed working end-to-end, so don't rely on it; deploy manually over SSH until it's verified.
+- Rebuild/redeploy: `cd ~/elochair/deploy && git pull --ff-only origin <branch> && docker compose -f docker-compose.yml -f docker-compose.local-test.yml up -d --build app backup && docker compose -f docker-compose.yml -f docker-compose.local-test.yml restart backup`
+- **Name the services every time: `app` and `backup`, and never a bare `docker compose up -d`.** A bare `up -d` will also try to start the compose file's `caddy` service, which fights with the host's own nginx for ports 80/443 and fails. nginx (not the in-stack Caddy) already terminates TLS for this deployment.
+- **`backup` takes the hourly database dumps (see "Backups" in `deploy/README.md`), and nothing depends on it, so it runs only if it is named.** An installation that was running before the service existed has to start it once, by name, after pulling the change that adds it: until then there are no backups at all. The `restart` is there because the backup scripts are mounted into the container, which goes on running the old ones until it is restarted.
+- After every deploy, check that backups are being taken; both must say so before you leave:
+  - `docker compose -f docker-compose.yml -f docker-compose.local-test.yml ps backup` shows the service `Up` and, once the first dump is written, `healthy`;
+  - `docker compose -f docker-compose.yml -f docker-compose.local-test.yml run --rm backup healthy` prints the newest dump and its age, and fails if there is none or it is too old.
+- Pushing to `main` is also meant to trigger an auto-deploy webhook (`deploy-webhook` pm2 process on the server, scoped to `up -d --build app` only) — as of 2026-11-16 this hasn't been confirmed working end-to-end, so don't rely on it; deploy manually over SSH until it's verified. It does not start or restart `backup`: after it has run, do that by hand and make the two checks above.
 - The `elochair` account has no sudo and is in the `docker` group only. It can fully manage the app/db containers but nothing else on the host.
 
 ## Testing notes

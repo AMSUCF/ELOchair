@@ -1,4 +1,4 @@
-# ELOchair on one server: the app, Postgres, and Caddy (automatic HTTPS).
+# ELOchair on one server: the app, Postgres, scheduled database backups, and Caddy (automatic HTTPS).
 #   cp deploy/.env.example deploy/.env   # then edit it
 #   docker compose -f deploy/docker-compose.yml up -d --build
 name: elochair
@@ -39,6 +39,41 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # Scheduled dumps of the database into deploy/backups, with rolling retention: see "Backups"
+  # in deploy/README.md. Nothing depends on this service, so where the stack is started service
+  # by service it has to be named too:  up -d app backup
+  backup:
+    image: postgres:16 # the db image, so pg_dump always matches the server
+    restart: unless-stopped
+    entrypoint: ["bash", "/opt/elochair/backup.sh"]
+    command: ["loop"]
+    environment:
+      PGHOST: db
+      PGUSER: elochair
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      PGDATABASE: elochair
+      PGCONNECT_TIMEOUT: "10"
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_MINUTES: ${BACKUP_INTERVAL_MINUTES:-60}
+      BACKUP_KEEP_HOURLY: ${BACKUP_KEEP_HOURLY:-48}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-8}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+    volumes:
+      - ./backup.sh:/opt/elochair/backup.sh:ro
+      - ./backup-retention.sh:/opt/elochair/backup-retention.sh:ro
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Unhealthy when the newest dump is older than two intervals and five minutes.
+      test: ["CMD", "bash", "/opt/elochair/backup.sh", "healthy"]
+      interval: 1m
+      timeout: 15s
+      retries: 3
+      start_period: 5m
 
   caddy:
     image: caddy:2

@@ -1,0 +1,39 @@
+name: Backups
+
+# The backup service against a real Postgres: a scheduled dump, the retention policy, a restore,
+# and a failure that shows. `npm run check` (ci.yml) covers the policy itself on every push.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - deploy/backup.sh
+      - deploy/backup-retention.sh
+      - deploy/docker-compose.yml
+      - deploy/test/backup-e2e.sh
+      - apps/server/drizzle/**
+      - .github/workflows/backup.yml
+  pull_request:
+    paths:
+      - deploy/backup.sh
+      - deploy/backup-retention.sh
+      - deploy/docker-compose.yml
+      - deploy/test/backup-e2e.sh
+      - apps/server/drizzle/**
+      - .github/workflows/backup.yml
+
+permissions:
+  contents: read
+
+jobs:
+  round-trip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Lint the shell scripts
+        run: shellcheck deploy/backup.sh deploy/backup-retention.sh deploy/test/backup-e2e.sh
+      - name: Dump, prune, restore and fail visibly, against Postgres 16
+        run: deploy/test/backup-e2e.sh
