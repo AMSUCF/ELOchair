@@ -1099,8 +1099,24 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await expect(page.getByRole("heading", { level: 1, name: "Panel on platforms" })).toBeVisible();
   // Chairs see the panelist who declined.
   await expect(page.getByText(/Panelist · Declined/)).toBeVisible();
+  // The whole proposal is on the page, not only in the CSV files: the answers to the format's
+  // own fields, when it was sent in, and how to reach its people.
+  const proposal = page.locator("main");
+  await expect(
+    proposal.getByRole("heading", { name: "Abstract of each paper or talk (anonymized)" }),
+  ).toBeVisible();
+  await expect(proposal.getByRole("term").filter({ hasText: /^Submitted$/ })).toBeVisible();
+  await expect(proposal.getByRole("term").filter({ hasText: /^Last changed$/ })).toBeVisible();
+  await expect(proposal.getByText(/e2e-panel@example\.org/)).toBeVisible();
+  // It is for reading: nothing to type into, nothing to press.
+  await expect(proposal.getByRole("textbox")).toHaveCount(0);
+  await expect(proposal.getByRole("button")).toHaveCount(0);
   await expectAccessible(page);
-  await page.goBack();
+  await expectNoHorizontalScroll(page);
+  const back = proposal.getByRole("link", { name: "Back to the submissions" });
+  await expectTouchTarget(back);
+  await back.click();
+  await expect(page.getByRole("heading", { level: 1, name: "Manage submissions" })).toBeVisible();
 
   const csv = async (link: string) => {
     const [download] = await Promise.all([

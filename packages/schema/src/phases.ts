@@ -21,6 +21,16 @@ const step = (phase: string, by: 1 | -1): Phase | null => {
   return at < 0 ? null : (CONFERENCE_PHASES[at + by] ?? null);
 };
 
+/**
+ * The phases in which the owner of a submitted proposal may still withdraw it (spec 02, §1.3).
+ * The policy enforces it and the editor shows "Withdraw" by it: one list for both.
+ */
+export const WITHDRAW_PHASES: readonly Phase[] = ["cfp_open", "reviewing", "deciding"];
+
+/** Whether a submitted proposal can still be withdrawn in this phase. */
+export const canWithdrawIn = (phase: string): boolean =>
+  (WITHDRAW_PHASES as readonly string[]).includes(phase);
+
 /** The phase that follows `phase`; null after the last one, and for a phase that is not one. */
 export const nextPhase = (phase: string): Phase | null => step(phase, 1);
 

@@ -73,6 +73,11 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   editUnsubmit: "Voltar a rascunho",
   editWithdraw: "Retirar",
   editWithdrawConfirm: "Retirar esta proposta? Não pode ser desfeito.",
+  editWithdrawOver:
+    "Esta proposta já não pode ser retirada aqui. Para a retirar, escreva para {email}.",
+  chairTakingPart: "Participação",
+  chairSubmittedAt: "Submetida",
+  chairUpdatedAt: "Última alteração",
   editDelete: "Eliminar rascunho",
   editDeleteConfirm: "Eliminar este rascunho? Os convites pendentes serão cancelados.",
   editStale:
