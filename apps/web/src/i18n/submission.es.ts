@@ -85,10 +85,15 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   editReloaded: "Se cargó la versión más reciente.",
   editReloadedKept:
     "Se cargó la versión más reciente y se conservaron tus cambios. Revísalos y guarda.",
-  editLeaveUnsaved: "Tienes cambios sin guardar. ¿Salir de esta página y perderlos?",
+  editLeaveUnsaved: "Tienes cambios sin guardar. ¿Salir de esta página sin guardarlos?",
   editActionFor: "{action}: {name}",
   editClosed: "La convocatoria cerró: esta propuesta ya no se puede editar.",
   editUnsaved: "Tienes cambios sin guardar.",
+  unsavedRestored:
+    "Tus cambios sin guardar se restauraron desde este dispositivo. Revísalos y guarda.",
+  unsavedRestoredStale: "Tus cambios sin guardar se restauraron desde este dispositivo.",
+  unsavedDiscard: "Descartar los cambios sin guardar",
+  unsavedDiscarded: "Cambios sin guardar descartados.",
   editAgreements: "Antes de enviar, lee y acepta:",
   editAgree: "Acepto: {title}",
   editRead: "Leer",
@@ -168,6 +173,12 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   profileBioHelp: "La ve la coordinación, nunca quienes revisan de forma anónima.",
   profileSave: "Guardar perfil",
   profileSaved: "Perfil guardado.",
+  profileConflict:
+    "Tu perfil se guardó en otro lugar después de que escribieras estos cambios en este dispositivo. El formulario muestra la versión guardada. Puedes volver a poner tus cambios sobre ella o descartarlos.",
+  profileConflictEmpty: "(vacío)",
+  profileConflictKeep: "Volver a poner mis cambios en el formulario",
+  profileConflictDiscard: "Descartar mis cambios y conservar la versión guardada",
+  profileConflictKept: "Tus cambios están de nuevo en el formulario. Revísalos y guarda.",
 
   invTitle: "Invitación a una propuesta",
   invIntro: "{owner} te ha incluido con el rol de {role} en una propuesta para {conference}.",

@@ -184,6 +184,37 @@ async function invite(
   await expect(page.locator(".people > li")).toHaveCount(listed);
 }
 
+const RESTORED = "Your unsaved changes were restored from this device. Review them, then save.";
+
+/** The unsaved text the app keeps in this browser (apps/web/src/unsaved.ts), by storage key. */
+const unsavedKeys = (page: Page) =>
+  page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("elochair:unsaved:")));
+
+/** Everything this browser's store holds for the app, keys and values, as one text. */
+const wholeStore = (page: Page) =>
+  page.evaluate(() => JSON.stringify(Object.entries(localStorage)));
+
+/**
+ * Collects what a screen reader would announce: text that arrives in a live region which was
+ * already on the page. (A region that is rendered together with its text is not announced.)
+ */
+async function listenForAnnouncements(page: Page) {
+  await page.addInitScript(() => {
+    const heard: string[] = [];
+    Object.assign(window, { heard });
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const at = record.target instanceof Element ? record.target : record.target.parentElement;
+        const region = at?.closest("[aria-live], [role=status]");
+        if (region?.textContent) heard.push(region.textContent);
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+}
+
+const announcements = (page: Page) =>
+  page.evaluate(() => (window as unknown as { heard: string[] }).heard.join("\n"));
+
 test("submit a talk from a phone: word count, self-identification, co-author, agreements, receipt", async ({
   page,
   request,
@@ -406,8 +437,15 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await expect(page.getByText("Enter a whole number.").first()).toBeVisible();
   await expect(page.locator(".badge.status-draft")).toBeVisible();
 
+  // Typed and not saved, the head count is kept in this browser like any other answer. After a
+  // reload it is back as the number it was, and the server takes it as one.
   await people.fill("20");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  await page.reload();
+  await expect(people).toHaveValue("20");
+  await expect(page.getByText(RESTORED)).toBeVisible();
   await saveDraft(page);
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
   await acceptAgreements(page);
   await page.getByRole("button", { name: "Submit proposal" }).click();
   await expect(page.getByText("Submitted. A receipt is on its way")).toBeVisible();
@@ -694,6 +732,332 @@ test("a co-author's bio longer than the call's limit gets a note in the owner's 
     "Some bios are longer than 300 words. Each person can shorten their own in Your account.",
   );
   await expectAccessible(page);
+});
+
+test("unsaved text in a proposal survives a reload or a lost tab, until it is saved or discarded", async ({
+  page,
+  request,
+  browser,
+}) => {
+  await listenForAnnouncements(page);
+  await signIn(page, request, "e2e-unsaved@example.org");
+  await setName(page, "Uma Unsaved");
+  await start(page, "Paper");
+  const editor = page.url();
+  const title = page.getByLabel("Title");
+  const abstract = page.getByLabel("Abstract (anonymized)");
+  const restored = page.getByText(RESTORED);
+  await title.fill("Reading in the dark");
+  await saveDraft(page);
+  expect(await unsavedKeys(page)).toEqual([]);
+
+  // Typed, not saved, and the page goes away at once: the text is written on the way out.
+  await title.fill("Reading in the dark, again");
+  await abstract.fill(words(40));
+  await page.reload();
+  await expect(title).toHaveValue("Reading in the dark, again");
+  await expect(abstract).toHaveValue(words(40));
+  await expect(restored).toBeVisible();
+  await expect(page.getByText("You have unsaved changes.")).toBeVisible();
+  // The notice is announced, and focus is not taken from wherever the person is.
+  await expect.poll(() => announcements(page)).toContain(RESTORED);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  const discard = page.getByRole("button", { name: "Discard unsaved changes" });
+  await expectTouchTarget(discard);
+  await expectAccessibleInBothThemes(page);
+
+  // Discarding goes back to the saved text; the status line says so and takes focus.
+  await discard.click();
+  await expect(title).toHaveValue("Reading in the dark");
+  await expect(abstract).toHaveValue("");
+  await expect(page.getByText("Unsaved changes discarded.")).toBeFocused();
+  await expect(restored).toHaveCount(0);
+  await page.reload();
+  await expect(title).toHaveValue("Reading in the dark");
+  await expect(restored).toHaveCount(0);
+
+  // A tab that dies says no goodbye: after a pause in typing, the text is already kept. The
+  // proposal opened again (here in a second tab, the first one untouched) has it.
+  await title.fill("Reading in the dark, once more");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  const again = await page.context().newPage();
+  await again.goto(editor);
+  await expect(again.getByLabel("Title")).toHaveValue("Reading in the dark, once more");
+  await expect(again.getByText(RESTORED)).toBeVisible();
+  await again.close();
+
+  // Saving removes what was kept: a reload shows the saved text, and no notice.
+  await saveDraft(page);
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
+  await page.reload();
+  await expect(title).toHaveValue("Reading in the dark, once more");
+  await expect(restored).toHaveCount(0);
+
+  // Unsaved changes from before the proposal changed elsewhere (an invitee answered): they come
+  // back with the same choice as after a stale save, announced as an alert, without taking focus.
+  await invite(page, "e2e-unsaved-invitee@example.org", 2);
+  await title.fill("Reading in the dark, revised");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  await answerByLink(browser, request, "e2e-unsaved-invitee@example.org", "decline");
+  await page.reload();
+  const stale = page.getByRole("alert").filter({ hasText: "This proposal was changed elsewhere" });
+  await expect(stale).toContainText("Your unsaved changes were restored from this device.");
+  await expect(stale).toContainText("Your unsaved changes are still in the form.");
+  await expect(title).toHaveValue("Reading in the dark, revised");
+  await expect(restored).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  // Until the owner has chosen, another reload asks again.
+  await page.reload();
+  await expect(stale).toBeVisible();
+  await expectAccessibleInBothThemes(page);
+  await page.getByRole("button", { name: "Load the latest version and keep my changes" }).click();
+  await expect(page.getByText("Loaded the latest version and kept your changes.")).toBeVisible();
+  await expect(title).toHaveValue("Reading in the dark, revised");
+  // The latest version came with it: the invitee who declined is off the list.
+  await expect(page.locator(".people > li")).toHaveCount(1);
+  await saveDraft(page);
+  await page.reload();
+  await expect(title).toHaveValue("Reading in the dark, revised");
+  await expect(stale).toHaveCount(0);
+  await expect(restored).toHaveCount(0);
+
+  // Deleting the draft removes what was unsaved for it.
+  await title.fill("Reading in the dark, never saved");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete draft" }).click();
+  await expect(page).toHaveURL(/\/en\/my$/);
+  expect(await unsavedKeys(page)).toEqual([]);
+
+  // Signing out straight after typing: the form on screen does not write its text back.
+  await page.getByRole("navigation").getByRole("link", { name: "Your account" }).click();
+  await page.getByLabel("Bio in English").fill("Uma reads in the dark.");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
+  // Give a late write time to happen before checking that none did.
+  await page.waitForTimeout(600);
+  expect(await unsavedKeys(page)).toEqual([]);
+});
+
+test("an unsaved bio survives a reload; signing out removes it, and another account never sees it", async ({
+  page,
+  request,
+}) => {
+  const ana = "e2e-unsaved-ana@example.org";
+  const bruno = "e2e-unsaved-bruno@example.org";
+  await listenForAnnouncements(page);
+  await signIn(page, request, ana);
+  await setName(page, "Ana Unsaved");
+  const bio = page.getByLabel("Bio in English");
+  const restored = page.getByText(RESTORED);
+
+  await bio.fill("Ana writes poems for machines.");
+  await page.getByLabel("Pronouns (optional)").fill("she");
+  await page.reload();
+  await expect(bio).toHaveValue("Ana writes poems for machines.");
+  await expect(page.getByLabel("Pronouns (optional)")).toHaveValue("she");
+  await expect(restored).toBeVisible();
+  await expect.poll(() => announcements(page)).toContain(RESTORED);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  const discard = page.getByRole("button", { name: "Discard unsaved changes" });
+  await expectTouchTarget(discard);
+  await expectAccessibleInBothThemes(page);
+
+  await discard.click();
+  await expect(bio).toHaveValue("");
+  await expect(page.getByLabel("Pronouns (optional)")).toHaveValue("");
+  await expect(page.getByLabel("Your name, as it should appear")).toHaveValue("Ana Unsaved");
+  await expect(page.getByText("Unsaved changes discarded.")).toBeFocused();
+  await expect(restored).toHaveCount(0);
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
+
+  // Saving removes what was kept.
+  await bio.fill("Ana writes poems for machines.");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await expect(page.getByText("Profile saved.")).toBeVisible();
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
+  await page.reload();
+  await expect(bio).toHaveValue("Ana writes poems for machines.");
+  await expect(restored).toHaveCount(0);
+
+  // Ana's session goes away without a sign-out (here: the browser forgets its cookies). Her
+  // unsaved text stays in the browser, under her id: Bruno, signing in after her, sees his own
+  // profile and nothing of hers.
+  await bio.fill("Ana writes poems for machines, and for people.");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  // She also left her profile open in a second tab, with the same unsaved text in it.
+  const left = await page.context().newPage();
+  await left.goto("/en/me");
+  const leftBio = left.getByLabel("Bio in English");
+  await expect(leftBio).toHaveValue("Ana writes poems for machines, and for people.");
+  const anaSession = await page.context().cookies();
+  await page.context().clearCookies();
+  await signIn(page, request, bruno);
+  await expect(page.getByRole("button", { name: "Save profile" })).toBeVisible();
+  await expect(bio).toHaveValue("");
+  await expect(restored).toHaveCount(0);
+  expect(await unsavedKeys(page)).toHaveLength(1);
+
+  // Unsaved text does not wait in the browser for whoever uses it next: signing out removes
+  // Bruno's, and only his.
+  await bio.fill("Bruno builds reading machines.");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(2);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(page)).toHaveLength(1);
+  expect(await wholeStore(page)).not.toContain("Bruno builds");
+
+  // Bruno's sign-out was his alone. Ana never signed out, and the tab she left open goes on
+  // keeping what is typed in it.
+  await leftBio.fill("Ana writes poems for machines, for people, and for herself.");
+  await expect.poll(() => wholeStore(left)).toContain("and for herself.");
+  expect(await unsavedKeys(left)).toHaveLength(1);
+  await left.close();
+
+  // Ana is back on her session (it was forgotten, never ended; signing in again would be one
+  // more of the sign-in links the server rations). Her text is restored and nothing of Bruno's
+  // is, and her own sign-out leaves nothing in the browser.
+  await page.context().addCookies(anaSession);
+  await page.goto("/en/me");
+  await expect(bio).toHaveValue("Ana writes poems for machines, for people, and for herself.");
+  await expect(restored).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(page)).toEqual([]);
+  // What stays after a sign-out is a random token for each of them: no word of theirs.
+  const kept = await wholeStore(page);
+  expect(kept).not.toContain("poems");
+  expect(kept).not.toContain("machines");
+});
+
+const CONFLICT =
+  "Your profile was saved somewhere else after you typed these changes on this device. The form shows the saved version. You can put your changes back on top of it, or discard them.";
+
+/**
+ * The same person saves another bio from another device. Here it goes straight to the server
+ * from this session, so that nothing this browser keeps (apps/web/src/unsaved.ts) is touched.
+ */
+async function saveBioElsewhere(page: Page, bio: string) {
+  const status = await page.evaluate(async (en) => {
+    const { person } = await (await fetch("/api/me", { credentials: "same-origin" })).json();
+    const { displayName, affiliation, country, languages, pronouns, orcid, bios } = person;
+    const saved = await fetch("/api/me/profile", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName,
+        affiliation,
+        country,
+        languages,
+        pronouns,
+        orcid,
+        bios: { ...bios, en },
+      }),
+    });
+    return saved.status;
+  }, bio);
+  expect(status).toBe(200);
+}
+
+test("an unsaved bio never replaces newer saved text unasked, and a sign-out in another tab ends it", async ({
+  page,
+  request,
+}) => {
+  await listenForAnnouncements(page);
+  await signIn(page, request, "e2e-unsaved-dana@example.org");
+  await setName(page, "Dana Unsaved");
+  const bio = page.getByLabel("Bio in English");
+  const pronouns = page.getByLabel("Pronouns (optional)");
+  const conflict = page.getByText(CONFLICT);
+  const save = page.getByRole("button", { name: "Save profile" });
+  await bio.fill("Dana writes.");
+  await save.click();
+  await expect(page.getByText("Profile saved.")).toBeVisible();
+
+  // Two devices. On this one she types and does not save; on another she saves a different bio.
+  await bio.fill("Dana writes poems for machines.");
+  await pronouns.fill("she");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  await page.waitForTimeout(600);
+  await saveBioElsewhere(page, "Dana builds reading machines.");
+  await page.reload();
+
+  // The form shows what is saved now. Her older text is offered, not laid over it; the change
+  // made on a value that did not change elsewhere (the pronouns) is back as before.
+  await expect(bio).toHaveValue("Dana builds reading machines.");
+  await expect(pronouns).toHaveValue("she");
+  await expect(conflict).toBeVisible();
+  await expect(page.getByText("Dana writes poems for machines.")).toBeVisible();
+  await expect(page.getByText(RESTORED)).toBeVisible();
+  await expect.poll(() => announcements(page)).toContain(CONFLICT);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  const mine = page.getByRole("button", { name: "Put my changes back in the form" });
+  const theirs = page.getByRole("button", {
+    name: "Discard my changes and keep the saved version",
+  });
+  await expectTouchTarget(mine);
+  await expectTouchTarget(theirs);
+  // Nothing scrolls sideways at phone width, however long the text she is shown.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await expectAccessibleInBothThemes(page);
+
+  // Saving before she has chosen sends none of the older text: the bio stays as saved elsewhere,
+  // and the choice is still there after another reload.
+  await save.click();
+  await expect(page.getByText("Profile saved.")).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.reload();
+  await expect(bio).toHaveValue("Dana builds reading machines.");
+  await expect(pronouns).toHaveValue("she");
+  await expect(conflict).toBeVisible();
+  await expect(page.getByText(RESTORED)).toHaveCount(0);
+
+  // She chooses her own text: it goes into the form as an unsaved change, to review and save.
+  await mine.click();
+  await expect(bio).toHaveValue("Dana writes poems for machines.");
+  await expect(
+    page.getByText("Your changes are back in the form. Review them, then save."),
+  ).toBeFocused();
+  await expect(conflict).toHaveCount(0);
+  await page.waitForTimeout(600);
+  await page.reload();
+  await expect(bio).toHaveValue("Dana writes poems for machines.");
+  await expect(page.getByText(RESTORED)).toBeVisible();
+  await expect(conflict).toHaveCount(0);
+
+  // The other choice, after the profile is saved elsewhere once more: the saved version stays.
+  await saveBioElsewhere(page, "Dana reads.");
+  await page.reload();
+  await expect(bio).toHaveValue("Dana reads.");
+  await expect(conflict).toBeVisible();
+  await theirs.click();
+  await expect(bio).toHaveValue("Dana reads.");
+  await expect(page.getByText("Unsaved changes discarded.")).toBeFocused();
+  await expect(conflict).toHaveCount(0);
+  await expect.poll(() => unsavedKeys(page)).toEqual([]);
+
+  // Two tabs of one browser. This one has unsaved text; she signs out in the other.
+  await bio.fill("Dana reads aloud.");
+  await expect.poll(() => unsavedKeys(page)).toHaveLength(1);
+  const other = await page.context().newPage();
+  await other.goto("/en/me");
+  await expect(other.getByLabel("Bio in English")).toHaveValue("Dana reads aloud.");
+  await other.getByRole("button", { name: "Sign out" }).click();
+  await expect(other).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(other)).toEqual([]);
+  // This tab still shows her text. Typing on, waiting past the moment it would be written, and
+  // then leaving the page must put nothing of hers back into the browser.
+  await bio.fill("Dana reads aloud, to machines.");
+  await page.waitForTimeout(900);
+  expect(await unsavedKeys(other)).toEqual([]);
+  await page.goto("/en/");
+  await expect(page).toHaveURL(/\/en\/$/);
+  expect(await unsavedKeys(page)).toEqual([]);
+  await other.close();
 });
 
 test("a chair finds the submissions, opens one and downloads both CSV files", async ({

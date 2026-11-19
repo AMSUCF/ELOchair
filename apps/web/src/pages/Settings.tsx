@@ -18,13 +18,22 @@ import {
   useState,
 } from "react";
 import { Link, useBlocker, useParams } from "react-router";
-import { type ApiResult, api, type Issue } from "../api";
+import { type ApiResult, api, type Issue, type Me } from "../api";
 import { formatDateTime, viewerTimeZone } from "../format";
-import { describedBy, ErrorSummary, FieldError, fieldId } from "../forms";
+import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { isMessageKey, LANG_NAMES, type MessageKey, useT } from "../i18n";
 import { deadlineKey, modalityKey } from "../labels";
-import { DATETIME, type Edits, editsAfterSave, parts, type Raw, rawOf } from "../settingsEdits";
+import {
+  DATETIME,
+  type Edits,
+  editsAfterSave,
+  parts,
+  type Raw,
+  rawOf,
+  restoredEdits,
+} from "../settingsEdits";
 import { Localized, PageHeading } from "../ui";
+import { useUnsaved } from "../useUnsaved";
 
 /*
  * Conference settings for chairs (spec 02, §1.9). The screen shows the values a chair may
@@ -32,6 +41,9 @@ import { Localized, PageHeading } from "../ui";
  * from the configuration, and saves nothing that has not been reviewed: the server says what a
  * save would change, what is wrong with it, what it would do to submitted work, and only then
  * offers "Save changes".
+ *
+ * What was typed and not saved is also kept in this browser (unsaved.ts), as in the proposal
+ * editor, so that a reload or a closed tab does not lose a long round of changes.
  */
 
 type SettingsData = {
@@ -146,13 +158,17 @@ export function SettingsPage() {
   const { slug = "" } = useParams();
   const { t } = useT();
   const [loaded, setLoaded] = useState<ApiResult<SettingsData> | null>(null);
+  /** Whose unsaved changes are kept in this browser: the person signed in. */
+  const [personId, setPersonId] = useState<string | null>(null);
   const load = useCallback(() => api<SettingsData>(`/api/conferences/${slug}/settings`), [slug]);
 
   useEffect(() => {
     let live = true;
     setLoaded(null);
-    load().then((r) => {
-      if (live) setLoaded(r);
+    Promise.all([load(), api<Me>("/api/me")]).then(([r, me]) => {
+      if (!live) return;
+      setPersonId(me.ok && me.data.kind === "person" ? (me.data.person?.id ?? null) : null);
+      setLoaded(r);
     });
     return () => {
       live = false;
@@ -169,19 +185,24 @@ export function SettingsPage() {
       </>
     );
   }
-  return <SettingsForm key={slug} initial={loaded.data} reload={load} />;
+  return <SettingsForm key={slug} initial={loaded.data} personId={personId} reload={load} />;
 }
 
 function SettingsForm({
   initial,
+  personId,
   reload,
 }: {
   initial: SettingsData;
+  personId: string | null;
   reload: () => Promise<ApiResult<SettingsData>>;
 }) {
   const { lang, t } = useT();
   const [data, setData] = useState(initial);
-  const [edits, setEdits] = useState<Edits>({});
+  const { found, keep } = useUnsaved(personId, `settings:${initial.slug}`);
+  /** What an earlier visit left typed and unsaved in this browser, where it is still a setting. */
+  const [start] = useState(() => restoredEdits(found?.values, stageOneSettings(initial.config)));
+  const [edits, setEdits] = useState<Edits>(start);
   /**
    * The edits as they are at this very moment. The form stays open to typing while a request
    * is on its way, and the answer to a save has to be set against what is typed by then.
@@ -191,13 +212,24 @@ function SettingsForm({
     editsNow.current = next;
     setEdits(next);
   };
+  /** Restored changes that the person has not saved or discarded yet. */
+  const [restored, setRestored] = useState(false);
   /** The server's review, and the exact configuration it was a review of. */
   const [review, setReview] = useState<{ of: string; result: Review } | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [stale, setStale] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  // A section that holds a restored change starts open: it is not to be saved unseen.
+  const [open, setOpen] = useState<ReadonlySet<string>>(
+    () =>
+      new Set(
+        Object.keys(start).flatMap((key) => {
+          const section = sectionOf(key.split("#")[0] ?? "");
+          return section ? [section] : [];
+        }),
+      ),
+  );
   const inFlight = useRef(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const reviewRef = useRef<HTMLHeadingElement>(null);
@@ -217,6 +249,17 @@ function SettingsForm({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  // Said after the first render, so that the notice is announced.
+  useEffect(() => {
+    if (Object.keys(start).length > 0) setRestored(true);
+  }, [start]);
+
+  // What is typed and would change something is kept in this browser; once nothing would
+  // change (saved, taken back, discarded), nothing is kept.
+  useEffect(() => {
+    keep(dirty ? edits : {}, null);
+  }, [keep, dirty, edits]);
 
   // In-app navigation asks before unsaved changes are lost, as in the proposal editor.
   // Switching the interface language keeps the page, so it is not blocked.
@@ -311,6 +354,7 @@ function SettingsForm({
       if (res.ok) {
         // The saved configuration is the new base. Whatever was typed while the save was on
         // its way stays in the form as an unsaved change to it, to be reviewed in its turn.
+        // The browser's buffer follows the form: once this is saved it keeps only what is left.
         const saved = res.data.config;
         const now = stageOneSettings(saved);
         const typedSince = editsNow.current !== sent;
@@ -318,6 +362,8 @@ function SettingsForm({
         const more = configChanges(saved, build(saved, now, left)).length > 0;
         setData({ ...data, config: saved, token: res.data.token });
         changeEdits(left);
+        // What an earlier visit left was reviewed and saved; what is left was typed just now.
+        setRestored(false);
         setReview(null);
         setIssues([]);
         const text = t(more ? "settingsSavedMore" : "settingsSaved");
@@ -341,6 +387,15 @@ function SettingsForm({
       }
       say(t(res.status === 403 ? "settingsNoAccess" : "errorGeneric"));
     });
+  }
+
+  /** Back to the saved settings. The notice goes away: focus moves to the line that says so. */
+  function discardRestored() {
+    changeEdits({});
+    setRestored(false);
+    setReview(null);
+    setIssues([]);
+    say(t("unsavedDiscarded"));
   }
 
   function reloadSettings() {
@@ -469,6 +524,7 @@ function SettingsForm({
         </Link>
       </p>
 
+      <RestoredNotice shown={restored && dirty} disabled={busy} onDiscard={discardRestored} />
       <form className="settings" onSubmit={reviewChanges} noValidate>
         <ErrorSummary issues={issues} title={t("settingsFixFirst")} where={nameOf} />
 

@@ -85,10 +85,16 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   editReloaded: "A versão mais recente foi carregada.",
   editReloadedKept:
     "A versão mais recente foi carregada e as suas alterações foram mantidas. Reveja-as e guarde.",
-  editLeaveUnsaved: "Tem alterações por guardar. Sair desta página e perdê-las?",
+  editLeaveUnsaved: "Tem alterações por guardar. Sair desta página sem as guardar?",
   editActionFor: "{action}: {name}",
   editClosed: "A chamada encerrou: esta proposta já não pode ser editada.",
   editUnsaved: "Tem alterações por guardar.",
+  unsavedRestored:
+    "As suas alterações por guardar foram restauradas a partir deste dispositivo. Reveja-as e guarde.",
+  unsavedRestoredStale:
+    "As suas alterações por guardar foram restauradas a partir deste dispositivo.",
+  unsavedDiscard: "Descartar as alterações por guardar",
+  unsavedDiscarded: "Alterações por guardar descartadas.",
   editAgreements: "Antes de submeter, leia e aceite:",
   editAgree: "Aceito: {title}",
   editRead: "Ler",
@@ -168,6 +174,12 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   profileBioHelp: "Vista pela coordenação, nunca por quem revê de forma anónima.",
   profileSave: "Guardar perfil",
   profileSaved: "Perfil guardado.",
+  profileConflict:
+    "O seu perfil foi guardado noutro lugar depois de ter escrito estas alterações neste dispositivo. O formulário mostra a versão guardada. Pode voltar a pôr as suas alterações sobre ela ou descartá-las.",
+  profileConflictEmpty: "(vazio)",
+  profileConflictKeep: "Voltar a pôr as minhas alterações no formulário",
+  profileConflictDiscard: "Descartar as minhas alterações e manter a versão guardada",
+  profileConflictKept: "As suas alterações estão de novo no formulário. Reveja-as e guarde.",
 
   invTitle: "Convite para uma proposta",
   invIntro: "{owner} incluiu-o/a com o papel de {role} numa proposta para {conference}.",

@@ -17,6 +17,7 @@ import {
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const CALL = "elo2027-open";
 const FORMAT = "Reading or performance";
+const RESTORED = "Your unsaved changes were restored from this device. Review them, then save.";
 const words = (n: number) =>
   Array.from(
     { length: n },
@@ -74,6 +75,18 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.getByRole("button", { name: "Sign in with code" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
 }
+
+/** What the app keeps unsaved in this browser (apps/web/src/unsaved.ts), by storage key. */
+const unsavedKeys = (page: Page) =>
+  page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("elochair:unsaved:")));
+
+/** The values of the one buffer this browser keeps (the settings screen's), or null for none. */
+const unsavedValues = (page: Page) =>
+  page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => k.startsWith("elochair:unsaved:"));
+    const kept = key ? localStorage.getItem(key) : null;
+    return kept ? (JSON.parse(kept) as { values: Record<string, unknown> }).values : null;
+  });
 
 /** The collapsible section of one format on the settings screen. */
 const formatSection = (page: Page) =>
@@ -340,9 +353,16 @@ test.describe("conference settings", () => {
     await openSettings(chair);
     await chair.locator("summary", { hasText: FORMAT }).click();
     const most = formatSection(chair).getByLabel("Most words in the abstract");
+    const people = formatSection(chair).getByLabel("Most people");
     await most.fill("310");
+    await people.fill("7");
     await chair.getByRole("button", { name: "Review changes" }).click();
     await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    // Typed and not saved yet: this browser keeps it.
+    const MOST = "submissionTypes.performance.abstract.maxWords";
+    const PEOPLE = "submissionTypes.performance.team.max";
+    const DAY = "deadlines.notification#date";
+    await expect.poll(() => unsavedValues(chair)).toEqual({ [MOST]: "310", [PEOPLE]: "7" });
 
     // The save is held on its way to the server, as on a slow connection.
     let release = () => {};
@@ -364,7 +384,7 @@ test.describe("conference settings", () => {
     await chair.getByRole("button", { name: "Save changes" }).click();
     await leaving;
 
-    // Meanwhile the form is still open: the same value is typed again, and another is changed.
+    // Meanwhile the form is still open: one of the values is typed again, and another is changed.
     await most.fill("320");
     const decisions = chair.getByRole("group", { name: "Decisions sent" });
     const date = decisions.getByLabel("Date");
@@ -373,6 +393,10 @@ test.describe("conference settings", () => {
       .toISOString()
       .slice(0, 10);
     await date.fill(after);
+    // The browser keeps what is in the form: what is being saved, and what was typed since.
+    await expect
+      .poll(() => unsavedValues(chair))
+      .toEqual({ [MOST]: "320", [PEOPLE]: "7", [DAY]: after });
     release();
 
     // The page says what was saved and what was not, without taking the person out of the form.
@@ -385,13 +409,16 @@ test.describe("conference settings", () => {
     const stored = (await (
       await chair.request.get(`/api/conferences/${CALL}/settings`)
     ).json()) as {
-      config: { submissionTypes: { key: string; abstract: { maxWords: number } }[] };
+      config: {
+        submissionTypes: { key: string; abstract: { maxWords: number }; team: { max: number } }[];
+      };
     };
-    expect(
-      stored.config.submissionTypes.find((type) => type.key === "performance")?.abstract.maxWords,
-    ).toBe(310);
+    const performance = stored.config.submissionTypes.find((type) => type.key === "performance");
+    expect(performance?.abstract.maxWords).toBe(310);
+    expect(performance?.team.max).toBe(7);
     // ...and what was typed since is still in the form, as changes to what was saved.
     await expect(most).toHaveValue("320");
+    await expect(people).toHaveValue("7");
     await expect(date).toHaveValue(after);
     await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
     await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
@@ -401,11 +428,25 @@ test.describe("conference settings", () => {
     await expect(review.getByRole("listitem")).toHaveCount(2);
     await expect(review).toContainText("from “310” to “320”");
     await expect(review).toContainText("Decisions sent");
+    // The browser now keeps only that: the value that was saved untouched is no longer in it.
+    await expect.poll(() => unsavedValues(chair)).toEqual({ [MOST]: "320", [DAY]: after });
+    // A reload brings exactly that back, on top of what was saved, and the page says so.
+    await chair.reload();
+    await expect(chair.getByText(RESTORED)).toBeVisible();
+    await expect(most).toHaveValue("320");
+    await expect(people).toHaveValue("7");
+    await expect(date).toHaveValue(after);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(review.getByRole("listitem")).toHaveCount(2);
+    await expect(review).toContainText("from “310” to “320”");
 
-    // Back as they were, for the tests that run beside this one.
+    // Back as they were, for the tests that run beside this one. With everything saved, the
+    // browser keeps nothing.
     await most.fill("300");
+    await people.fill("6");
     await date.fill(before);
     await reviewAndSave(chair);
+    await expect.poll(() => unsavedValues(chair)).toBeNull();
     await chair.goto(`/en/c/${CALL}`);
     await expect(listedFormat(chair)).toContainText("300 words at most");
   });
@@ -467,8 +508,37 @@ test.describe("conference settings", () => {
     await expect(review).toContainText("from “300” to “310”");
     await expect(chair.getByRole("button", { name: "Save changes" })).toBeVisible();
 
-    // Nothing of this is kept: the form is put back, and so is the value changed elsewhere.
-    await most.fill("300");
+    // What is typed and not saved is kept in this browser, as in the proposal editor. After a
+    // reload (or a tab the phone closed) it is back in the form, in a section that is open, and
+    // the page says so.
+    await expect.poll(() => unsavedKeys(chair)).toHaveLength(1);
+    await chair.reload();
+    await expect(chair.getByText(RESTORED)).toBeVisible();
+    await expect(most).toBeVisible();
+    await expect(most).toHaveValue("310");
+    await expect(chair.getByText("Values changed and not saved yet: 1.")).toBeVisible();
+    const discard = chair.getByRole("button", { name: "Discard unsaved changes" });
+    await expectTouchTarget(discard);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    // It is still only typed: the review comes before any save, and shows it against what is stored.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(review.getByRole("listitem")).toHaveCount(1);
+    await expect(review).toContainText("from “300” to “310”");
+
+    // Discarding puts the saved settings back and keeps nothing: the form is as it was, and so,
+    // below, is the value changed elsewhere.
+    await discard.click();
+    await expect(chair.getByRole("status")).toHaveText("Unsaved changes discarded.");
+    await expect(chair.getByRole("status")).toBeFocused();
+    await expect(most).toHaveValue("300");
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+    await chair.reload();
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
     await elsewhere(6);
   });
 });

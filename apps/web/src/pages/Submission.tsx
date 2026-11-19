@@ -21,16 +21,23 @@ import {
   type Role,
 } from "../api";
 import { formatDateTime, hasMinimum, numberLimits, viewerTimeZone } from "../format";
-import { cleanName, describedBy, ErrorSummary, FieldError, fieldId, nameRefusal } from "../forms";
+import {
+  cleanName,
+  describedBy,
+  ErrorSummary,
+  FieldError,
+  fieldId,
+  nameRefusal,
+  RestoredNotice,
+} from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
+import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
+import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsavedProposal";
+import { useUnsaved } from "../useUnsaved";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
-type Form = Pick<
-  MySubmission,
-  "title" | "abstract" | "trackKey" | "topicKeys" | "language" | "participationMode" | "fields"
->;
 type SelfIdFinding = { path: string; kind: SelfIdKind };
 /** Runs one request at a time for the whole editor; a repeat tap while one is pending is ignored. */
 type Exclusive = <T>(work: () => Promise<T>) => Promise<T | null>;
@@ -88,6 +95,20 @@ function reapply(onto: Form, from: Form, edited: Form): Form {
   return out;
 }
 
+/** Where the browser keeps a proposal's unsaved changes (see unsaved.ts). */
+const unsavedScope = (submissionId: string) => `submission:${submissionId}`;
+
+/** The changed values by form path, as the browser keeps them. A cleared field is null. */
+function unsavedOf(form: Form, changed: Iterable<string>): UnsavedValues {
+  const out: UnsavedValues = {};
+  for (const path of changed) {
+    out[path] = path.startsWith("fields.")
+      ? (form.fields[path.slice("fields.".length)] ?? null)
+      : form[path as (typeof PLAIN_KEYS)[number]];
+  }
+  return out;
+}
+
 /** The same page in any interface language ("/es/s/1" and "/en/s/1" are one page). */
 const withoutLang = (pathname: string) => pathname.replace(/^\/[a-z]{2}(?=\/|$)/, "");
 
@@ -106,6 +127,10 @@ export function SubmissionPage() {
       api<Me>("/api/me"),
     ]);
     if (!s.ok || !k.ok) {
+      // Deleted elsewhere: what was left unsaved for it in this browser goes too.
+      if (!s.ok && s.status === 404 && m.ok && m.data.kind === "person" && m.data.person) {
+        clearUnsaved(browserStore(), m.data.person.id, unsavedScope(id));
+      }
       setMissing(true);
       return;
     }
@@ -430,9 +455,27 @@ function Editor({
   const navigate = useNavigate();
   const config = conf.config;
   const [sub, setSub] = useState(initial);
+  const type = config.submissionTypes.find((x) => x.key === sub.typeKey) as
+    | SubmissionType
+    | undefined;
+  const editable = conf.callOpen && (sub.status === "draft" || sub.status === "submitted");
+  // The editor is the owner's: their unsaved changes are kept in this browser under their id.
+  const { found, keep, drop } = useUnsaved(initial.ownerPersonId, unsavedScope(initial.id));
   /** The form as the server last had it. Unsaved changes are the differences from it. */
   const [base, setBase] = useState<Form>(() => formOf(initial));
-  const [form, setForm] = useState<Form>(() => formOf(initial));
+  /** Changes an earlier visit left unsaved in this browser, back on top of the server's copy. */
+  const [restore] = useState(() => {
+    if (!editable || !found) return null;
+    const kept = withUnsaved(base, found.values, config, type);
+    return changedPaths(base, kept).length > 0
+      ? { form: kept, version: found.version, moved: found.version !== initial.version }
+      : null;
+  });
+  const [form, setForm] = useState<Form>(() => restore?.form ?? base);
+  /** Restored changes the owner has not saved or discarded yet; "moved": the server's copy is newer. */
+  const [restored, setRestored] = useState<"same" | "moved" | null>(null);
+  /** Restored onto a newer copy: the buffer keeps its old version until the owner has chosen. */
+  const [heldVersion, setHeldVersion] = useState(restore?.moved ? restore.version : null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [message, setMessage] = useState("");
   const [stale, setStale] = useState(false);
@@ -444,13 +487,27 @@ function Editor({
   /** Set just before navigating away on purpose (after deleting), so the guard lets it through. */
   const leaving = useRef(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
-  const type = config.submissionTypes.find((x) => x.key === sub.typeKey) as
-    | SubmissionType
-    | undefined;
-  const editable = conf.callOpen && (sub.status === "draft" || sub.status === "submitted");
   const changed = useMemo(() => new Set(changedPaths(base, form)), [base, form]);
   const dirty = changed.size > 0;
+  const unsaved = useMemo(() => unsavedOf(form, changed), [form, changed]);
   const live = useLiveSelfId(form, sub, config);
+
+  // Said after the first render, so that the notice is announced. Changes made on an older
+  // version get the same choice as a stale save: keep them on the latest version, or discard.
+  useEffect(() => {
+    if (!restore) return;
+    setRestored(restore.moved ? "moved" : "same");
+    if (restore.moved) setStale(true);
+  }, [restore]);
+
+  useEffect(() => {
+    if (editable) keep(unsaved, heldVersion ?? sub.version);
+  }, [keep, editable, unsaved, heldVersion, sub.version]);
+
+  // Withdrawn work can no longer be edited: what was left unsaved goes with it.
+  useEffect(() => {
+    if (sub.status === "withdrawn") drop();
+  }, [sub.status, drop]);
 
   const refreshCheck = useCallback(
     async (version: number) => {
@@ -533,6 +590,7 @@ function Editor({
       setBase(fresh);
       // Anything typed while the save was on its way stays as an unsaved change.
       setForm((current) => reapply(fresh, sent, current));
+      setRestored(null);
     }
     return saved;
   }
@@ -597,6 +655,7 @@ function Editor({
         body: { version: sub.version },
       });
       if (res.ok) {
+        drop();
         leaving.current = true;
         navigate(`/${lang}/my`);
       } else if (res.error === "stale") setStale(true);
@@ -623,11 +682,21 @@ function Editor({
       setBase(fresh);
       setSub(res.data);
       setStale(false);
+      setRestored(null);
+      setHeldVersion(null);
       setIssues([]);
       setMessage(kept ? t("editReloadedKept") : t("editReloaded"));
       refreshCheck(res.data.version);
       statusRef.current?.focus();
     });
+  }
+
+  /** Back to the saved version. The notice goes away: focus moves to the line that says so. */
+  function discardRestored() {
+    setForm(base);
+    setRestored(null);
+    setMessage(t("unsavedDiscarded"));
+    statusRef.current?.focus();
   }
 
   const abstractMin = type?.abstract.minWords;
@@ -664,11 +733,17 @@ function Editor({
       {stale && (
         <StalePanel
           dirty={dirty}
+          restored={restored === "moved"}
           busy={busy}
           onKeep={() => reload(true)}
           onDiscard={() => reload(false)}
         />
       )}
+      <RestoredNotice
+        shown={restored === "same" && dirty && !stale}
+        disabled={busy}
+        onDiscard={discardRestored}
+      />
       <p className="status-line" role="status" tabIndex={-1} ref={statusRef}>
         {message}
       </p>
@@ -725,7 +800,7 @@ function Editor({
           ))}
         </select>
 
-        {config.modality === "hybrid" && (
+        {showsControl("participationMode", config, type) && (
           <fieldset id={fieldId("participationMode")} tabIndex={-1} disabled={!editable}>
             <legend>{t("startMode")}</legend>
             {(["in_person", "online", "undecided"] as const).map((m) => (
@@ -743,7 +818,7 @@ function Editor({
           </fieldset>
         )}
 
-        {config.tracks.length > 0 && (
+        {showsControl("trackKey", config, type) && (
           <>
             <label htmlFor={fieldId("trackKey")}>{t("editTrack")}</label>
             <select
@@ -762,7 +837,7 @@ function Editor({
           </>
         )}
 
-        {config.topics.length > 0 && (
+        {showsControl("topicKeys", config, type) && (
           <fieldset id={fieldId("topicKeys")} tabIndex={-1} disabled={!editable}>
             <legend>{t("editTopics")}</legend>
             {config.topics.map((x) => (
@@ -914,26 +989,34 @@ function Editor({
   );
 }
 
-/** Shown when a save or action was refused as stale. The form and its unsaved text stay. */
+/**
+ * Shown when a save or action was refused as stale. The form and its unsaved text stay. Also
+ * shown when the page opens with unsaved changes from this browser (`restored`) that were made
+ * on an older version: nothing was tapped then, so the panel is announced but takes no focus.
+ */
 function StalePanel({
   dirty,
+  restored,
   busy,
   onKeep,
   onDiscard,
 }: {
   dirty: boolean;
+  restored: boolean;
   busy: boolean;
   onKeep: () => void;
   onDiscard: () => void;
 }) {
   const { t } = useT();
   const ref = useRef<HTMLDivElement>(null);
+  const takesFocus = useRef(!restored);
   useEffect(() => {
-    ref.current?.focus();
+    if (takesFocus.current) ref.current?.focus();
   }, []);
   return (
     <div className="notice stack wide" tabIndex={-1} ref={ref}>
       <p role="alert">
+        {restored ? `${t("unsavedRestoredStale")} ` : ""}
         {t("editStale")} {dirty ? t("editStaleDirty") : ""}
       </p>
       {dirty ? (

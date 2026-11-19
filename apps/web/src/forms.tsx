@@ -104,3 +104,32 @@ export const describedBy = (path: string, issues: Issue[], ...more: string[]) =>
   [...more, issues.some((i) => i.path === path) ? `${fieldId(path)}-error` : ""]
     .filter(Boolean)
     .join(" ") || undefined;
+
+/**
+ * Says that unsaved changes kept in this browser (see unsaved.ts) are back in the form, and
+ * offers to discard them. The outer element is always rendered, so that the notice is announced
+ * when it appears: show it after the first render, not with it.
+ */
+export function RestoredNotice({
+  shown,
+  disabled = false,
+  onDiscard,
+}: {
+  shown: boolean;
+  disabled?: boolean;
+  onDiscard: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <div className="restored" aria-live="polite">
+      {shown && (
+        <div className="notice stack wide">
+          <p>{t("unsavedRestored")}</p>
+          <button type="button" className="secondary" disabled={disabled} onClick={onDiscard}>
+            {t("unsavedDiscard")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

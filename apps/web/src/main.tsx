@@ -4,12 +4,16 @@ import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { App, RootError } from "./App";
 import "./styles/index.css";
+import { browserStore, expireUnsaved } from "./unsaved";
 
 /**
  * A data router, so a page with unsaved work can hold back in-app navigation (useBlocker). The
  * route table itself stays in <App>, below this one catch-all route.
  */
 const router = createBrowserRouter([{ path: "*", element: <App />, errorElement: <RootError /> }]);
+
+// Unsaved text kept in this browser does not stay for ever (see unsaved.ts).
+expireUnsaved(browserStore());
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
