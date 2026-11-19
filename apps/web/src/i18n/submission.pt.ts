@@ -228,6 +228,37 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   manageOverCap: "{n} pessoas acima do limite de apresentações",
   manageNoChair: "{n} que nenhuma pessoa da coordenação pode gerir",
   manageIssues: "Problemas",
+  phaseTitle: "Fase do congresso",
+  phaseNow: "O congresso está na fase «{phase}».",
+  phaseNext: "Passar para «{phase}»",
+  phaseBack: "Voltar a «{phase}»",
+  phaseAskNext: "Passar o congresso para «{phase}»?",
+  phaseAskBack: "Fazer o congresso voltar a «{phase}»?",
+  phaseDoNext: "Sim, passar",
+  phaseDoBack: "Sim, voltar atrás",
+  phaseCancel: "Cancelar",
+  phaseReason: "Motivo para voltar atrás",
+  phaseReasonHint: "Uma linha. Fica registado com a alteração.",
+  phaseReasonNeeded: "Escreva o motivo numa linha, com pelo menos uma letra ou um algarismo.",
+  phaseMoved: "O congresso está agora na fase «{phase}».",
+  phaseOutdated: "A fase não foi alterada: já tinha mudado. Aqui é mostrada como está agora.",
+  phaseNoAccess: "Só quem preside a este congresso pode alterar a sua fase.",
+  phaseUnconfirmed: "O servidor não confirmou a alteração. Tente novamente.",
+  phaseDoes_draft:
+    "O congresso fica oculto para toda a gente, exceto para quem o preside, e ninguém pode iniciar, editar, submeter ou retirar uma proposta; cada pessoa continua a ver as suas próprias propostas.",
+  phaseDoes_cfp_open:
+    "O congresso é público, e podem ser iniciadas, editadas e submetidas propostas entre as datas de abertura e de encerramento indicadas na configuração.",
+  phaseDoes_reviewing:
+    "A chamada está fechada, digam as datas o que disserem: ninguém pode iniciar, editar ou submeter uma proposta, nem confirmar um convite, mas uma proposta submetida ainda pode ser retirada.",
+  phaseDoes_deciding:
+    "O que cada pessoa pode fazer é o mesmo que em «{reviewing}»: a chamada está fechada e uma proposta submetida ainda pode ser retirada; a lista de congressos mostra a nova fase.",
+  phaseDoes_confirming: "A chamada está fechada e uma proposta submetida já não pode ser retirada.",
+  phaseDoes_scheduling:
+    "O que cada pessoa pode fazer é o mesmo que em «{confirming}»: a chamada está fechada e uma proposta submetida não pode ser retirada; a lista de congressos mostra a nova fase.",
+  phaseDoes_published:
+    "Isto ainda não publica nada: o que cada pessoa pode fazer é o mesmo que em «{confirming}», e a lista de congressos mostra a nova fase.",
+  phaseDoes_archived:
+    "Isto ainda não oculta nem elimina nada: o que cada pessoa pode fazer é o mesmo que em «{confirming}», e a lista de congressos mostra a nova fase.",
   issueLabel_unknown_type: "Formato desconhecido",
   issueLabel_unknown_track: "Eixo desconhecido",
   issueLabel_unknown_topic: "Tema desconhecido",

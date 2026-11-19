@@ -41,6 +41,13 @@ async function expectTouchTarget(target: Locator) {
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
 }
 
+async function expectNoHorizontalScroll(page: Page) {
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+}
+
 async function latestMail(request: APIRequestContext, email: string) {
   const res = await request.get(`/api/_test/outbox/latest?to=${encodeURIComponent(email)}`);
   return (await res.json()) as { subject: string; text: string };
@@ -1219,4 +1226,141 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await expect(apply).toBeFocused();
   await page.unroute(isMore);
   await page.unroute(isSearch);
+
+  // A chair moves the phase from here, one step at a time, after a confirmation that says what
+  // the phase does. Only the sandbox is moved (other tests depend on the other conferences),
+  // and it is left "In review", as it was seeded.
+  const PHASE = "/api/conferences/sandbox/phase";
+  const phaseNow = async () =>
+    ((await (await page.request.get("/api/conferences/sandbox")).json()) as { phase: string })
+      .phase;
+  const sent: unknown[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "PUT" && new URL(r.url()).pathname === PHASE) sent.push(r.postDataJSON());
+  });
+  await page.goto("/en/c/sandbox/manage");
+  const phase = page.getByRole("region", { name: "Conference phase" });
+  const shows = (name: string) =>
+    expect(phase.getByText(`The conference is in the phase “${name}”.`)).toBeVisible();
+  await shows("In review");
+  const forward = phase.getByRole("button", { name: "Move to “Decisions in progress”" });
+  const goBack = phase.getByRole("button", { name: "Go back to “Call for proposals open”" });
+  await expectTouchTarget(forward);
+  await expectTouchTarget(goBack);
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+
+  // The button moves nothing. It asks, in its place, and says in a sentence what the phase does.
+  const DECIDING =
+    "What people can do is the same as in “In review”: the call is closed and a submitted proposal can still be withdrawn; the list of conferences shows the new phase.";
+  await forward.click();
+  await expect(
+    phase.getByRole("heading", { name: "Move the conference to “Decisions in progress”?" }),
+  ).toBeFocused();
+  await expect(phase.getByText(DECIDING)).toBeVisible();
+  await expect(forward).toHaveCount(0);
+  const yes = phase.getByRole("button", { name: "Yes, move it" });
+  const cancel = phase.getByRole("button", { name: "Cancel" });
+  // Someone who tabs straight to the button hears the sentence with it.
+  await expect(yes).toHaveAccessibleDescription(DECIDING);
+  await expectTouchTarget(yes);
+  await expectTouchTarget(cancel);
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+  await cancel.click();
+  await expect(forward).toBeFocused();
+  expect(sent).toEqual([]);
+  expect(await phaseNow()).toBe("reviewing");
+
+  // The move does not arrive: the page says so, and the confirmation stays to be tried again.
+  const said = phase.getByRole("status");
+  await page.route(`**${PHASE}`, (route) => route.abort());
+  await forward.click();
+  await yes.focus();
+  await page.keyboard.press("Enter");
+  await expect(said).toHaveText("The server did not confirm the move. Please try again.");
+  await expect(yes).toBeFocused();
+  await page.unroute(`**${PHASE}`);
+  expect(await phaseNow()).toBe("reviewing");
+
+  // Confirmed, the conference moves: the page says so there, and shows the phase as it is now.
+  await page.keyboard.press("Enter");
+  await expect(said).toHaveText("The conference is now in the phase “Decisions in progress”.");
+  await expect(said).toBeFocused();
+  await shows("Decisions in progress");
+  await expect(
+    phase.getByRole("button", { name: "Move to “Confirming participants”" }),
+  ).toBeVisible();
+  expect(sent.at(-1)).toEqual({ phase: "deciding" });
+  expect(await phaseNow()).toBe("deciding");
+
+  // Going back asks for a reason, and is not sent without one that the server would take.
+  const before = sent.length;
+  await phase.getByRole("button", { name: "Go back to “In review”" }).click();
+  await expect(
+    phase.getByRole("heading", { name: "Take the conference back to “In review”?" }),
+  ).toBeFocused();
+  await expect(
+    phase.getByText(
+      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn.",
+    ),
+  ).toBeVisible();
+  const reason = phase.getByLabel("Reason for going back");
+  const takeBack = phase.getByRole("button", { name: "Yes, take it back" });
+  const NEEDED = "Write the reason in one line, with at least one letter or digit.";
+  await expectTouchTarget(reason);
+  await expectTouchTarget(takeBack);
+  await expect(reason).toHaveAttribute("maxlength", "500");
+  await takeBack.click();
+  await expect(phase.getByText(NEEDED)).toBeVisible();
+  await expect(reason).toBeFocused();
+  await expect(reason).toHaveAttribute("aria-invalid", "true");
+  await expect(reason).toHaveAccessibleDescription(new RegExp(`${NEEDED}$`));
+  expect(sent).toHaveLength(before);
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+  // Typing takes the message away; a reason with no letter or digit is the server's to refuse.
+  await reason.fill("?!");
+  await expect(phase.getByText(NEEDED)).toHaveCount(0);
+  await takeBack.click();
+  await expect(phase.getByText(NEEDED)).toBeVisible();
+  await expect(reason).toBeFocused();
+  expect(sent.at(-1)).toEqual({ phase: "reviewing", force: true, reason: "?!" });
+  expect(await phaseNow()).toBe("deciding");
+  // An invisible mark pasted along with the reason is not sent.
+  await reason.fill(`${LRM}Moved by a browser test; back as it was `);
+  await takeBack.click();
+  await expect(said).toHaveText("The conference is now in the phase “In review”.");
+  await expect(said).toBeFocused();
+  await shows("In review");
+  expect(sent.at(-1)).toEqual({
+    phase: "reviewing",
+    force: true,
+    reason: "Moved by a browser test; back as it was",
+  });
+  expect(await phaseNow()).toBe("reviewing");
+
+  // Another chair moves the phase first (here, this chair's own session, behind the page): the
+  // move asked for no longer applies, the page says so and shows the phase as it is now.
+  const elsewhere = await page.request.put(PHASE, {
+    headers: { origin: new URL(page.url()).origin },
+    data: { phase: "deciding" },
+  });
+  expect(elsewhere.status()).toBe(200);
+  await shows("In review");
+  await forward.click();
+  await yes.click();
+  await expect(said).toHaveText(
+    "The phase was not moved: it had already changed. It is shown here as it is now.",
+  );
+  await expect(said).toBeFocused();
+  await shows("Decisions in progress");
+  await expectAccessible(page);
+  // And back, to leave the sandbox as it was found.
+  await phase.getByRole("button", { name: "Go back to “In review”" }).click();
+  await reason.fill("Left as it was found");
+  await takeBack.click();
+  await expect(said).toHaveText("The conference is now in the phase “In review”.");
+  await shows("In review");
+  expect(await phaseNow()).toBe("reviewing");
 });

@@ -1,7 +1,6 @@
 import {
   actingPerson,
   type ChairSubmission,
-  isConferenceAdmin,
   isConferenceChair,
   type PersonViewer,
   projectSubmission,
@@ -58,11 +57,12 @@ function canChair(viewer: Viewer, conferenceId: string): boolean {
 const visible = (viewer: Viewer, k: ConferenceRow) => k.phase !== "draft" || canChair(viewer, k.id);
 
 /**
- * The person changing a conference's configuration, or a refusal. Configuration changes are
- * human-only: an agent may read a conference but never reconfigure it. Chairs may change the
- * stage-one values (packages/schema settings.ts); admins, anything.
+ * The person changing a conference's configuration or moving its phase, or a refusal. Both are
+ * human-only: an agent may read a conference but never reconfigure or move it. Both are for the
+ * conference's chairs, who are one group with its admins and the site admins (isConferenceChair).
+ * Track chairs and reviewers are refused.
  */
-async function configEditor(
+async function chairInPerson(
   c: Context<AppEnv>,
 ): Promise<{ viewer: PersonViewer; k: ConferenceRow }> {
   const viewer = c.get("viewer");
@@ -130,18 +130,17 @@ export const conferenceRoutes = new Hono<AppEnv>()
     return c.json({ slug: k.slug, phase: k.phase, config: k.config, callOpen });
   })
   .get("/:slug/settings", async (c) => {
-    const { viewer, k } = await configEditor(c);
+    const { k } = await chairInPerson(c);
     return c.json({
       slug: k.slug,
       phase: k.phase,
       callOpen: isCallOpen(k.config, k.phase, c.get("deps").now()),
       config: k.config,
       token: configToken(k.config),
-      scope: isConferenceAdmin(viewer, k.id) ? "all" : "stage_one",
     });
   })
   .post("/:slug/config/preview", async (c) => {
-    const { viewer, k } = await configEditor(c);
+    const { viewer, k } = await chairInPerson(c);
     const { db, now } = c.get("deps");
     const input = await configBody(c, k);
     // What a save would do, without saving: changed values, problems, what blocks, what warns.
@@ -156,7 +155,7 @@ export const conferenceRoutes = new Hono<AppEnv>()
     return c.json(review);
   })
   .put("/:slug/config", async (c) => {
-    const { viewer, k } = await configEditor(c);
+    const { viewer, k } = await chairInPerson(c);
     const deps = c.get("deps");
     const input = await configBody(c, k);
     const base = baseToken(c);
@@ -179,7 +178,6 @@ export const conferenceRoutes = new Hono<AppEnv>()
         now,
       });
       if (review.stale) throw new Refusal(409, "stale", { token: review.token });
-      if (review.forbidden.length) throw new Refusal(403, "forbidden", { paths: review.forbidden });
       if (review.blocked) {
         throw new Refusal(409, "submitted_work_invalid", { blocked: review.blocked });
       }
@@ -293,17 +291,13 @@ export const conferenceRoutes = new Hono<AppEnv>()
   .get("/:slug/submissions.csv", async (c) => csvExport(c, "submissions"))
   .get("/:slug/contributors.csv", async (c) => csvExport(c, "contributors"))
   .put("/:slug/phase", async (c) => {
-    const viewer = c.get("viewer");
+    // Like the configuration, the phase is moved by a chair, in person.
+    const { viewer, k } = await chairInPerson(c);
     const deps = c.get("deps");
-    const k = await getConference(deps.db, c.req.param("slug"));
-    if (!k || !visible(viewer, k)) throw new Refusal(404, "not_found");
-    // Phase changes are human-only and for conference admins.
-    if (viewer.kind !== "person" || !isConferenceAdmin(viewer, k.id))
-      throw new Refusal(403, "forbidden");
     const input = PhaseInput.parse(await c.req.json());
     const now = deps.now();
     // Check and move under a row lock, against the phase the conference holds at that moment:
-    // two admins moving it at once cannot combine into a backward move nobody forced.
+    // two chairs moving it at once cannot combine into a backward move nobody forced.
     await deps.db.transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
       const moved = await movePhase(tx, k.id, {

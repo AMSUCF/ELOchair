@@ -252,19 +252,29 @@ describe("conference configuration", () => {
     );
   });
 
-  it("refuses changes from chairs to what only admins may change", async () => {
-    // What chairs may change, and the rest of the rules, are in settings.test.ts.
+  it("lets a chair change what used to be an admin's, and audits the change", async () => {
+    // Chairs and admins are one group. The rest of the rules are in settings.test.ts.
     const settings = await call(t.public, "GET", `/api/conferences/${s.slug}/settings`, {
       cookie: chairCookie,
     });
-    expect(settings.json.scope).toBe("stage_one");
+    expect(settings.json).not.toHaveProperty("scope");
+    const before = settings.json.config.timezone;
     const res = await call(t.public, "PUT", `/api/conferences/${s.slug}/config`, {
       cookie: chairCookie,
       ifMatch: settings.json.token,
       body: { ...settings.json.config, timezone: "Europe/Lisbon" },
     });
-    expect(res.status).toBe(403);
-    expect(res.json).toEqual({ error: "forbidden", paths: ["timezone"] });
+    expect(res.status).toBe(200);
+    expect(res.json.config.timezone).toBe("Europe/Lisbon");
+    const rows = await t.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "conference.config_updated"));
+    expect(rows.at(-1)?.actorKind).toBe("human");
+    expect(rows.at(-1)?.details).toEqual({
+      changes: [{ path: "timezone", before, after: "Europe/Lisbon" }],
+      draftsAffected: 0,
+    });
   });
 });
 

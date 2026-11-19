@@ -6,7 +6,7 @@ export const settingsEn = {
   settingsIntro:
     "Change the conference's details, dates, limits and texts here. You review every change before it is saved, and each save is recorded.",
   settingsScopeNote:
-    "A conference admin adds or removes formats and fields, and changes the languages, the time zone, the review settings and the agreements.",
+    "Formats, fields and languages are added or removed by importing a configuration on the server, not here.",
   settingsBackToManage: "Back to the submissions",
   settingsSectionConference: "The conference",
   settingsSectionDeadlines: "Deadlines",
@@ -86,7 +86,6 @@ export const settingsEn = {
     "This closes the call as soon as you save: nobody will be able to start, edit or submit a proposal, or confirm an invitation to one.",
   settingsWarnOpens: "This opens the call as soon as you save.",
   settingsWarnPast: "“{deadline}” would be in the past.",
-  settingsForbidden: "Only a conference admin may change: {paths}.",
   settingsStale:
     "Someone else has changed these settings since you opened them. Reload them to go on; what you typed stays in the form.",
   settingsReload: "Reload the settings",

@@ -5,15 +5,16 @@ import { conferences as configs, isForwardPhaseMove } from "@elochair/schema";
 import { and, asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type CliContext, runCli } from "./cli";
-import { auditLog, conferences } from "./db/schema";
+import { auditLog, conferences, people } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
-import { getConference, grantRole, saveConference } from "./repo";
+import { createApiToken, getConference, grantRole, saveConference } from "./repo";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
 /*
  * Conference phases move forward only, unless forced with a reason, and every move is audited
  * with from, to and reason: through the API (under a row lock), set-phase, import-config and
- * seed --force.
+ * seed --force. Through the API a chair moves the phase, as an admin does (they are one group);
+ * nobody else, and no agent.
  */
 
 let t: TestApp;
@@ -73,6 +74,118 @@ beforeAll(async () => {
 afterAll(async () => {
   await t.close();
   await rm(dir, { recursive: true, force: true });
+});
+
+describe("who may move the phase through the API", () => {
+  const SLUG = "who-moves";
+  const move = (who: { cookie?: string; token?: string }, body: Record<string, unknown>) =>
+    call(t.public, "PUT", `/api/conferences/${SLUG}/phase`, { ...who, body });
+  const cookies: Record<string, string> = {};
+  let agentToken: string;
+
+  beforeAll(async () => {
+    const { conferenceId } = await seedTestCall(t.db, { slug: SLUG, now: new Date("2027-02-01") });
+    const roles = { chair: "chair", track: "track_chair", reviewer: "reviewer" } as const;
+    for (const [who, role] of Object.entries(roles)) {
+      cookies[who] = await signIn(t, `phase-${who}@example.org`);
+      await grantRole(t.db, {
+        conferenceId,
+        personId: await personId(t, `phase-${who}@example.org`),
+        role,
+      });
+    }
+    // Signed in, with no role at this conference; and the admin of the other conferences here.
+    cookies.stranger = await signIn(t, "phase-stranger@example.org");
+    cookies.elsewhere = adminCookie;
+    // An agent of the chair who may move it: phase moves are human-only all the same.
+    agentToken = (
+      await createApiToken(t.db, {
+        personId: await personId(t, "phase-chair@example.org"),
+        conferenceId,
+        tier: "M",
+        name: "phase test",
+      })
+    ).token;
+  }, 120_000);
+
+  it("refuses a track chair, a reviewer, anyone without a role here, the public and an agent", async () => {
+    for (const who of ["track", "reviewer", "stranger", "elsewhere", "public"]) {
+      const forward = await move({ cookie: cookies[who] }, { phase: "reviewing" });
+      expect(forward.status, who).toBe(403);
+      expect(forward.json.error, who).toBe("forbidden");
+      // Forcing it with a reason changes nothing about who may.
+      const forced = await move(
+        { cookie: cookies[who] },
+        { phase: "draft", force: true, reason: "Not mine to move" },
+      );
+      expect(forced.status, who).toBe(403);
+    }
+    expect((await move({ token: agentToken }, { phase: "reviewing" })).status).toBe(403);
+    expect(await phaseOf(SLUG)).toBe("cfp_open");
+    expect(await phaseAudit(SLUG)).toEqual([]);
+  });
+
+  it("lets a chair move it forward, and back only with a reason; each move is audited", async () => {
+    const forward = await move({ cookie: cookies.chair }, { phase: "reviewing" });
+    expect(forward.status).toBe(200);
+    expect(forward.json).toEqual({ slug: SLUG, phase: "reviewing" });
+    expect(await phaseOf(SLUG)).toBe("reviewing");
+
+    // Back: refused bare, refused when only forced, and nothing moves.
+    const bare = await move({ cookie: cookies.chair }, { phase: "cfp_open" });
+    expect(bare.status).toBe(409);
+    expect(bare.json).toEqual({ error: "phase_backwards", from: "reviewing", to: "cfp_open" });
+    const unexplained = await move({ cookie: cookies.chair }, { phase: "cfp_open", force: true });
+    expect(unexplained.status).toBe(409);
+    expect(await phaseOf(SLUG)).toBe("reviewing");
+
+    const back = await move(
+      { cookie: cookies.chair },
+      { phase: "cfp_open", force: true, reason: "Two proposals arrived by email" },
+    );
+    expect(back.status).toBe(200);
+    expect(await phaseOf(SLUG)).toBe("cfp_open");
+
+    const rows = await phaseAudit(SLUG);
+    expect(rows.map((r) => r.actorKind)).toEqual(["human", "human"]);
+    const chairId = await personId(t, "phase-chair@example.org");
+    expect(rows.map((r) => r.actorPersonId)).toEqual([chairId, chairId]);
+    expect(rows.map((r) => r.details)).toEqual([
+      { from: "cfp_open", to: "reviewing", forced: false },
+      {
+        from: "reviewing",
+        to: "cfp_open",
+        forced: true,
+        reason: "Two proposals arrived by email",
+      },
+    ]);
+  });
+
+  it("lets a site admin move it, with no role at the conference", async () => {
+    const cookie = await signIn(t, "phase-site-admin@example.org");
+    expect((await move({ cookie }, { phase: "reviewing" })).status).toBe(403);
+    await t.db
+      .update(people)
+      .set({ siteAdmin: true })
+      .where(eq(people.id, await personId(t, "phase-site-admin@example.org")));
+    expect((await move({ cookie }, { phase: "reviewing" })).status).toBe(200);
+    const back = await move(
+      { cookie },
+      { phase: "cfp_open", force: true, reason: "Reopened by the site admin" },
+    );
+    expect(back.status).toBe(200);
+    expect(await phaseOf(SLUG)).toBe("cfp_open");
+  });
+
+  it("keeps a draft conference a secret from those who cannot move it", async () => {
+    // cfp_open to draft is the one backward move that needs no reason.
+    expect((await move({ cookie: cookies.chair }, { phase: "draft" })).status).toBe(200);
+    for (const who of ["track", "reviewer", "stranger", "public"]) {
+      expect((await move({ cookie: cookies[who] }, { phase: "cfp_open" })).status, who).toBe(404);
+    }
+    expect(await phaseOf(SLUG)).toBe("draft");
+    expect((await move({ cookie: cookies.chair }, { phase: "cfp_open" })).status).toBe(200);
+  });
 });
 
 describe("PUT /api/conferences/:slug/phase", () => {

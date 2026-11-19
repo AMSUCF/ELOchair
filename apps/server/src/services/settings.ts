@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-  isConferenceAdmin,
   type PersonViewer,
   type SubmissionRecord,
   submissionAccess,
@@ -9,7 +8,6 @@ import {
 import {
   ConferenceConfig,
   type ConfigChange,
-  chairMayChange,
   configChanges,
   isCallOpen,
   keyedPath,
@@ -21,7 +19,8 @@ import type { ConferenceRow } from "../repo";
 
 /*
  * Changing a conference's configuration through the app (spec 02, §1.9): what a change would
- * do, and whether this person may make it. The route saves only what a review lets through.
+ * do. Who may make one is the route's to say (any chair, in person: every chair may save any
+ * valid configuration); it saves only what a review lets through.
  *
  * Everything here answers in paths, codes, counts and opaque submission IDs: never a name, a
  * title or a word of anyone's text.
@@ -128,12 +127,8 @@ export type ConfigReview = {
   token: string;
   /** The configuration the caller started from is no longer the stored one. */
   stale: boolean;
-  /** What this person may change: everything (admins) or the stage-one values (chairs). */
-  scope: "all" | "stage_one";
   issues: ConfigIssue[];
   changes: ConfigChange[];
-  /** Changed paths this person may not change. */
-  forbidden: string[];
   blocked: Blocked | null;
   warnings: {
     /** Drafts that would have a problem they do not have now. Drafts never block. */
@@ -161,9 +156,10 @@ function gained(record: SubmissionRecord, after: ConferenceConfig): SubmissionIs
 }
 
 /**
- * What saving `input` over the stored configuration would do, for this person. Nothing is
- * written. `records` are the conference's submissions as they are now; `base` is the token of
- * the configuration the person started from, when they said so.
+ * What saving `input` over the stored configuration would do. Nothing is written. `records` are
+ * the conference's submissions as they are now; `base` is the token of the configuration the
+ * person started from, when they said so. `viewer` decides one thing only: which of the
+ * proposals that block the save are named to them (those they may manage as a chair).
  */
 export function reviewConfig(args: {
   viewer: PersonViewer;
@@ -178,10 +174,8 @@ export function reviewConfig(args: {
   const review: ConfigReview = {
     token,
     stale: base !== null && base !== token,
-    scope: isConferenceAdmin(viewer, conference.id) ? "all" : "stage_one",
     issues: [],
     changes: [],
-    forbidden: [],
     blocked: null,
     warnings: { drafts: 0, callOpens: false, callCloses: false, pastDeadlines: [] },
     canSave: false,
@@ -194,12 +188,6 @@ export function reviewConfig(args: {
   const next = parsed.data;
   const before = conference.config;
   review.changes = configChanges(before, next);
-  if (review.scope === "stage_one") {
-    // Against the stored configuration: its languages are the ones a chair may write in.
-    review.forbidden = review.changes
-      .map((c) => c.path)
-      .filter((path) => !chairMayChange(path, before));
-  }
 
   const byCode: Record<string, number> = {};
   const submissionIds: string[] = [];
@@ -231,10 +219,6 @@ export function reviewConfig(args: {
       Date.parse(next.deadlines[key]) < now.getTime(),
   );
 
-  review.canSave =
-    !review.stale &&
-    review.forbidden.length === 0 &&
-    review.blocked === null &&
-    review.changes.length > 0;
+  review.canSave = !review.stale && review.blocked === null && review.changes.length > 0;
   return { review, next };
 }

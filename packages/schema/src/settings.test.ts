@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import * as conferences from "./conferences";
 import { ConferenceConfig, type ConferenceConfigInput } from "./config";
 import {
-  chairMayChange,
   configChanges,
   keyedPath,
   type Setting,
@@ -63,8 +62,26 @@ const input: ConferenceConfigInput = {
 const config = ConferenceConfig.parse(input);
 const paths = (settings: Setting[]) => settings.map((s) => s.path);
 
-describe("what a chair may change", () => {
-  it("allows the stage-one values of existing formats, fields, tracks and topics", () => {
+/** The same conference with what it lacks: both rules, a place on the map and an agreement. */
+const fuller = ConferenceConfig.parse({
+  ...input,
+  coordinates: { lat: 10.99, lon: -74.79 },
+  rules: {
+    presenterCap: { max: 2, countedRoles: ["lead"] },
+    bio: { requested: true, maxWords: 300 },
+  },
+  agreements: [
+    { key: "privacy", title: { en: "Privacy" }, text: { en: "We keep little." }, version: "1" },
+  ],
+});
+
+/*
+ * The screen offers the stage-one values and nothing else. That is what has a control, not a
+ * permission: a chair may save any valid configuration (the server's settings.test.ts).
+ */
+describe("what the settings screen offers", () => {
+  it("offers the stage-one values of existing formats, fields, tracks and topics", () => {
+    const offered = paths(stageOneSettings(fuller));
     for (const path of [
       "title.en",
       "theme.es",
@@ -88,14 +105,15 @@ describe("what a chair may change", () => {
       "tracks.main.name.en",
       "topics.sound.label.en",
     ]) {
-      expect(chairMayChange(path, config), path).toBe(true);
+      expect(offered, path).toContain(path);
     }
   });
 
-  it("allows a text only in a language the conference has", () => {
-    // English and Spanish here. A text that is missing in one of them may be written.
+  it("offers a text only in a language the conference has", () => {
+    // English and Spanish here. A text that is missing in one of them is offered, to be written.
     expect(config.theme.es).toBeUndefined();
-    expect(chairMayChange("theme.es", config)).toBe(true);
+    const offered = paths(stageOneSettings(config));
+    expect(offered).toContain("theme.es");
     for (const path of [
       "title.fr",
       "title.pt",
@@ -110,64 +128,35 @@ describe("what a chair may change", () => {
       "tracks.main.name.fr",
       "topics.sound.label.fr",
     ]) {
-      expect(chairMayChange(path, config), path).toBe(false);
+      expect(offered, path).not.toContain(path);
     }
-    // The same paths are a chair's where the conference has those languages.
-    const wider = { ...config, languages: ["en", "es", "fr", "pt", "pt-BR", "de"] };
-    expect(chairMayChange("title.fr", wider)).toBe(true);
-    expect(chairMayChange("theme.pt-BR", wider)).toBe(true);
-    // The list of languages itself stays an admin's, so a chair cannot widen it first.
-    expect(chairMayChange("languages", wider)).toBe(false);
+    // The same texts are offered where the conference has those languages.
+    const wider = paths(
+      stageOneSettings({ ...config, languages: ["en", "es", "fr", "pt", "pt-BR", "de"] }),
+    );
+    expect(wider).toContain("title.fr");
+    expect(wider).toContain("theme.pt-BR");
+    // The list of languages itself has no control.
+    expect(wider).not.toContain("languages");
   });
 
-  it("sees a crafted configuration that adds a language to a text as a change it refuses", () => {
+  it("names a text in a language the conference lacks as a change, though no control makes it", () => {
     const crafted = structuredClone(config);
     crafted.title.fr = "Réunion inventée";
     const type = crafted.submissionTypes[0];
     if (!type) throw new Error("no format");
     type.name.fr = "Exposé";
-    // The schema takes the extra texts: it is this check that keeps them an admin's.
+    // The schema takes the extra texts, and a save names them one by one.
     expect(ConferenceConfig.safeParse(crafted).success).toBe(true);
     const changed = configChanges(config, crafted).map((c) => c.path);
     expect(changed).toEqual(["title.fr", `submissionTypes.${type.key}.name.fr`]);
-    expect(changed.filter((path) => !chairMayChange(path, config))).toEqual(changed);
+    // Before the change or after it, the screen has no control for either.
+    for (const offered of [stageOneSettings(config), stageOneSettings(crafted)]) {
+      for (const path of changed) expect(paths(offered), path).not.toContain(path);
+    }
   });
 
-  it("allows a field's setting only on a stored field of a kind that has it", () => {
-    // "needs" is a long text, "seats" a number, "link" a web address.
-    const field = (key: string, setting: string) => `submissionTypes.talk.fields.${key}.${setting}`;
-    for (const path of [
-      field("needs", "maxWords"),
-      field("seats", "min"),
-      field("seats", "max"),
-      field("seats", "integer"),
-    ]) {
-      expect(chairMayChange(path, config), path).toBe(true);
-    }
-    for (const path of [
-      field("seats", "maxWords"),
-      field("link", "maxWords"),
-      field("needs", "min"),
-      field("needs", "max"),
-      field("needs", "integer"),
-      field("link", "min"),
-      field("link", "integer"),
-      // A field the format does not have has no settings.
-      field("nope", "maxWords"),
-      "submissionTypes.nope.fields.needs.maxWords",
-    ]) {
-      expect(chairMayChange(path, config), path).toBe(false);
-    }
-    // It is the stored field's kind that counts: a field that is a number here has a range.
-    const other = structuredClone(config);
-    const needs = other.submissionTypes[0]?.fields[0];
-    if (!needs) throw new Error("no field");
-    needs.kind = "number";
-    expect(chairMayChange(field("needs", "min"), other)).toBe(true);
-    expect(chairMayChange(field("needs", "maxWords"), other)).toBe(false);
-  });
-
-  it("sees a crafted configuration that gives a field a setting its kind lacks as a change it refuses", () => {
+  it("names a setting on a field whose kind lacks it as a change, though no control makes it", () => {
     const crafted = structuredClone(config);
     const fields = crafted.submissionTypes[0]?.fields ?? [];
     const seats = fields.find((f) => f.key === "seats");
@@ -175,17 +164,21 @@ describe("what a chair may change", () => {
     if (!seats || !link) throw new Error("no field");
     seats.maxWords = 42;
     link.maxWords = 7;
-    // The schema takes a word limit on any field: it is this check that keeps it off these two.
+    // The schema takes a word limit on any field, and a save names each one.
     expect(ConferenceConfig.safeParse(crafted).success).toBe(true);
     const changed = configChanges(config, crafted).map((c) => c.path);
     expect(changed).toEqual([
       "submissionTypes.talk.fields.seats.maxWords",
       "submissionTypes.talk.fields.link.maxWords",
     ]);
-    expect(changed.filter((path) => !chairMayChange(path, config))).toEqual(changed);
+    // Even once a number and a link hold a word limit, the screen offers it on neither.
+    for (const offered of [stageOneSettings(config), stageOneSettings(crafted)]) {
+      for (const path of changed) expect(paths(offered), path).not.toContain(path);
+    }
   });
 
-  it("leaves everything else to admins", () => {
+  it("offers nothing else: the rest of a configuration has no control", () => {
+    const offered = paths(stageOneSettings(fuller));
     for (const path of [
       "slug",
       "year",
@@ -216,8 +209,12 @@ describe("what a chair may change", () => {
       "title.en.extra",
       "nonsense",
     ]) {
-      expect(chairMayChange(path, config), path).toBe(false);
+      expect(offered, path).not.toContain(path);
     }
+    // The values it leaves alone are there, in the configuration: they only have no control.
+    expect(settingAt(fuller, "agreements.privacy.version")).toBe("1");
+    expect(settingAt(fuller, "reviewPools.committee.blindMode")).toBe("double");
+    expect(settingAt(fuller, "rules.presenterCap.countedRoles")).toEqual(["lead"]);
   });
 });
 
@@ -266,18 +263,26 @@ describe("the settings of a configuration", () => {
       ]),
     );
     expect(new Set(of("link"))).toEqual(new Set(["field.label", "field.help", "field.required"]));
+    // A field or a format the conference does not have has no settings.
+    expect(
+      paths(settings).filter((path) =>
+        /^submissionTypes\.(nope\.|talk\.fields\.nope\.)/.test(path),
+      ),
+    ).toEqual([]);
+    // It is the field's kind that counts: where "needs" is a number, it has a range and no words.
+    const other = structuredClone(config);
+    const needs = other.submissionTypes[0]?.fields[0];
+    if (!needs) throw new Error("no field");
+    needs.kind = "number";
+    const asNumber = paths(stageOneSettings(other));
+    expect(asNumber).toContain("submissionTypes.talk.fields.needs.min");
+    expect(asNumber).toContain("submissionTypes.talk.fields.needs.integer");
+    expect(asNumber).not.toContain("submissionTypes.talk.fields.needs.maxWords");
   });
 
   it("has no setting for a rule the conference does not have", () => {
     expect(paths(settings).filter((p) => p.startsWith("rules."))).toEqual([]);
-    const withRules = ConferenceConfig.parse({
-      ...input,
-      rules: {
-        presenterCap: { max: 2, countedRoles: ["lead"] },
-        bio: { requested: true, maxWords: 300 },
-      },
-    });
-    expect(paths(stageOneSettings(withRules)).filter((p) => p.startsWith("rules."))).toEqual([
+    expect(paths(stageOneSettings(fuller)).filter((p) => p.startsWith("rules."))).toEqual([
       "rules.presenterCap.max",
       "rules.bio.maxWords",
     ]);
@@ -297,14 +302,13 @@ describe("the settings of a configuration", () => {
   });
 
   // Run over every registered configuration: nothing here depends on what they say.
-  const all = [config, ...Object.values(conferences).map((c) => ConferenceConfig.parse(c))];
+  const all = [config, fuller, ...Object.values(conferences).map((c) => ConferenceConfig.parse(c))];
 
-  it("offers only values a chair may change, each at its own path", () => {
+  it("offers each value once, at the path where the configuration holds it", () => {
     for (const c of all) {
       const found = stageOneSettings(c);
       expect(new Set(paths(found)).size).toBe(found.length);
       for (const s of found) {
-        expect(chairMayChange(s.path, c), s.path).toBe(true);
         expect(settingAt(c, s.path), s.path).toEqual(s.value);
       }
       // Every text is offered in each language of the conference, and in no other.

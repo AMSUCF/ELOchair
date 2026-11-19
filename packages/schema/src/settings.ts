@@ -1,9 +1,9 @@
 import type { ConferenceConfig } from "./config";
 
 /*
- * Conference settings: the values of a configuration that a chair may change in the app, and
- * what differs between two configurations. Zod-free, so that the server (which enforces it) and
- * the settings screen (which shows it) share this one definition.
+ * Conference settings: the values of a configuration that the settings screen offers, and what
+ * differs between two configurations. Zod-free, so that the server (which names what a save
+ * changes) and the settings screen share this one definition.
  *
  * Paths name a value by keys, never by position: "submissionTypes.paper.abstract.maxWords",
  * "submissionTypes.workshop.fields.needs.label.es", "deadlines.submissionsClose".
@@ -35,9 +35,10 @@ type Definition = {
 };
 
 /**
- * Stage one: values a chair may change. Everything else in a configuration (adding, removing,
- * reordering or re-keying anything; languages and the time zone; review pools and blind modes;
- * agreements; what kind a field is and who sees it) is for conference admins.
+ * Stage one: the values the settings screen offers. Everything else in a configuration (adding,
+ * removing, reordering or re-keying anything; languages and the time zone; review pools and
+ * blind modes; agreements; what kind a field is and who sees it) has no screen yet. This list is
+ * what is offered, not a permission: the server lets a chair save any valid configuration.
  */
 const STAGE_ONE = [
   { id: "title", pattern: "title.@", kind: "text" },
@@ -117,7 +118,7 @@ const STAGE_ONE = [
 
 export type SettingId = (typeof STAGE_ONE)[number]["id"];
 
-/** One value a chair may change, as it stands in a configuration. */
+/** One value the settings screen offers, as it stands in a configuration. */
 export type Setting = {
   path: string;
   id: SettingId;
@@ -129,48 +130,6 @@ export type Setting = {
   value: unknown;
 };
 
-const KEY = "[a-z][a-z0-9_]*";
-const LANG = "[a-z]{2,3}(?:-[A-Z]{2})?";
-/** One pattern each; a pattern has at most one "@", and the language it stands for is captured. */
-const CHAIR_PATHS = (STAGE_ONE as readonly Definition[]).map((def) => ({
-  def,
-  re: new RegExp(
-    `^${def.pattern
-      .split(".")
-      .map((token) => (token === "*" ? KEY : token === "@" ? `(${LANG})` : token))
-      .join("\\.")}$`,
-  ),
-}));
-
-/**
- * Whether a chair (not only an admin) may change the value at this path of `config`, the stored
- * configuration.
- * - A text is a chair's only in a language the conference has: there a chair may change it,
- *   clear it, or write one that was missing. A text in any other language would add a language
- *   to the conference, which is an admin's.
- * - A setting that only some kinds of field have (most words; a number's range) is a chair's
- *   only on a stored field of such a kind. On any other field it is not a setting at all, and
- *   the schema would take it without a word.
- */
-export function chairMayChange(
-  path: string,
-  config: Pick<ConferenceConfig, "languages" | "submissionTypes">,
-): boolean {
-  return CHAIR_PATHS.some(({ def, re }) => {
-    const found = re.exec(path);
-    if (!found) return false;
-    const lang = found[1];
-    if (lang !== undefined && !config.languages.includes(lang)) return false;
-    if (!def.fieldKinds) return true;
-    // "submissionTypes.<format>.fields.<field>.<setting>": the field as it is stored.
-    const [, typeKey, , fieldKey] = path.split(".");
-    const field = config.submissionTypes
-      .find((type) => type.key === typeKey)
-      ?.fields.find((f) => f.key === fieldKey);
-    return field !== undefined && def.fieldKinds.includes(field.kind);
-  });
-}
-
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const hasKey = (v: unknown): v is { key: string } & Record<string, unknown> =>
@@ -180,10 +139,14 @@ const isKeyed = (v: unknown): v is ({ key: string } & Record<string, unknown>)[]
   Array.isArray(v) && v.length > 0 && v.every(hasKey);
 
 /**
- * Every value of a configuration that a chair may change, in the order of STAGE_ONE: texts once
- * per language of the conference, and the settings of each existing format and field. A rule the
- * conference does not have (no presenter cap, no bio rule) has no setting: adding one is not a
- * change of value.
+ * Every value of a configuration that the settings screen offers, in the order of STAGE_ONE:
+ * texts once per language of the conference, and the settings of each existing format and field.
+ * - A text is offered only in the languages the conference has: one in any other language would
+ *   add a language to the conference.
+ * - A setting that only some kinds of field have (most words; a number's range) is offered only
+ *   on a field of such a kind, although the schema would take it on any field.
+ * - A rule the conference does not have (no presenter cap, no bio rule) has no setting: adding
+ *   one is not a change of value.
  */
 export function stageOneSettings(config: ConferenceConfig): Setting[] {
   const out: Setting[] = [];

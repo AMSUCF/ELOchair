@@ -34,13 +34,13 @@ export function hasRole(
   return viewer.grants.find((g) => g.conferenceId === conferenceId && roles.includes(g.role));
 }
 
-/** Site admins and conference admins/chairs: the people allowed to run a conference. */
+/**
+ * Site admins and conference admins/chairs: the people allowed to run a conference. They are one
+ * group: a chair may do whatever an admin may, moving the phase included. The `admin` role stays
+ * in the data and means nothing more than `chair`.
+ */
 export function isConferenceChair(viewer: PersonViewer, conferenceId: string): boolean {
   return viewer.siteAdmin || hasRole(viewer, conferenceId, ["admin", "chair"]) !== undefined;
-}
-
-export function isConferenceAdmin(viewer: PersonViewer, conferenceId: string): boolean {
-  return viewer.siteAdmin || hasRole(viewer, conferenceId, ["admin"]) !== undefined;
 }
 
 /** The person whose permissions apply, or null for the public. */

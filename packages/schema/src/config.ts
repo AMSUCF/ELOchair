@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LanguageCode, LocalizedText } from "./i18n";
 import { LIMITS } from "./limits";
+import { CONFERENCE_PHASES } from "./phases";
 
 /** Machine key: lowercase letters, digits, underscores; starts with a letter; at most 64. */
 export const Key = z
@@ -20,17 +21,8 @@ export type ContributionRole = z.infer<typeof ContributionRole>;
 
 export const Modality = z.enum(["online", "in_person", "hybrid"]);
 
-/** Conference phases, in order. They move forward only, except draft ⇄ cfp_open. */
-export const ConferencePhase = z.enum([
-  "draft",
-  "cfp_open",
-  "reviewing",
-  "deciding",
-  "confirming",
-  "scheduling",
-  "published",
-  "archived",
-]);
+/** Conference phases, in order (phases.ts). They move forward only, except draft ⇄ cfp_open. */
+export const ConferencePhase = z.enum(CONFERENCE_PHASES);
 export type ConferencePhase = z.infer<typeof ConferencePhase>;
 
 /** Whether a phase change is allowed without --force. */

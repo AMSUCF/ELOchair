@@ -20,6 +20,8 @@ import type { MessageKey } from "./i18n";
 
 export const statusKey = (s: SubmissionStatus): MessageKey => `status_${s}`;
 export const phaseKey = (p: ConferencePhase): MessageKey => `phase_${p}`;
+/** The sentence that says what a phase does, for the chair about to move a conference into it. */
+export const phaseDoesKey = (p: ConferencePhase): MessageKey => `phaseDoes_${p}`;
 export const roleKey = (r: ContributionRole): MessageKey => `contrib_${r}`;
 export const contribStatusKey = (s: ContributionStatus): MessageKey => `contrib_status_${s}`;
 export const modeKey = (m: ParticipationMode): MessageKey => `mode_${m}`;

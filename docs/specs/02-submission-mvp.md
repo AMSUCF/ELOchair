@@ -69,6 +69,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - **Phases** move forward only, except `draft ⇄ cfp_open`. Any other move needs `--force` and a non-blank reason. Every move is audited (the API or CLI user, from, to, reason).
   - Every move goes through `movePhase()`, which locks the conference row, so two concurrent moves cannot skip the rule. That covers `PUT /phase`, `set-phase`, `import-config --phase` on an existing conference (a refused import changes neither the configuration nor the phase) and `seed --force`.
   - `seed --force` rebuilds the built-in placeholders and is refused in production.
+  - **In the app a chair moves the phase**, from "Manage submissions": one step forward, or one step back. Pressing the button moves nothing. It opens a confirmation in its place that says, in one sentence, what the phase does as the code is today, and has "yes" and "cancel". A step back also asks for a reason (one line, at most 500 characters), sent with `force`. The result is said in a status line, and the page reads the conference again. Chairs, admins and site admins are one group here as everywhere (§1.9); track chairs and reviewers are not offered the control, and agents are refused.
 - **Visibility.** The policy treats a submission that was never submitted (`submittedAt` null) like a draft, whatever its status. Contributors only.
 
 ### 1.4 What each person learns
@@ -138,17 +139,16 @@ The call was published in November 2026 at <https://elo27.eliterature.org/>. `pa
 Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked from "Manage submissions"). This is stage one: existing values only. Adding, removing or reordering formats and fields is still done by importing a configuration.
 
 - **Who.** Configuration changes are human-only: agents are refused, whoever they act for.
-  - **Chairs** (`isConferenceChair`: the `chair` and `admin` roles, and site admins) may change the stage-one values. Track chairs and reviewers may not open the screen.
-  - **Admins** may change anything, as before (through the API; the screen offers the stage-one values to everyone).
-  - **The stage-one values** are defined once, in `packages/schema/src/settings.ts`, which the server enforces and the screen renders from:
+  - **Chairs do everything.** The `chair` and `admin` roles and site admins are one group (`isConferenceChair`). In the app a chair may do whatever an admin may: save any valid configuration, and move the phase (§1.3). The `admin` role stays in the data and means nothing more than `chair`. Track chairs and reviewers may not open the screen.
+  - **The screen offers the stage-one values**, the same to every chair. They are defined once, in `packages/schema/src/settings.ts`, which the screen renders from:
     - the conference: title, theme, host, place, modality, contact email, website, dates, the "provisional" mark
     - the four deadlines
     - the presenter cap's number and the bio word limit (where the conference has those rules)
     - of each existing format: name, description, what the abstract is called, its fewest and most words, minutes on the program, fewest and most people
-    - of each existing field: label, help text, whether it is required, for a text field its most words, and for a number field its range and "whole numbers only". A value that the stored field's kind does not have (a word limit on a number or a link) is not a chair's, although the schema accepts it there.
+    - of each existing field: label, help text, whether it is required, for a text field its most words, and for a number field its range and "whole numbers only". A value that the field's kind does not have (a word limit on a number or a link) is not offered, although the schema accepts it there.
     - the names and descriptions of formats not submitted here, and the names of existing tracks and topics
-  - **Everything else is an admin's:** adding, removing, reordering or re-keying anything; the slug, year, time zone and languages; review pools, criteria and blind modes; agreements (consent is recorded against their versions); a field's kind, options, `identifying` and `public`; a format's review pool. A chair's save that changes any of it is refused with 403 and the paths.
-- **Submitted work stays valid.** A save is checked, under the conference's row lock, against every proposal that has been sent in and not withdrawn or turned down, with the validation the submit path uses. If one of them would gain a problem it does not have now, nothing is saved: 409 `submitted_work_invalid`, with the count, the counts by problem, and the IDs of those the person may manage as a chair (their own and conflicted work is only counted). Admins are held to it too.
+  - **Everything else has no screen:** adding, removing, reordering or re-keying anything; the year, time zone and languages; review pools, criteria and blind modes; agreements (consent is recorded against their versions); a field's kind, options, `identifying` and `public`; a format's review pool. It is done by importing a configuration, and the screen says so. Through the API a chair's save of any of it is taken like any other, under the rules below: there is no longer a list of what a chair may not change, and no 403 with paths. The slug is never changed by a save (400 `slug_mismatch`).
+- **Submitted work stays valid.** A save is checked, under the conference's row lock, against every proposal that has been sent in and not withdrawn or turned down, with the validation the submit path uses. If one of them would gain a problem it does not have now, nothing is saved: 409 `submitted_work_invalid`, with the count, the counts by problem, and the IDs of those the person may manage as a chair (their own and conflicted work is only counted). Every chair is held to it, whatever the change: a format that submitted proposals use cannot be removed.
   - **Drafts never block.** The review says how many drafts would gain a problem.
 - **A save and a write wait for each other.** A save holds the conference's row for update while it checks. Every write to a submission, or to who is on it, shares that row before it reads or writes anything about the proposal. So a write is checked against the configuration in force when it commits, and a save never checks work that is changing under it.
   - **Which writes:** every owner action and a contributor leaving (all through `mutateSubmission`), an invitation answer by session or by emailed link (`answerInvitation`), and creating a proposal. A new route that writes `submissions` or `contributions` takes the row with `shareConference()` the same way; `settings-locks.test.ts` checks each route.
@@ -158,10 +158,12 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 - **The form stays open while a save is on its way.** What was reviewed is what is saved. Whatever is typed in the meantime stays in the form as an unsaved change to the saved configuration, the page says so without taking focus from the person typing, and it is reviewed in its turn before it can be saved.
 - **Two people at once.** A save names the configuration it started from (`If-Match`, a token of the stored configuration, given by `GET …/settings`). When that is no longer the stored one the save is refused with 409 `stale`, and the screen offers to reload; what was typed stays in the form.
 - **Deadlines keep their offset.** A deadline is shown and edited as its date, its time and its UTC offset, each as stored. The offset changes only when someone writes another one. As it is typed, the screen says which instant it is in the conference's time zone and in the reader's.
-- **Texts** are edited in each language of the conference; the default language is required. A chair may change, clear or write a text in those languages only. A text in any other language would add a language to the conference, which is an admin's, like the list of languages itself.
+- **Texts** are edited in each language of the conference; the default language is required. The screen offers a text in those languages only: there a chair may change it, clear it, or write one that was missing. A text in any other language would add a language to the conference, which has no screen, like the list of languages itself.
 - **Audit.** One `conference.config_updated` entry per save, with every changed value's path, before and after, and how many drafts were affected. A configuration holds no personal data.
 - **Unsaved changes survive a reload.** What a chair has typed and not saved is kept in that browser, under their own id, like unsaved text in the proposal editor: it is back after a reload or a closed tab, with a notice and a way to discard it, and it goes on save, on discard and on sign-out. It follows the form: what was typed while a save was on its way is still unsaved, so that part stays kept, and only that part. It is kept as typed, by setting, not as a configuration: it goes back on top of whatever is stored now, exactly as after "Reload the settings", an edit to something that is no longer a setting is dropped, and the review before saving shows every change against the stored value.
-- **Not yet:** the CLI's `import-config` does not apply the submitted-work check.
+- **Not yet:**
+  - a screen for adding or removing formats, fields and languages. That is done by importing a configuration, by someone with access to the server.
+  - the CLI's `import-config` does not apply the submitted-work check.
 
 ## 2. Contracts
 
@@ -220,10 +222,10 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 | `POST /api/me/invitations/:submissionId/answer` | person | same as above, by session |
 | `PUT /api/me/profile` | person | strict |
 | `GET /api/conferences/:slug` | anyone who can see the conference | configuration, phase and `callOpen` (server clock) |
-| `GET /api/conferences/:slug/settings` | chair or admin (human) | configuration, its token, and `scope` (`stage_one` or `all`); §1.9 |
+| `GET /api/conferences/:slug/settings` | chair or admin (human) | configuration and its token; §1.9 |
 | `POST /api/conferences/:slug/config/preview` | chair or admin (human) | the configuration as it would be saved; saves nothing; §1.9 |
-| `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 403 with `paths` for what a chair may not change; 409 `stale` or `submitted_work_invalid`; row-locked, audited; §1.9 |
-| `PUT /api/conferences/:slug/phase` | admin (human) | forward only unless `force` + `reason`; row-locked |
+| `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 409 `stale` or `submitted_work_invalid`; row-locked, audited; §1.9 |
+| `PUT /api/conferences/:slug/phase` | chair or admin (human) | `{phase, force?, reason?}`; forward only unless `force` + `reason` (409 `phase_backwards`); row-locked, audited; moved from "Manage submissions", §1.3 |
 | `GET /api/conferences/:slug/submissions` | per policy | `SubmissionQuery` |
 | `GET /api/conferences/:slug/submissions.csv` and `contributors.csv` | chair (human), or tier C on internal | §2.3 |
 

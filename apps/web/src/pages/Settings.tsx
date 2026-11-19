@@ -36,11 +36,12 @@ import { Localized, PageHeading } from "../ui";
 import { useUnsaved } from "../useUnsaved";
 
 /*
- * Conference settings for chairs (spec 02, §1.9). The screen shows the values a chair may
- * change (stageOneSettings, the definition the server enforces), keeps what was typed apart
- * from the configuration, and saves nothing that has not been reviewed: the server says what a
- * save would change, what is wrong with it, what it would do to submitted work, and only then
- * offers "Save changes".
+ * Conference settings for chairs (spec 02, §1.9). The screen shows the stage-one values
+ * (stageOneSettings): existing values only, the same for every chair. Formats, fields and
+ * languages are added or removed by importing a configuration, and the page says so. It keeps
+ * what was typed apart from the configuration, and saves nothing that has not been reviewed:
+ * the server says what a save would change, what is wrong with it, what it would do to
+ * submitted work, and only then offers "Save changes".
  *
  * What was typed and not saved is also kept in this browser (unsaved.ts), as in the proposal
  * editor, so that a reload or a closed tab does not lose a long round of changes.
@@ -53,7 +54,6 @@ type SettingsData = {
   config: ConferenceConfig;
   /** Names the configuration these settings were read from; a save is based on it. */
   token: string;
-  scope: "all" | "stage_one";
 };
 
 /** The server's answer to "what would saving this do?" (ConfigReview in the server). */
@@ -62,7 +62,6 @@ type Review = {
   stale: boolean;
   issues: { path: string; code: string; params?: Record<string, number> }[];
   changes: ConfigChange[];
-  forbidden: string[];
   blocked: { count: number; byCode: Record<string, number>; submissionIds: string[] } | null;
   warnings: { drafts: number; callOpens: boolean; callCloses: boolean; pastDeadlines: string[] };
   canSave: boolean;
@@ -517,7 +516,7 @@ function SettingsForm({
         <Localized text={config.title} fallback={config.defaultLanguage} />
       </p>
       <p>{t("settingsIntro")}</p>
-      {data.scope === "stage_one" && <p className="meta">{t("settingsScopeNote")}</p>}
+      <p className="meta">{t("settingsScopeNote")}</p>
       <p>
         <Link className="block-link" to={`/${lang}/c/${data.slug}/manage`}>
           {t("settingsBackToManage")}
@@ -628,11 +627,6 @@ function SettingsForm({
               </li>
             ))}
           </ul>
-          {shown.forbidden.length > 0 && (
-            <p className="notice" role="alert">
-              {t("settingsForbidden", { paths: shown.forbidden.map(nameOf).join(", ") })}
-            </p>
-          )}
           {shown.blocked && (
             <div className="notice stack wide" role="alert">
               <p>{t("settingsBlocked", { count: shown.blocked.count })}</p>
