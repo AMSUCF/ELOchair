@@ -131,6 +131,8 @@ Two things follow from "one dump for each hour":
   cp deploy/backups/elochair-20270214T230000Z.dump deploy/backups/before-the-deadline.dump
   ```
 
+A file named like a dump whose date or time cannot exist (`elochair-20270231T120000Z.dump`, for 31 February) is not taken for one: it is never counted, listed or deleted, here or in the bucket.
+
 ### A backup now
 
 ```bash
@@ -141,9 +143,12 @@ docker compose -f deploy/docker-compose.yml run --rm backup now
 
 **A backup on the same disk is not a backup.** `deploy/backups/` covers a bad upgrade or a mistaken deletion, not the loss of the server. Until the dumps are also copied somewhere else, losing the server loses them with the database, and the backup service will not say so: it is healthy either way.
 
-ELOchair does not copy the dumps anywhere by itself. An automated copy to object storage is a separate change and is not part of this service. What works with this service alone is to pull the dumps from another machine, so that the server holds no key to the place its backups go.
+There are two ways to copy them, and either one is enough:
 
-On the other machine, make a private directory and put a copy of `deploy/backup-retention.sh` in it:
+- **To a bucket, automatically.** [backup-offsite.md](backup-offsite.md) sets up a second service on the server that uploads every finished dump to S3-compatible object storage, and a pruner on another machine that keeps the bucket to the same rolling set. The uploader reports `unhealthy` when the newest dump is not in the bucket.
+- **To another machine, which pulls them.** No bucket and no extra service: the other machine fetches the dumps over SSH, so that the server holds no key to the place its backups go. Nothing reports when this stops.
+
+For the second way, on the other machine, make a private directory and put a copy of `deploy/backup-retention.sh` in it:
 
 ```bash
 mkdir -p ~/elochair-backups && chmod 700 ~/elochair-backups

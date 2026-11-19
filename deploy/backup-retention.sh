@@ -1,94 +1,99 @@
 #!/bin/sh
-# The retention policy for database dumps: which of a set of dumps stay and which go.
-# It is the one definition of the policy, run wherever dumps are kept (the server's
-# deploy/backups directory and any copy of it elsewhere), so every copy holds the same rolling set.
+# The rolling retention policy for database dumps. The server's own backups and the offsite
+# pruner both use it, so that the disk and the bucket keep the same set.
 #
-#   backup-retention.sh keep  < names     prints the names to keep
-#   backup-retention.sh prune < names     prints the names to delete
+# It reads dump names on standard input, one per line, and deletes nothing itself:
+#   backup-retention.sh keep     prints the names the policy keeps
+#   backup-retention.sh prune    prints the names the policy would delete
 #
-# Names are read one per line. Only names of the exact form elochair-YYYYMMDDTHHMMSSZ.dump (UTC)
-# take part; any other line is ignored and is never printed, so it can never be deleted.
+# A name is elochair-YYYYMMDDTHHMMSSZ.dump, in UTC, with a date and time that can exist. Every
+# other line (another name, or one for 31 February or for 25 o'clock) is ignored and printed by
+# neither command, so delete only what "prune" prints, never "everything that was not kept".
 #
-# The dumps are grouped by hour, by day, by ISO 8601 week and by month. Each tier keeps the newest
-# dump of each of its N most recent periods that hold at least one dump:
+# Dumps are grouped by hour, by day, by ISO 8601 week and by month. A tier set to N keeps the
+# newest dump in each of the N most recent periods that have a dump at all: the count is of
+# periods with dumps, not of time passed, so nothing ages out while backups are stalled.
+# 0 turns a tier off. The result is the four tiers together, and always the newest dump.
+#
 #   BACKUP_KEEP_HOURLY=48  BACKUP_KEEP_DAILY=14  BACKUP_KEEP_WEEKLY=8  BACKUP_KEEP_MONTHLY=12
-# A tier set to 0 is off. What stays is the union of the four tiers, and always the single newest
-# dump. So no more than HOURLY + DAILY + WEEKLY + MONTHLY dumps ever stay (82 by default).
 #
-# The periods are counted from the dumps themselves, not from the clock: while backups are
-# stalled nothing ages out, and a wrong clock cannot empty the set.
+# So at most 82 dumps are kept with the defaults. With a setting that is not a whole number
+# this prints nothing and fails, and the caller must then delete nothing.
 #
-# Plain POSIX sh, sort and awk: this runs under dash and mawk (the postgres image), under busybox
-# (the rclone image) and under bash and gawk. A setting that is not a whole number is an error:
-# the script prints nothing and exits non-zero, and its caller must then delete nothing.
+# POSIX sh, sort and awk only, and no date command: it has to give the same answer under
+# busybox (the rclone image) and under dash with mawk (the postgres image).
 set -eu
 
-# On an error, still read the names to the end (unless they would come from a terminal), so that
-# whatever is writing them is not cut off mid-list.
-refuse() {
-  echo "$2" >&2
-  [ -t 0 ] || cat >/dev/null
-  exit "$1"
-}
-
-mode=${1:-}
+mode="${1:-}"
 case "$mode" in
   keep | prune) ;;
-  *) refuse 64 "usage: backup-retention.sh keep|prune  (dump names on standard input)" ;;
+  *)
+    echo "usage: backup-retention.sh keep|prune   (dump names on standard input)" >&2
+    exit 64
+    ;;
 esac
 
-hourly=${BACKUP_KEEP_HOURLY:-48}
-daily=${BACKUP_KEEP_DAILY:-14}
-weekly=${BACKUP_KEEP_WEEKLY:-8}
-monthly=${BACKUP_KEEP_MONTHLY:-12}
-for setting in "$hourly" "$daily" "$weekly" "$monthly"; do
-  case "$setting" in
-    *[!0-9]*)
-      refuse 2 "backup-retention: BACKUP_KEEP_HOURLY, _DAILY, _WEEKLY and _MONTHLY must be whole numbers, not '$setting'"
+hourly="${BACKUP_KEEP_HOURLY:-48}"
+daily="${BACKUP_KEEP_DAILY:-14}"
+weekly="${BACKUP_KEEP_WEEKLY:-8}"
+monthly="${BACKUP_KEEP_MONTHLY:-12}"
+
+for setting in "BACKUP_KEEP_HOURLY=$hourly" "BACKUP_KEEP_DAILY=$daily" \
+  "BACKUP_KEEP_WEEKLY=$weekly" "BACKUP_KEEP_MONTHLY=$monthly"; do
+  case "${setting#*=}" in
+    *[!0-9]* | ?????????*)
+      echo "backup-retention: ${setting%%=*} must be a whole number from 0 up, not \"${setting#*=}\". Nothing is kept or pruned." >&2
+      exit 65
       ;;
   esac
 done
 
-# Newest first: the names sort as text in the order of their timestamps.
-LC_ALL=C sort -r | LC_ALL=C awk -v mode="$mode" \
+# Newest first. With fixed-width UTC stamps, the order of the names is the order of time.
+LC_ALL=C sort -ru | LC_ALL=C awk -v mode="$mode" \
   -v hourly="$hourly" -v daily="$daily" -v weekly="$weekly" -v monthly="$monthly" '
-  # Days since 1970-01-01 of a calendar date, by arithmetic alone (no date(1) dialects).
-  function days(y, m, d,    era, yoe, doy) {
-    if (m <= 2) y -= 1
-    era = int((y >= 0 ? y : y - 399) / 400)
-    yoe = y - era * 400
-    doy = int((153 * ((m + 9) % 12) + 2) / 5) + d - 1
-    return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy - 719468
+  function leap(y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 }
+  function days_in(y, m) {
+    if (m == 2) return leap(y) ? 29 : 28
+    return (m == 4 || m == 6 || m == 9 || m == 11) ? 30 : 31
   }
-  # Does this tier keep a dump of this period? It does for the newest dump of each of its first
-  # "limit" periods; the input is newest first, so the first dump seen in a period is its newest.
-  function tier(t, limit, period) {
-    if (seen[t] && period == last[t]) return 0
-    if (count[t] >= limit) return 0
-    seen[t] = 1
-    last[t] = period
-    count[t]++
-    return 1
+  # The weekday of 31 December, 0 for Sunday.
+  function dec31(y) { return (y + int(y / 4) - int(y / 100) + int(y / 400)) % 7 }
+  function weeks_in(y) { return (dec31(y) == 4 || dec31(y - 1) == 3) ? 53 : 52 }
+  # The ISO 8601 week as "year-Wnn". Its year is not always the calendar year: 1 January 2027
+  # is in 2026-W53.
+  function iso_week(y, m, d,    i, day_of_year, weekday, week) {
+    day_of_year = d
+    for (i = 1; i < m; i++) day_of_year += days_in(y, i)
+    weekday = (dec31(y - 1) + day_of_year) % 7
+    if (weekday == 0) weekday = 7
+    week = int((day_of_year - weekday + 10) / 7)
+    if (week < 1) return (y - 1) "-W" weeks_in(y - 1)
+    if (week > weeks_in(y)) return (y + 1) "-W01"
+    return y "-W" sprintf("%02d", week)
   }
   BEGIN {
-    limit["h"] = hourly + 0; limit["d"] = daily + 0; limit["w"] = weekly + 0; limit["m"] = monthly + 0
+    d = "[0-9]"
+    name = "^elochair-" d d d d d d d d "T" d d d d d d "Z[.]dump$"
   }
   {
-    # elochair- is 9 characters, then 8 digits, T, 6 digits, Z, .dump: 30 in all.
-    if (length($0) != 30 || $0 !~ /^elochair-[0-9]+T[0-9]+Z\.dump$/ || substr($0, 18, 1) != "T") next
-    if ($0 == previous) next
-    kept = (previous == "") # the single newest dump always stays
-    previous = $0
-    stamp = substr($0, 10, 16)
-    # An ISO 8601 week runs from Monday to Sunday. Counting weeks from a fixed Monday names the
-    # same weeks as ISO year and week number do, with no special cases at the turn of the year.
-    # (1970-01-01 was a Thursday; the 200000 weeks keep the count positive for any year.)
-    week = int((days(substr(stamp, 1, 4) + 0, substr(stamp, 5, 2) + 0, substr(stamp, 7, 2) + 0) + 1400003) / 7)
-    # Every tier must see every dump, so no short-circuit here.
-    if (tier("h", limit["h"], substr(stamp, 1, 11))) kept = 1
-    if (tier("d", limit["d"], substr(stamp, 1, 8))) kept = 1
-    if (tier("w", limit["w"], week)) kept = 1
-    if (tier("m", limit["m"], substr(stamp, 1, 6))) kept = 1
-    if ((mode == "keep") == (kept == 1)) print
+    if ($0 !~ name) next
+    y = substr($0, 10, 4) + 0
+    m = substr($0, 14, 2) + 0
+    day = substr($0, 16, 2) + 0
+    if (m < 1 || m > 12 || day < 1 || day > days_in(y, m)) next
+    if (substr($0, 19, 2) + 0 > 23 || substr($0, 21, 2) + 0 > 59 || substr($0, 23, 2) + 0 > 60) next
+
+    seen++
+    keep = (seen == 1)
+    period = substr($0, 10, 8) substr($0, 19, 2)
+    if (period != last_hour) { last_hour = period; if (++hours <= hourly) keep = 1 }
+    period = substr($0, 10, 8) ""
+    if (period != last_day) { last_day = period; if (++days <= daily) keep = 1 }
+    period = iso_week(y, m, day)
+    if (period != last_week) { last_week = period; if (++weeks <= weekly) keep = 1 }
+    period = substr($0, 10, 6) ""
+    if (period != last_month) { last_month = period; if (++months <= monthly) keep = 1 }
+
+    if (keep == (mode == "keep")) print
   }
 '
