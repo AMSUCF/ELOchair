@@ -10,9 +10,24 @@ export type Raw = string | boolean;
  */
 export type Edits = Record<string, Raw>;
 
-/** What a control shows for a stored value: a ticked box, or the value as text. */
+/**
+ * What a control shows for a stored value: a ticked box, or the value as text. An email's text
+ * that the conference has not written shows the standard text, which is what is sent.
+ */
 export const rawOf = (s: Setting): Raw =>
-  s.kind === "bool" ? s.value === true : s.value == null ? "" : String(s.value);
+  s.kind === "bool" ? s.value === true : s.value == null ? (s.standard ?? "") : String(s.value);
+
+/**
+ * The value that what is in a text control stands for. Outer spaces go, and an empty control is
+ * no value. An email's text is the exception both ways: the standard text is no value (it is
+ * what "nothing stored" already sends), and an emptied control stays an empty text, which the
+ * review refuses beside it, so that it never quietly means the standard text again.
+ */
+export function typedText(s: Setting, raw: Raw): string | undefined {
+  const text = String(raw).trim();
+  if (s.standard !== undefined) return text === s.standard ? undefined : text;
+  return text === "" ? undefined : text;
+}
 
 export const DATETIME =
   /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;

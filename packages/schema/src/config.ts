@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { LanguageCode, LocalizedText } from "./i18n";
 import { LIMITS } from "./limits";
+import {
+  MAIL_LANGUAGES,
+  MESSAGE_KEYS,
+  MESSAGE_PARTS,
+  type MessageProblemCode,
+  messageProblems,
+} from "./messages";
 import { CONFERENCE_PHASES } from "./phases";
 
 /** Machine key: lowercase letters, digits, underscores; starts with a letter; at most 64. */
@@ -161,6 +168,103 @@ export const SubmissionType = z.object({
 });
 export type SubmissionType = z.infer<typeof SubmissionType>;
 
+/** Problems between values of a configuration that the settings screen explains by name. */
+export type ConfigIssueCode =
+  | "default_language_required"
+  | "min_over_max"
+  | "min_not_below_max"
+  | "no_whole_number"
+  | "deadline_order"
+  | "dates_order"
+  | "final_before_conference"
+  | "message_language"
+  | MessageProblemCode;
+
+/**
+ * What a named problem carries. `code` names it for screens that explain it in the reader's
+ * language (the settings screen); `leaf` is the value under the issue's path to show it beside;
+ * `values` are what the explanation names (an email's placeholders, a length).
+ */
+type IssueParams = {
+  code: ConfigIssueCode;
+  leaf?: string;
+  values?: Record<string, string | number>;
+};
+
+/**
+ * One text of an email in each language it is written in, among those the app writes mail in.
+ * Plain text: line breaks and tabs, and no other control character. (Postgres refuses NUL
+ * inside JSON, as it refuses half a character.)
+ */
+const MessageTexts = z.partialRecord(
+  z.enum(MAIL_LANGUAGES),
+  z
+    .string()
+    .refine((s) => !/\p{Cs}/u.test(s), "text without broken characters (unpaired surrogates)")
+    .refine(
+      (s) => !/\p{Cc}/u.test(s.replace(/[\t\n\r]/g, "")),
+      "text without control characters (other than tabs and line breaks)",
+    ),
+);
+
+const WHY_NOT: Record<MessageProblemCode, string> = {
+  message_empty: "an email's text cannot be empty: leave it out for the standard text",
+  message_not_one_line: "a subject is one line",
+  message_too_long: "too long",
+  message_unknown_placeholder: "unknown placeholder",
+  message_not_in_subject: "a subject cannot hold this placeholder",
+  message_missing_placeholder: "a required placeholder is missing",
+  message_link_touched: "put a space or a line break before and after the link",
+};
+
+/**
+ * The conference's own wording of the emails the app sends (messages.ts): for any message, a
+ * subject, a body or both, each in any of the languages the app writes mail in. All of it is
+ * optional, and what is absent is the standard text. That has one spelling: an object with
+ * nothing in it is refused, so that a configuration nobody customized holds no `messages` at
+ * all. Only known messages and their own parts are taken.
+ *
+ * Each text is checked here, whatever else is wrong with the configuration: it says something,
+ * names only its message's placeholders and all the required ones, a subject is one line, and
+ * neither is too long (messageProblems). Chairs write these texts and they are used as written,
+ * as plain text.
+ */
+const Messages = z
+  .partialRecord(
+    z.enum(MESSAGE_KEYS),
+    z.strictObject({ subject: MessageTexts.optional(), body: MessageTexts.optional() }),
+  )
+  .superRefine((messages, ctx) => {
+    const issue = (path: string[], message: string, params?: IssueParams) =>
+      ctx.addIssue({ code: "custom", path, message, ...(params ? { params } : {}) });
+    // An unknown key has been refused by now and is gone from `messages`: what that leaves
+    // empty is not reported a second time.
+    const keyRefused = ctx.issues.some((i) => i.code === "unrecognized_keys");
+    const empty = (o: object) => !keyRefused && Object.keys(o).length === 0;
+    const unwritten = "leave it out where no text is written: absent means the standard text";
+    if (empty(messages)) issue([], unwritten);
+    for (const key of MESSAGE_KEYS) {
+      const message = messages[key];
+      if (!message) continue;
+      if (empty(message)) issue([key], unwritten);
+      for (const part of MESSAGE_PARTS) {
+        const texts = message[part];
+        if (!texts) continue;
+        if (empty(texts)) issue([key, part], unwritten);
+        for (const [lang, text] of Object.entries(texts)) {
+          for (const problem of messageProblems(key, part, text)) {
+            const { names, max } = problem.values ?? {};
+            const which = names ?? (max === undefined ? "" : `${max} characters at most`);
+            issue([key, part, lang], `${WHY_NOT[problem.code]}${which ? `: ${which}` : ""}`, {
+              code: problem.code,
+              ...(problem.values ? { values: problem.values } : {}),
+            });
+          }
+        }
+      }
+    }
+  });
+
 const ConferenceConfigShape = z.object({
   slug: z.string().regex(/^[a-z0-9-]+$/, "use lowercase letters, digits and hyphens"),
   year: z.int().min(1999),
@@ -208,30 +312,15 @@ const ConferenceConfigShape = z.object({
     .default([]),
   /** True while the content is a stand-in (e.g. dates not yet announced). The UI says so. */
   placeholder: z.boolean().default(false),
+  /** The conference's own wording of the emails the app sends. Absent: the standard texts. */
+  messages: Messages.optional(),
 });
 
 type Shape = z.infer<typeof ConferenceConfigShape>;
 
-/** Problems between values of a configuration that the settings screen explains by name. */
-export type ConfigIssueCode =
-  | "default_language_required"
-  | "min_over_max"
-  | "min_not_below_max"
-  | "no_whole_number"
-  | "deadline_order"
-  | "dates_order"
-  | "final_before_conference";
-
 function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
-  /**
-   * `params.code` names the problem for screens that explain it in the reader's language (the
-   * settings screen); `params.leaf` is the value under `path` to show it beside.
-   */
-  const issue = (
-    path: (string | number)[],
-    message: string,
-    params?: { code: ConfigIssueCode; leaf?: string },
-  ) => ctx.addIssue({ code: "custom", path, message, ...(params ? { params } : {}) });
+  const issue = (path: (string | number)[], message: string, params?: IssueParams) =>
+    ctx.addIssue({ code: "custom", path, message, ...(params ? { params } : {}) });
 
   if (!c.languages.includes(c.defaultLanguage)) {
     issue(["defaultLanguage"], "defaultLanguage must be one of languages");
@@ -382,6 +471,22 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
         text([...fat, "options", k, "label"], o.label);
     });
   });
+
+  // An email's own wording is written in the languages the conference has: those are the ones
+  // its chairs answer for, and the only ones the screen has a control for. Mail still goes out
+  // in the other languages the app writes in (to someone invited in Portuguese by a conference
+  // in English and Spanish), in the standard text.
+  for (const key of MESSAGE_KEYS) {
+    for (const part of MESSAGE_PARTS) {
+      for (const lang of Object.keys(c.messages?.[key]?.[part] ?? {})) {
+        if (!c.languages.includes(lang)) {
+          issue(["messages", key, part, lang], `"${lang}" is not a language of the conference`, {
+            code: "message_language",
+          });
+        }
+      }
+    }
+  }
 
   const d = c.deadlines;
   const order: [keyof typeof d, keyof typeof d][] = [

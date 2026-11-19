@@ -11,9 +11,11 @@ import {
 /*
  * Conference settings (spec 02, §1.9), as a chair uses them on a phone. The tests share one
  * server with the others and run beside them, so they change only what no other test reads
- * (the length of a reading or performance, the day decisions are sent, a pool's guidelines and
- * the label of one criterion) and put it back. No blind mode is ever saved: other tests read
- * who is shown to reviewers.
+ * (the length of a reading or performance, the day decisions are sent, a pool's guidelines,
+ * the label of one criterion, and the Spanish wording of the notice about a deleted draft) and
+ * put it back. No blind mode is ever saved: other tests read who is shown to reviewers. Of the
+ * emails, the others read the invitation, the receipt, the answer to the owner and the notice
+ * to people invited to withdrawn work: those are reworded here only as far as the review step.
  */
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -94,7 +96,10 @@ const unsavedValues = (page: Page) =>
 const formatSection = (page: Page) =>
   page.locator("details").filter({ has: page.locator("summary", { hasText: FORMAT }) });
 
-/** The collapsible section of a review pool, by the pool's name; opened if it is closed. */
+/**
+ * A collapsible section of the settings screen, by the name on it (a review pool, an email);
+ * opened if it is closed.
+ */
 async function openPool(page: Page, name: string) {
   const summary = page.locator("summary", { hasText: name });
   const section = page.locator("details").filter({ has: summary });
@@ -107,6 +112,10 @@ async function openPool(page: Page, name: string) {
 type Stored = {
   token: string;
   config: {
+    title: Record<string, string>;
+    languages: string[];
+    defaultLanguage: string;
+    messages?: Record<string, { subject?: Record<string, string>; body?: Record<string, string> }>;
     reviewPools: {
       key: string;
       name: Record<string, string>;
@@ -698,6 +707,290 @@ test.describe("conference settings", () => {
     await reviewAndSave(chair);
     const after = await stored(chair, CALL);
     expect(after.config.reviewPools).toEqual(before.config.reviewPools);
+    expect(after.token).toBe(before.token);
+    await expect.poll(() => unsavedValues(chair)).toBeNull();
+  });
+
+  test("a chair rewords an email, sees it as it would be sent, and goes back to the standard text", async () => {
+    test.slow();
+    // The standard texts and sample names are the app's own, in each language it writes mail
+    // in. Which of those languages the call has, and any wording of its own, is read first:
+    // the test takes the call as it finds it and puts it back.
+    const DELETED = "Notice to people invited to a deleted draft";
+    const INVITATION = "Invitation to a proposal";
+    const APP = {
+      es: {
+        name: "Español",
+        subject: "{conference}: se canceló una invitación",
+        body: "Se eliminó un borrador de propuesta para {conference} en el que figurabas. No tienes que hacer nada.",
+        invitation: "{owner} te ha incluido con el rol de {role} en una propuesta",
+        owner: "Ana Ejemplo",
+        roles: "autoría principal · presentación · coautoría · panelista · moderación",
+      },
+      pt: {
+        name: "Português",
+        subject: "{conference}: um convite foi cancelado",
+        body: "Foi eliminado um rascunho de proposta para {conference} em que constava. Não precisa de fazer nada.",
+        invitation: "{owner} incluiu-o com o papel de {role} numa proposta",
+        owner: "Ana Exemplo",
+        roles: "autoria principal · apresentação · coautoria · painelista · moderação",
+      },
+      en: {
+        name: "English",
+        subject: "{conference}: an invitation was cancelled",
+        body: "A draft proposal for {conference} that listed you was deleted by its owner. There is nothing you need to do.",
+        invitation: "{owner} has listed you as {role} on a proposal",
+        owner: "Ana Example",
+        roles: "lead author · presenter · co-author · panelist · moderator",
+      },
+    };
+    const before = await stored(chair, CALL);
+    // Spanish where the call has it: the other tests invite in English and Spanish, and none
+    // reads this notice in any language.
+    const lang = (["es", "pt", "en"] as const).find((l) => before.config.languages.includes(l));
+    if (!lang) throw new Error("the call has no language the app writes mail in");
+    const L = APP[lang];
+    const own = before.config.messages?.draft_deleted;
+    const was = {
+      subject: own?.subject?.[lang] ?? L.subject,
+      body: own?.body?.[lang] ?? L.body,
+    };
+    /** A text as the review names it: one the app supplies is "the standard text". */
+    const named = (text: string) =>
+      text === L.subject || text === L.body ? "the standard text" : text;
+    const title = before.config.title;
+    const conference = title[lang] ?? title[before.config.defaultLanguage] ?? "";
+
+    await openSettings(chair);
+    await expect(
+      chair.getByRole("heading", { level: 2, name: "Emails", exact: true }),
+    ).toBeVisible();
+    // What the section is for, which text a person gets, who can read it, and what is not
+    // offered.
+    await expect(
+      chair.getByText(
+        "Each box shows the text that is sent: the standard text, until you change it.",
+      ),
+    ).toBeVisible();
+    await expect(
+      chair.getByText(
+        "Each person gets the email in their own language. A language you have not changed keeps the standard text, and so does a language the conference does not have: the app writes email in English, Spanish and Portuguese, whichever of them the conference has. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
+      ),
+    ).toBeVisible();
+
+    // Each email is in its own section, closed until asked for. Its first line says when it
+    // is sent and to whom, and a list says what its texts may name.
+    await expect(chair.getByLabel(`Subject (${L.name})`).first()).toBeHidden();
+    const section = await openPool(chair, DELETED);
+    await expect(section.locator("p.meta").first()).toHaveText(
+      "Sent to people who were invited to a draft and have not answered, when its owner deletes it. It cannot name the proposal: they have not agreed to anything.",
+    );
+    const names = section.locator(".placeholders");
+    await expect(names.locator("dt")).toHaveText(["{conference}"]);
+    await expect(names.locator("dd")).toHaveText(["the conference's title"]);
+
+    // The boxes show what is sent now: the standard text, unless the call has its own.
+    const group = section.getByRole("group", { name: L.name });
+    const subject = group.getByLabel(`Subject (${L.name})`);
+    const body = group.getByLabel(`Text (${L.name})`);
+    await expect(subject).toHaveValue(was.subject);
+    await expect(body).toHaveValue(was.body);
+    // Each box is described by the whole list: the sentence, and the words it lists.
+    await expect(subject).toHaveAccessibleDescription(
+      /^You can put these words, with their braces, in the subject and in the text\. Each is replaced when the email is sent:\s*\{conference\}\s*the conference's title$/,
+    );
+    await expectTouchTarget(subject);
+    const useStandard = group.getByRole("button", { name: "Use the standard text" });
+    await expectTouchTarget(useStandard);
+
+    // The email as it would be sent is under the boxes, filled with made-up values, and
+    // follows what is typed.
+    const preview = group.getByRole("figure");
+    await expect(preview).toContainText(
+      "The email as it would be sent, with made-up names and titles:",
+    );
+    const reworded = {
+      subject: "Se canceló tu invitación a {conference}",
+      body: "Hola:\n\nel borrador para {conference} al que te invitaron ya no existe.\n\nNo tienes que hacer nada.",
+    };
+    await subject.fill(reworded.subject);
+    await body.fill(reworded.body);
+    await expect(preview.locator(".email-subject")).toHaveText(
+      `Se canceló tu invitación a ${conference}`,
+    );
+    await expect(preview.locator(".email-body")).toHaveText(
+      reworded.body.replaceAll("{conference}", conference),
+    );
+    // Its line breaks are kept, as in the mail.
+    await expect(preview.locator(".email-body")).toHaveCSS("white-space", "pre-wrap");
+    await expect(group.getByText("This is not the standard text.")).toBeVisible();
+    await expect(useStandard).not.toHaveAttribute("aria-disabled", "true");
+    await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // The invitation is only tried, never saved: other tests read the one that is sent. Its
+    // list says which words the app supplies, and what the text cannot do without.
+    const invitation = await openPool(chair, INVITATION);
+    const invited = invitation.locator(".placeholders");
+    await expect(invited.locator("dt")).toHaveText([
+      "{owner}",
+      "{role}",
+      "{format}",
+      "{conference}",
+      "{link}",
+    ]);
+    await expect(invited).toContainText(`${L.name}: ${L.roles}`);
+    await expect(invited.locator("dd").first()).toContainText("It cannot go in the subject.");
+    await expect(invited.locator("dd").last()).toContainText(
+      "The text must contain it, and it cannot go in the subject.",
+    );
+    const tried = invitation.getByRole("group", { name: L.name });
+    const itsSubject = tried.getByLabel(`Subject (${L.name})`);
+    const itsBody = tried.getByLabel(`Text (${L.name})`);
+    const itsWas = { subject: await itsSubject.inputValue(), body: await itsBody.inputValue() };
+    await itsSubject.fill("Join {owner}: {link} {name}");
+    await itsBody.fill("Please join us, {owner} says.");
+    // What cannot be filled stays as it is written, in the preview as in the mail.
+    await expect(tried.getByRole("figure").locator(".email-subject")).toHaveText(
+      "Join {owner}: {link} {name}",
+    );
+    await expect(tried.getByRole("figure").locator(".email-body")).toHaveText(
+      `Please join us, ${L.owner} says.`,
+    );
+
+    // The review says what is wrong with each text, in the summary and beside it.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    const unknown =
+      "This email has nothing to put in place of {name}. Use only the words in braces listed above, or remove the braces.";
+    const inSubject = "The subject cannot contain {owner}, {link}. Only the text can.";
+    const missing = "The text must contain {link}.";
+    await expect(summary.getByRole("listitem")).toHaveText([
+      `${INVITATION} · Subject (${L.name}): ${unknown}`,
+      `${INVITATION} · Subject (${L.name}): ${inSubject}`,
+      `${INVITATION} · Text (${L.name}): ${missing}`,
+    ]);
+    await expect(tried.locator(".field-error")).toHaveText([`${unknown} ${inSubject}`, missing]);
+    await expect(itsSubject).toHaveAttribute("aria-invalid", "true");
+    await expect(itsBody).toHaveAttribute("aria-invalid", "true");
+    await expect(itsBody).toHaveAccessibleDescription(/The text must contain \{link\}\.$/);
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    // The summary's link leads to the text.
+    await summary.getByRole("link").last().click();
+    await expect(itsBody).toBeFocused();
+
+    // An emptied text is not quietly the standard text again: it is refused, and says how to
+    // get the standard text back.
+    await itsSubject.fill(itsWas.subject);
+    await itsBody.fill("");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(summary).toBeFocused();
+    await expect(summary.getByRole("listitem")).toHaveCount(1);
+    await expect(tried.locator(".field-error")).toHaveText(
+      "Write the text, or choose “Use the standard text”.",
+    );
+    // The button says which email and language it is for. It would lose what was typed here
+    // and not saved, so it asks first; told no, it changes nothing.
+    const backToStandard = tried.getByRole("button", {
+      name: `Use the standard text: ${INVITATION}, ${L.name}`,
+    });
+    let asked = "";
+    chair.once("dialog", (dialog) => {
+      asked = dialog.message();
+      dialog.dismiss();
+    });
+    await backToStandard.click();
+    await expect
+      .poll(() => asked)
+      .toBe(
+        "Replace what you typed with the standard text? What you typed in these two boxes and have not saved will be lost.",
+      );
+    await expect(itsBody).toHaveValue("");
+    chair.once("dialog", (dialog) => dialog.accept());
+    await backToStandard.click();
+    // The button stays, with focus on it, and the boxes hold the standard text again.
+    await expect(backToStandard).toBeFocused();
+    await expect(backToStandard).toHaveAttribute("aria-disabled", "true");
+    await expect(tried.getByText("This is the standard text.")).toBeVisible();
+    expect(await itsBody.inputValue()).toContain(L.invitation);
+    // (Had the call a wording of its own for the invitation, it goes back in, unchanged.)
+    await itsSubject.fill(itsWas.subject);
+    await itsBody.fill(itsWas.body);
+    await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
+
+    // Only the notice about a deleted draft is left to review: both texts, by name, from what
+    // they were to the new ones, line breaks kept.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const review = chair.getByRole("region", { name: "Review your changes" });
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveText([
+      `${DELETED} · Subject (${L.name})from “${named(was.subject)}” to “${reworded.subject}”`,
+      `${DELETED} · Text (${L.name})from “${named(was.body)}” to “${reworded.body}”`,
+    ]);
+    await expect(review.getByRole("listitem").last()).toHaveCSS("white-space", "pre-wrap");
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.getByRole("button", { name: "Save changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Settings saved.");
+
+    // The conference now holds those two texts, by path, and nothing else is new.
+    const saved = await stored(chair, CALL);
+    expect(saved.config.messages).toEqual({
+      ...before.config.messages,
+      draft_deleted: {
+        ...own,
+        subject: { ...own?.subject, [lang]: reworded.subject },
+        body: { ...own?.body, [lang]: reworded.body },
+      },
+    });
+    // After a reload they are in the boxes, and nothing is left unsaved in the browser.
+    await chair.reload();
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
+    await openPool(chair, DELETED);
+    await expect(subject).toHaveValue(reworded.subject);
+    await expect(body).toHaveValue(reworded.body);
+    await expect(group.getByText("This is not the standard text.")).toBeVisible();
+
+    // "Use the standard text" puts the standard text back in both boxes, and the email shown
+    // under them is the standard one again. Nothing typed is lost by it (what it replaces is
+    // saved), so it does not ask.
+    await useStandard.click();
+    await expect(useStandard).toBeFocused();
+    await expect(subject).toHaveValue(L.subject);
+    await expect(body).toHaveValue(L.body);
+    await expect(group.getByText("This is the standard text.")).toBeVisible();
+    await expect(preview.locator(".email-subject")).toHaveText(
+      L.subject.replace("{conference}", conference),
+    );
+    // Saved, the conference's own text is gone. (Had the call held one before this test, that
+    // one goes back instead.)
+    await subject.fill(was.subject);
+    await body.fill(was.body);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveText([
+      `${DELETED} · Subject (${L.name})from “${reworded.subject}” to “${named(was.subject)}”`,
+      `${DELETED} · Text (${L.name})from “${reworded.body}” to “${named(was.body)}”`,
+    ]);
+    await chair.getByRole("button", { name: "Save changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Settings saved.");
+    await expect(chair.getByRole("status")).toBeFocused();
+
+    // Exactly as it was, for the tests that run beside this one: no wording is left behind,
+    // not even an empty place for one.
+    const after = await stored(chair, CALL);
+    expect(after.config).toEqual(before.config);
+    expect(JSON.stringify(after.config)).toBe(JSON.stringify(before.config));
     expect(after.token).toBe(before.token);
     await expect.poll(() => unsavedValues(chair)).toBeNull();
   });

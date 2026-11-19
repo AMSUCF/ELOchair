@@ -13,4 +13,7 @@ export const LIMITS = {
   /** Abstract characters allowed per allowed word (checked per type on the server). */
   abstractCharsPerWord: 8,
   abstractCeiling: 40_000,
+  /** A conference's own wording of an email (messages.ts), before placeholders are filled. */
+  messageSubject: 200,
+  messageBody: 5_000,
 } as const;

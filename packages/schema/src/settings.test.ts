@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as conferences from "./conferences";
 import { ConferenceConfig, type ConferenceConfigInput } from "./config";
+import { MESSAGE_KEYS, MESSAGES } from "./messages";
 import {
   configChanges,
   keyedPath,
@@ -226,6 +227,13 @@ describe("what the settings screen offers", () => {
       "tracks",
       "title",
       "title.en.extra",
+      // Of an email, its texts only, and only in a language the conference has.
+      "messages",
+      "messages.invitation",
+      "messages.invitation.subject",
+      "messages.invitation.subject.pt",
+      "messages.invitation.footer.en",
+      "messages.reminder.subject.en",
       "nonsense",
     ]) {
       expect(offered, path).not.toContain(path);
@@ -502,6 +510,130 @@ describe("the review settings", () => {
     const cleared = withSetting(written, `${at}.en`, undefined);
     expect(settingAt(cleared, "reviewPools.committee")).not.toHaveProperty("guidelines");
     expect(configChanges(config, cleared)).toEqual([]);
+  });
+});
+
+describe("the wording of the emails", () => {
+  const emails = (c: ConferenceConfig) =>
+    stageOneSettings(c).filter((s) => s.path.startsWith("messages."));
+  const written = ConferenceConfig.parse({
+    ...input,
+    messages: { invitation: { body: { es: "Responde aquí: {link}" } } },
+  });
+
+  it("offers the subject and the body of every email, though the conference has written none", () => {
+    expect(config).not.toHaveProperty("messages");
+    const offered = emails(config);
+    // Six emails, a subject and a body, in the conference's two languages.
+    expect(paths(offered)).toEqual(
+      ["subject", "body"].flatMap((part) =>
+        MESSAGE_KEYS.flatMap((key) =>
+          ["en", "es"].map((lang) => `messages.${key}.${part}.${lang}`),
+        ),
+      ),
+    );
+    for (const s of offered) {
+      expect(s, s.path).toMatchObject({ optional: true, value: undefined });
+      expect(s.kind).toBe(s.id === "message.subject" ? "text" : "longtext");
+      expect(["message.subject", "message.body"]).toContain(s.id);
+    }
+    expect(offered.find((s) => s.path === "messages.invitation.subject.es")).toEqual({
+      path: "messages.invitation.subject.es",
+      id: "message.subject",
+      kind: "text",
+      optional: true,
+      lang: "es",
+      value: undefined,
+      standard: "{conference}: confirma tu participación",
+    });
+  });
+
+  it("gives each its standard text, which is what is sent while none is written", () => {
+    for (const s of emails(config)) {
+      const [, key, part, lang] = s.path.split(".");
+      const message = MESSAGE_KEYS.find((k) => k === key);
+      if (!message || (part !== "subject" && part !== "body") || (lang !== "en" && lang !== "es"))
+        throw new Error(`not an email's text: ${s.path}`);
+      expect(s.standard, s.path).toBe(MESSAGES[message].standard[lang][part]);
+    }
+    // No other setting has one.
+    for (const s of stageOneSettings(fuller)) {
+      if (!s.path.startsWith("messages.")) expect(s, s.path).not.toHaveProperty("standard");
+    }
+  });
+
+  it("reads a text the conference has written, beside the standard one", () => {
+    const body = emails(written).find((s) => s.path === "messages.invitation.body.es");
+    expect(body).toMatchObject({
+      value: "Responde aquí: {link}",
+      standard: MESSAGES.invitation.standard.es.body,
+    });
+    // The rest of that email, and every other, is still to write.
+    expect(emails(written).filter((s) => s.value !== undefined)).toHaveLength(1);
+    expect(paths(emails(written))).toEqual(paths(emails(config)));
+  });
+
+  it("offers them only in the languages the app writes mail in that the conference has", () => {
+    const langs = (languages: string[]) => [
+      ...new Set(emails(ConferenceConfig.parse({ ...input, languages })).map((s) => s.lang)),
+    ];
+    expect(langs(["en"])).toEqual(["en"]);
+    expect(langs(["en", "es", "pt"])).toEqual(["en", "es", "pt"]);
+    // French and a regional Portuguese are languages a conference may have, and not ones the
+    // app writes mail in: their readers get the standard text of the language they are sent.
+    expect(langs(["en", "fr", "pt-BR"])).toEqual(["en"]);
+  });
+
+  it("writes a text where there was no `messages`, and removing the last one leaves none", () => {
+    const at = "messages.invitation.subject.es";
+    const one = withSetting(config, at, "Te han invitado a {conference}");
+    expect(one.messages).toEqual({
+      invitation: { subject: { es: "Te han invitado a {conference}" } },
+    });
+    expect(configChanges(config, one)).toEqual([
+      { path: at, after: "Te han invitado a {conference}" },
+    ]);
+    expect(ConferenceConfig.safeParse(one).success).toBe(true);
+    expect(settingAt(one, at)).toBe("Te han invitado a {conference}");
+
+    // A second text, in another email; then the first one is taken back.
+    const two = withSetting(one, "messages.draft_deleted.body.en", "Never mind.");
+    const back = withSetting(two, at, undefined);
+    expect(back.messages).toEqual({ draft_deleted: { body: { en: "Never mind." } } });
+    expect(configChanges(two, back)).toEqual([
+      { path: at, before: "Te han invitado a {conference}" },
+    ]);
+
+    // Without the last one there is no `messages`, no empty object anywhere, and the
+    // configuration is the one it was, to the byte.
+    const none = withSetting(back, "messages.draft_deleted.body.en", undefined);
+    expect(none).not.toHaveProperty("messages");
+    expect(JSON.stringify(none)).toBe(JSON.stringify(config));
+    expect(configChanges(config, none)).toEqual([]);
+    // Removing what was never written changes nothing either.
+    expect(JSON.stringify(withSetting(config, at, undefined))).toBe(JSON.stringify(config));
+  });
+
+  it("leaves a configuration without `messages` when anything else is changed", () => {
+    /** Another value of a setting's kind: what it is does not matter here, only that it differs. */
+    const another = (s: Setting) =>
+      s.kind === "bool"
+        ? s.value !== true
+        : s.kind === "int" || s.kind === "number"
+          ? 7919
+          : `${String(s.value ?? "")} changed`;
+    for (const c of [config, fuller]) {
+      for (const s of stageOneSettings(c)) {
+        if (s.path.startsWith("messages.")) continue;
+        const changed = withSetting(c, s.path, another(s));
+        expect(configChanges(c, changed), s.path).toHaveLength(1);
+        expect(changed, s.path).not.toHaveProperty("messages");
+        expect(JSON.stringify(changed), s.path).not.toContain('"messages"');
+      }
+    }
+    // And one that has its own wording keeps exactly that.
+    const renamed = withSetting(written, "host", "Another host");
+    expect(renamed.messages).toEqual(written.messages);
   });
 });
 

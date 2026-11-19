@@ -29,6 +29,8 @@ afterAll(() => db0.close());
 
 const at = new Date("2027-02-01T12:00:00Z");
 const now = () => at;
+/** A conference that has changed no email's wording: these tests are about the standard texts. */
+const STANDARD = {};
 
 describe("outbox delivery", () => {
   it("never sends a message twice when passes overlap", async () => {
@@ -128,7 +130,7 @@ describe("review fixes, round 2: delivery passes", () => {
 
 describe("review fixes, round 3: secrets and owner-written text in mail", () => {
   const invitation = (to: string, token: string) =>
-    invitationMessage("en", to, {
+    invitationMessage(STANDARD, "en", to, {
       ownerName: "Olga Owner",
       conference: "ELO 2027",
       format: "Talk",
@@ -261,14 +263,17 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
   it("receipts and withdrawal notices show the title as written (#2)", () => {
     for (const title of titles) {
       for (const lang of ["en", "es", "pt"] as const) {
-        const received = receivedMessage(lang, "a@example.org", {
+        const received = receivedMessage(STANDARD, lang, "a@example.org", {
           ...ctx,
           title,
           deadline: "3 March 2027",
         });
         expect(received.text).toContain(title);
         expect(received.text).toContain(ctx.link);
-        const withdrawn = withdrawnMessage(lang, "chairs@example.org", { ...ctx, title });
+        const withdrawn = withdrawnMessage(STANDARD, lang, "chairs@example.org", {
+          ...ctx,
+          title,
+        });
         expect(withdrawn.text).toContain(title);
       }
     }
@@ -276,7 +281,10 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
 
   it("withdrawal notices carry the proposal's link in every language (#2)", () => {
     for (const lang of ["en", "es", "pt"] as const) {
-      const text = withdrawnMessage(lang, "chairs@example.org", { ...ctx, title: "T" }).text;
+      const text = withdrawnMessage(STANDARD, lang, "chairs@example.org", {
+        ...ctx,
+        title: "T",
+      }).text;
       expect(text.split("\n").at(-1)).toBe(ctx.link);
     }
   });
@@ -310,7 +318,7 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
 
   it("the owner learns who answered from what they typed, the address included (#1)", () => {
     for (const lang of ["en", "es", "pt"] as const) {
-      const msg = answeredMessage(lang, "owner@example.org", {
+      const msg = answeredMessage(STANDARD, lang, "owner@example.org", {
         conference: "ELO 2027",
         who: "bruno@example.net",
         answer: "declined",
@@ -319,7 +327,7 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
       expect(msg.subject).toContain("bruno@example.net");
       expect(msg.text).toContain("bruno@example.net");
     }
-    const named = answeredMessage("en", "owner@example.org", {
+    const named = answeredMessage(STANDARD, "en", "owner@example.org", {
       conference: "ELO 2027",
       who: "Nina\nNuñez",
       answer: "confirmed",
@@ -330,7 +338,7 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
 
   it("invitations still strip links and addresses from the owner's name (#2)", () => {
     const text = (ownerName: string) =>
-      invitationMessage("en", "x@example.org", {
+      invitationMessage(STANDARD, "en", "x@example.org", {
         ownerName,
         conference: "ELO 2027",
         format: "Talk",
