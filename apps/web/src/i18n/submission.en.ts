@@ -95,6 +95,8 @@ export const submissionEn = {
   editErrors: "Please fix the following before submitting:",
   editReadOnly: "Only the owner can edit this proposal.",
   editInviteeIntro: "You have been invited to take part in this proposal.",
+  reviewIntro: "You are reading this proposal as one of its reviewers.",
+  reviewNamesHidden: "The review is anonymized: the authors' names are not shown.",
   editLeave: "Leave this proposal",
   editLeaveConfirm: "Leave this proposal? The owner will be told.",
   editConfirm: "Confirm my participation",

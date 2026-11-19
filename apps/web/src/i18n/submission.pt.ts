@@ -101,6 +101,8 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   editErrors: "Corrija o seguinte antes de submeter:",
   editReadOnly: "Só quem criou a proposta a pode editar.",
   editInviteeIntro: "Foi convidado/a a participar nesta proposta.",
+  reviewIntro: "Está a ler esta proposta como uma das pessoas que a reveem.",
+  reviewNamesHidden: "A revisão é anónima: os nomes de quem a apresenta não são mostrados.",
   editLeave: "Sair desta proposta",
   editLeaveConfirm: "Sair desta proposta? Quem a criou será avisado/a.",
   editConfirm: "Confirmar a minha participação",

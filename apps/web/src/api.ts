@@ -120,6 +120,32 @@ export type MySubmission = {
   contributors: Contributor[];
 };
 
+/**
+ * What a reviewer is given of a proposal assigned to them (the reviewer projection in
+ * packages/policy): no status, no owner, no person IDs and never an email.
+ */
+export type ReviewerSubmission = {
+  view: "reviewer";
+  blindMode: "double" | "single" | "open";
+  id: string;
+  conferenceId: string;
+  typeKey: string;
+  trackKey: string | null;
+  topicKeys: string[];
+  language: string;
+  title: string;
+  abstract: string;
+  /** Without the answers marked as identifying, in anonymized (double-blind) review. */
+  fields: Record<string, string | string[] | boolean | number>;
+  /** Confirmed contributors; absent in anonymized review. */
+  contributors?: {
+    displayName: string;
+    affiliation: string | null;
+    role: Role;
+    bios?: Record<string, string>;
+  }[];
+};
+
 export type Check = {
   issues: Issue[];
   selfIdentification: { path: string; kind: SelfIdKind }[];
