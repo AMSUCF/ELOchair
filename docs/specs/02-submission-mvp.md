@@ -91,9 +91,17 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - **Audit details** hold IDs, enum values and the names of changed keys only, never field values, emails or names. The audit log cannot be redacted, so it must never hold content.
 
 ### 1.5 Agreements (consent)
-- Each conference's configuration lists `agreements`: privacy notice, code of conduct, and recordings policy. Each is localized, versioned, and has a link or text.
-- The owner must acknowledge the current versions to submit; an invitee must acknowledge them to confirm.
+- Each conference's configuration lists `agreements`: privacy notice, code of conduct, and recordings policy. Each is localized, versioned, and has a link or text. The link is an https address.
+- The owner must acknowledge the current versions to submit; an invitee must acknowledge them to confirm. Each of them is shown the title, the text (with its line breaks) and the link wherever they accept: on submitting, on the invitation page, and when answering an invitation in the app.
 - Acknowledgments are stored as `{person, conference, key, version, at}` and audited. This is the "prior, express authorization" Colombia's Ley 1581 requires before processing personal data.
+- **What an agreement says changes only together with its version.** A person who accepted `privacy` at version 1 accepted the words it had then. So a save that changes an agreement's title, text or link, in any language, while its version stays the stored one, is refused (§1.9). The new version only has to differ from the stored one; changing the version alone is always allowed. Chairs edit all four on the settings screen.
+- **What a new version does,** and does not:
+  - Everyone who submits a proposal or confirms an invitation from then on must accept the new version: the acceptance sent with a submit or a confirmation names each agreement's version, and one that names the old version gets 422 `agreements_required`. People are asked every time they submit or confirm, whatever they accepted before.
+  - Consent already recorded stays recorded against the old version. Nothing is recorded against the new one until someone accepts it.
+  - Nobody is emailed.
+  - No proposal already submitted is affected or blocked: acceptance is asked at submitting and at confirming, and is not part of what keeps submitted work valid.
+  - A page that was open when the version changed still offers the old one, and is refused until it is reloaded.
+  - The rule does not look at earlier versions: going back to one that was used before is allowed, like any version that differs from the stored one. The audit log has what each version said, by the time it was saved.
 - ELO 2027's agreements are placeholders until ELO's actual policy texts are supplied.
 
 ### 1.6 Profiles
@@ -137,7 +145,7 @@ The call was published in November 2026 at <https://elo27.eliterature.org/>. `pa
 - **Panels** hold their papers' abstracts in one required field until submissions can carry them as separate items ([issue #15](https://github.com/AMSUCF/ELOchair/issues/15)).
 
 ### 1.9 Conference settings
-Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked from "Manage submissions"). This is stage one: existing values, and the wording of the emails the app sends. Adding, removing or reordering formats, fields, review pools and criteria is still done by importing a configuration.
+Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked from "Manage submissions"). This is stage one: existing values, and the wording of the emails the app sends. Adding, removing or reordering formats, fields, review pools, criteria and agreements is still done by importing a configuration.
 
 - **Who.** Configuration changes are human-only: agents are refused, whoever they act for.
   - **Chairs do everything.** The `chair` and `admin` roles and site admins are one group (`isConferenceChair`). In the app a chair may do whatever an admin may: save any valid configuration, and move the phase (§1.3). The `admin` role stays in the data and means nothing more than `chair`. Track chairs and reviewers may not open the screen.
@@ -150,9 +158,10 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
     - of each existing review pool: name, how authors appear to its reviewers, reviews per proposal, and the guidelines for its reviewers. Under the pool's name the screen says which formats the pool reviews, and which of them has a mode of its own that the pool's choice does not change.
       - How authors appear is chosen from three sentences that say what the reviewer projection gives: anonymized (no authors, and no answers marked as identifying); the authors' names and affiliations; their names, affiliations and bios. Only authors who have confirmed are ever shown.
     - of each existing criterion of a pool: label, smallest and largest score. The smallest must be below the largest.
+    - of each existing agreement: title, text, link and version ("Agreements", below)
     - of each email the app sends to the people on a proposal: its subject and its text, in English, Spanish and Portuguese ("Emails", below). These are offered whether or not the conference has written any, and whichever of the three languages are its own.
     - the names and descriptions of formats not submitted here, and the names of existing tracks and topics
-  - **Everything else has no screen:** adding, removing, reordering or re-keying anything, review pools and criteria included; the year, time zone and languages; agreements (consent is recorded against their versions); a field's kind, options, `identifying` and `public`; a format's review pool and its own blind mode. It is done by importing a configuration, and the screen says so. Through the API a chair's save of any of it is taken like any other, under the rules below: there is no longer a list of what a chair may not change, and no 403 with paths. The slug is never changed by a save (400 `slug_mismatch`).
+  - **Everything else has no screen:** adding, removing, reordering or re-keying anything, review pools and criteria included; the year, time zone and languages; adding or removing an agreement, and its key; a field's kind, options, `identifying` and `public`; a format's review pool and its own blind mode. It is done by importing a configuration, and the screen says so. Through the API a chair's save of any of it is taken like any other, under the rules below: there is no longer a list of what a chair may not change, and no 403 with paths. The slug is never changed by a save (400 `slug_mismatch`).
 - **Submitted work stays valid.** A save is checked, under the conference's row lock, against every proposal that has been sent in and not withdrawn or turned down, with the validation the submit path uses. If one of them would gain a problem it does not have now, nothing is saved: 409 `submitted_work_invalid`, with the count, the counts by problem, and the IDs of those the person may manage as a chair (their own and conflicted work is only counted). Every chair is held to it, whatever the change: a format that submitted proposals use cannot be removed.
   - **Drafts never block.** The review says how many drafts would gain a problem.
 - **A save and a write wait for each other.** A save holds the conference's row for update while it checks. Every write to a submission, or to who is on it, shares that row before it reads or writes anything about the proposal. So a write is checked against the configuration in force when it commits, and a save never checks work that is changing under it.
@@ -195,6 +204,14 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
       - Through the API a text equal to the standard one is taken and stored like any other; it is sent like any other, and the screen shows it as the standard text.
     - The review lists each text by path, from or to "the standard text" where there is no own one, and the audit entry holds the same.
   - **The sign-in email is fixed.** It is the same for every conference and is not offered.
+- **Agreements.** Chairs edit what people accept when they submit a proposal or confirm an invitation (§1.5): of each existing agreement, its title and its text in each language of the conference, its link, and its version. Agreements are added and removed by importing a configuration.
+  - **A changed agreement needs a new version.** A save that changes an agreement's title, text or link in any language while its version stays the stored one is refused. Agreements are matched by key.
+    - **In the review:** `POST …/config/preview` names the version as an issue, path `agreements.<key>.version`, code `agreement_version_required`, with `canSave` false. On the screen the reason is said beside the version, which is the value to change.
+    - **In the save:** `PUT …/config` answers 409 `agreement_version_required` with the same issues, and saves nothing. (When a save would also show the authors of an anonymized review, the answer carries both kinds of issue under the code of the first.)
+    - **What is allowed:** a new version alone, and any change that comes with one. The new version only has to differ from the stored one and be 1 to 40 characters; the screen suggests a date such as 2026-12, or a number.
+  - **The screen says what a new version does** (§1.5), in each agreement's section and again in the review whenever a version changes: who accepts it from then on, that what was accepted stays recorded against the old version, that nobody is emailed, that submitted proposals are not affected, and that a page open at that moment has to be reloaded.
+  - An agreement needs a text or a link; the text needs the conference's main language, like any other; the link is an https address. Each is said beside its value.
+  - Like every other change, it is audited by path (`agreements.privacy.text.en`, `agreements.privacy.version`), with the values before and after.
 - **An anonymized review that has begun stays anonymized.** Reviewers were promised, and authors were told, that the authors are not shown. Once a proposal has a reviewer assigned (`assignments`), a save that would show that reviewer who wrote it is refused: the mode in force for its format (the format's own, else its pool's) may not go from anonymized to names shown.
   - **In the review:** `POST …/config/preview` names the value that would do it as an issue, code `reviewers_assigned`, with `canSave` false. On the screen that value is the pool's `reviewPools.<pool>.blindMode`, and the reason is said beside the choice. Through the API it may also be a format's own mode (`submissionTypes.<format>.blindMode`) or the pool that reviews it (`….reviewPool`).
   - **In the save:** `PUT …/config` answers 409 `reviewers_assigned` with the same issues, and saves nothing.
@@ -211,8 +228,8 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 - **Audit.** One `conference.config_updated` entry per save, with every changed value's path, before and after, and how many drafts were affected. A configuration holds no personal data.
 - **Unsaved changes survive a reload.** What a chair has typed and not saved is kept in that browser, under their own id, like unsaved text in the proposal editor: it is back after a reload or a closed tab, with a notice and a way to discard it, and it goes on save, on discard and on sign-out. It follows the form: what was typed while a save was on its way is still unsaved, so that part stays kept, and only that part. It is kept as typed, by setting, not as a configuration: it goes back on top of whatever is stored now, exactly as after "Reload the settings", an edit to something that is no longer a setting is dropped, and the review before saving shows every change against the stored value.
 - **Not yet:**
-  - a screen for adding or removing formats, fields, languages, review pools and criteria. That is done by importing a configuration, by someone with access to the server.
-  - the CLI's `import-config` applies neither the submitted-work check nor the one for anonymized review.
+  - a screen for adding or removing formats, fields, languages, review pools, criteria and agreements. That is done by importing a configuration, by someone with access to the server.
+  - the CLI's `import-config` applies neither the submitted-work check, nor the one for anonymized review, nor the one for an agreement's version.
 
 ## 2. Contracts
 
@@ -273,7 +290,7 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 | `GET /api/conferences/:slug` | anyone who can see the conference | configuration, phase and `callOpen` (server clock) |
 | `GET /api/conferences/:slug/settings` | chair or admin (human) | configuration and its token; §1.9 |
 | `POST /api/conferences/:slug/config/preview` | chair or admin (human) | the configuration as it would be saved; saves nothing; §1.9 |
-| `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 409 `stale`, `reviewers_assigned` or `submitted_work_invalid`; row-locked, audited; §1.9 |
+| `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 409 `stale`, `reviewers_assigned`, `agreement_version_required` or `submitted_work_invalid`; row-locked, audited; §1.9 |
 | `PUT /api/conferences/:slug/phase` | chair or admin (human) | `{phase, from?, force?, reason?}`; forward only unless `force` + `reason` (409 `phase_backwards`); with `from`, only from that phase (409 `stale`); row-locked, audited; moved from "Manage submissions", §1.3 |
 | `GET /api/conferences/:slug/submissions` | per policy | `SubmissionQuery` |
 | `GET /api/conferences/:slug/submissions.csv` and `contributors.csv` | chair (human), or tier C on internal | §2.3 |

@@ -58,9 +58,8 @@ import { useUnsaved } from "../useUnsaved";
  * Conference settings for chairs (spec 02, §1.9). The screen shows the stage-one values
  * (stageOneSettings): existing values, and the wording of the emails the app sends, whether the
  * conference has written its own or not, in the three languages mail goes out in; the same for
- * every chair. Formats, fields,
- * languages, review pools and criteria are added or removed by importing a configuration, and
- * the page says so. It keeps what was typed apart from the configuration, and saves nothing
+ * every chair. Formats, fields, languages, review pools, criteria and agreements are added or
+ * removed by importing a configuration, and the page says so. It keeps what was typed apart from the configuration, and saves nothing
  * that has not been reviewed: the server says what a save would change, what is wrong with it,
  * what it would do to submitted work, and only then offers "Save changes".
  *
@@ -130,6 +129,10 @@ const LABELS: Record<SettingId, MessageKey> = {
   "criterion.max": "settingsLabel_criterion_max",
   "message.subject": "settingsLabel_message_subject",
   "message.body": "settingsLabel_message_body",
+  "agreement.title": "settingsLabel_agreement_title",
+  "agreement.text": "settingsLabel_agreement_text",
+  "agreement.url": "settingsLabel_agreement_url",
+  "agreement.version": "settingsLabel_agreement_version",
   "other.name": "settingsLabel_other_name",
   "other.description": "settingsLabel_other_description",
   "track.name": "settingsLabel_track_name",
@@ -189,7 +192,8 @@ const sectionOf = (path: string) => {
   return list === "submissionTypes" ||
     list === "reviewPools" ||
     list === "otherFormats" ||
-    list === "messages"
+    list === "messages" ||
+    list === "agreements"
     ? `${list}.${key}`
     : null;
 };
@@ -426,7 +430,12 @@ function SettingsForm({
       }
       // A reviewer was assigned between the review and the save, and a value would now show
       // them the authors of an anonymized proposal: said beside that value, as a review would.
-      if (res.status === 409 && res.error === "reviewers_assigned") {
+      // (An agreement reworded under its old version is refused the same way; the review has
+      // always said so first, so this answer is only ever seen by another client.)
+      if (
+        res.status === 409 &&
+        (res.error === "reviewers_assigned" || res.error === "agreement_version_required")
+      ) {
         showIssues(res.issues);
         setReview(null);
         return;
@@ -505,6 +514,9 @@ function SettingsForm({
     } else if (list === "messages") {
       const email = MESSAGE_KEYS.find((x) => x === key);
       if (email) context.push(t(emailNameKey(email)));
+    } else if (list === "agreements") {
+      const agreement = config.agreements.find((x) => x.key === key);
+      if (agreement) context.push(text(agreement.title));
     }
     return [...context, label(s)].join(" · ");
   };
@@ -552,7 +564,7 @@ function SettingsForm({
   const under = (prefix: string) => settings.filter((s) => s.path.startsWith(prefix));
   const profile = settings.filter(
     (s) =>
-      !/^(deadlines|rules|submissionTypes|reviewPools|messages|otherFormats|tracks|topics)\./.test(
+      !/^(deadlines|rules|submissionTypes|reviewPools|messages|agreements|otherFormats|tracks|topics)\./.test(
         s.path,
       ),
   );
@@ -602,6 +614,15 @@ function SettingsForm({
       })
     : [];
   const hidden = shown?.blocked ? shown.blocked.count - shown.blocked.submissionIds.length : 0;
+  /** The agreements this save gives a new version, each by its title in quotation marks. */
+  const newVersions = (shown?.changes ?? []).flatMap((c) => {
+    const [list, key, leaf, more] = c.path.split(".");
+    const agreement =
+      list === "agreements" && leaf === "version" && more === undefined
+        ? config.agreements.find((a) => a.key === key)
+        : undefined;
+    return agreement ? [t("settingsQuotedTitle", { title: text(agreement.title) })] : [];
+  });
 
   return (
     <>
@@ -707,6 +728,39 @@ function SettingsForm({
           ),
         )}
 
+        {config.agreements.length > 0 && (
+          <>
+            <h2>{t("settingsSectionAgreements")}</h2>
+            <p className="section-intro">{t("settingsAgreementsIntro")}</p>
+            {config.agreements.map((agreement) => {
+              const at = `agreements.${agreement.key}.`;
+              const own = under(at);
+              const textHint = `${fieldId(`${at}text`)}-hint`;
+              return section(
+                `agreements.${agreement.key}`,
+                text(agreement.title),
+                <>
+                  <p className="meta">{t("settingsAgreementHint")}</p>
+                  {controls(own.filter((s) => s.id === "agreement.title"))}
+                  <fieldset>
+                    <legend>{t("settingsLabel_agreement_text")}</legend>
+                    <p className="setting-hint" id={textHint}>
+                      {t("settingsAgreementTextHint")}
+                    </p>
+                    {controls(
+                      own.filter((s) => s.id === "agreement.text"),
+                      textHint,
+                    )}
+                  </fieldset>
+                  {controls(
+                    own.filter((s) => s.id === "agreement.url" || s.id === "agreement.version"),
+                  )}
+                </>,
+              );
+            })}
+          </>
+        )}
+
         {config.otherFormats.length > 0 && (
           <>
             <h2>{t("settingsSectionOther")}</h2>
@@ -791,6 +845,11 @@ function SettingsForm({
               {hidden > 0 && <p>{t("settingsBlockedHidden", { n: hidden })}</p>}
             </div>
           )}
+          {newVersions.length > 0 && (
+            <p className="notice">
+              {t("settingsWarnNewVersion", { agreements: newVersions.join(", ") })}
+            </p>
+          )}
           {shown.warnings.callCloses && <p className="notice">{t("settingsWarnCloses")}</p>}
           {shown.warnings.callOpens && <p className="notice">{t("settingsWarnOpens")}</p>}
           {shown.warnings.pastDeadlines.map((key) => (
@@ -844,9 +903,13 @@ function Control({
       ? t("settingsNoMinimumHint")
       : s.kind === "blindMode"
         ? t("settingsBlindHint")
-        : s.optional && !s.lang
-          ? t("settingsOptionalHint")
-          : "";
+        : s.id === "agreement.url"
+          ? t("settingsAgreementUrlHint")
+          : s.id === "agreement.version"
+            ? t("settingsAgreementVersionHint")
+            : s.optional && !s.lang
+              ? t("settingsOptionalHint")
+              : "";
   const common = {
     id,
     "aria-invalid": issues.some((i) => i.path === s.path) ? (true as const) : undefined,
@@ -914,8 +977,15 @@ function Control({
       {s.kind === "longtext" ? (
         <textarea
           {...common}
-          // Guidelines and emails run to paragraphs; the other long texts are a sentence or two.
-          rows={s.id === "message.body" ? 8 : s.id === "pool.guidelines" ? 6 : 3}
+          // Guidelines, emails and agreements run to paragraphs; the other long texts are a
+          // sentence or two.
+          rows={
+            s.id === "message.body"
+              ? 8
+              : s.id === "pool.guidelines" || s.id === "agreement.text"
+                ? 6
+                : 3
+          }
           lang={s.lang}
           value={value}
           onChange={(e) => onChange(e.target.value)}

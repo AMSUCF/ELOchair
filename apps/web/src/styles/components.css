@@ -363,6 +363,11 @@ summary {
   gap: 4px;
 }
 
+/* An agreement's text, as the chairs wrote it: line breaks kept. */
+.agreement > p {
+  white-space: pre-wrap;
+}
+
 /* A submitted abstract, shown for reading: the serif, as for long prose on the site. */
 .prose {
   white-space: pre-wrap;

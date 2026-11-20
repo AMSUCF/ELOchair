@@ -204,8 +204,14 @@ describe("what the settings screen offers", () => {
       "rules.presenterCap",
       "rules.presenterCap.countedRoles",
       "rules.bio.requested",
-      "agreements.privacy.version",
-      "agreements.privacy.text.en",
+      // Of an agreement, what it says and its version; not its key, nor the list itself.
+      "agreements",
+      "agreements.privacy",
+      "agreements.privacy.key",
+      "agreements.privacy.title",
+      "agreements.privacy.text",
+      "agreements.privacy.title.pt",
+      "agreements.terms.version",
       "reviewPools",
       "reviewPools.committee.key",
       "reviewPools.committee.name",
@@ -655,6 +661,142 @@ describe("the wording of the emails", () => {
     // And one that has its own wording keeps exactly that.
     const renamed = withSetting(written, "host", "Another host");
     expect(renamed.messages).toEqual(written.messages);
+  });
+});
+
+describe("the agreements", () => {
+  /** The made-up conference with two agreements: one with a text, one with a link. */
+  const agreed = ConferenceConfig.parse({
+    ...input,
+    agreements: [
+      {
+        key: "privacy",
+        title: { en: "Privacy notice", es: "Aviso de privacidad" },
+        text: { en: "We keep little.\n\nWe share nothing." },
+        version: "1",
+      },
+      {
+        key: "conduct",
+        title: { en: "Code of conduct" },
+        url: "https://example.org/conduct",
+        version: "2031-01",
+      },
+    ],
+  });
+  const at = (c: ConferenceConfig, prefix: string) =>
+    stageOneSettings(c).filter((s) => s.path.startsWith(prefix));
+
+  it("lists every agreement's title and text in each language, its link and its version", () => {
+    expect(
+      at(agreed, "agreements.").map((s) => [s.path, s.id, s.kind, s.optional, s.value]),
+    ).toEqual([
+      ["agreements.privacy.title.en", "agreement.title", "text", false, "Privacy notice"],
+      ["agreements.privacy.title.es", "agreement.title", "text", false, "Aviso de privacidad"],
+      ["agreements.conduct.title.en", "agreement.title", "text", false, "Code of conduct"],
+      ["agreements.conduct.title.es", "agreement.title", "text", false, undefined],
+      [
+        "agreements.privacy.text.en",
+        "agreement.text",
+        "longtext",
+        true,
+        "We keep little.\n\nWe share nothing.",
+      ],
+      ["agreements.privacy.text.es", "agreement.text", "longtext", true, undefined],
+      // An agreement without a text has one to write, in each language.
+      ["agreements.conduct.text.en", "agreement.text", "longtext", true, undefined],
+      ["agreements.conduct.text.es", "agreement.text", "longtext", true, undefined],
+      ["agreements.privacy.url", "agreement.url", "url", true, undefined],
+      ["agreements.conduct.url", "agreement.url", "url", true, "https://example.org/conduct"],
+      ["agreements.privacy.version", "agreement.version", "text", false, "1"],
+      ["agreements.conduct.version", "agreement.version", "text", false, "2031-01"],
+    ]);
+    // A conference without agreements has no such settings: one is not added here.
+    expect(config.agreements).toEqual([]);
+    expect(at(config, "agreements.")).toEqual([]);
+  });
+
+  it("changes what an agreement says and its version by path, and never adds one", () => {
+    let next = withSetting(agreed, "agreements.privacy.text.es", "Guardamos poco.");
+    next = withSetting(next, "agreements.privacy.version", "2");
+    next = withSetting(next, "agreements.conduct.url", "https://example.org/conduct-2");
+    expect(configChanges(agreed, next)).toEqual([
+      { path: "agreements.privacy.text.es", after: "Guardamos poco." },
+      { path: "agreements.privacy.version", before: "1", after: "2" },
+      {
+        path: "agreements.conduct.url",
+        before: "https://example.org/conduct",
+        after: "https://example.org/conduct-2",
+      },
+    ]);
+    expect(ConferenceConfig.safeParse(next).success).toBe(true);
+    // A text cleared in its last language is gone, as an optional text is.
+    const cleared = withSetting(agreed, "agreements.privacy.text.en", undefined);
+    expect(settingAt(cleared, "agreements.privacy")).not.toHaveProperty("text");
+    const same = withSetting(agreed, "agreements.terms.version", "1");
+    expect(configChanges(agreed, same)).toEqual([]);
+  });
+
+  it("needs a text or a link, said beside the link, and takes only an https link", () => {
+    const refusals = (change: (c: ConferenceConfig) => ConferenceConfig) => {
+      const parsed = ConferenceConfig.safeParse(change(agreed));
+      return parsed.success
+        ? []
+        : parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            ...(issue.code === "custom" && issue.params ? { params: issue.params } : {}),
+          }));
+    };
+    expect(refusals((c) => withSetting(c, "agreements.privacy.text.en", undefined))).toEqual([
+      {
+        path: "agreements.0",
+        params: { code: "agreement_needs_text_or_link", leaf: "url" },
+      },
+    ]);
+    expect(refusals((c) => withSetting(c, "agreements.conduct.url", undefined))).toEqual([
+      {
+        path: "agreements.1",
+        params: { code: "agreement_needs_text_or_link", leaf: "url" },
+      },
+    ]);
+    // With a text, the link may go; with a link, the text may.
+    expect(
+      refusals((c) =>
+        withSetting(
+          withSetting(c, "agreements.conduct.text.en", "Be kind."),
+          "agreements.conduct.url",
+          undefined,
+        ),
+      ),
+    ).toEqual([]);
+    for (const url of [
+      "http://example.org/x",
+      "javascript:alert(1)",
+      "mailto:a@example.org",
+      "x",
+    ]) {
+      expect(
+        refusals((c) => withSetting(c, "agreements.conduct.url", url)),
+        url,
+      ).toEqual([{ path: "agreements.1.url" }]);
+    }
+    // A text needs the conference's main language, like any other; a version is 1 to 40 characters.
+    expect(
+      refusals((c) =>
+        withSetting(
+          withSetting(c, "agreements.privacy.text.en", undefined),
+          "agreements.privacy.text.es",
+          "Guardamos poco.",
+        ),
+      ),
+    ).toEqual([
+      { path: "agreements.0.text", params: { code: "default_language_required", leaf: "en" } },
+    ]);
+    expect(refusals((c) => withSetting(c, "agreements.privacy.version", "x".repeat(41)))).toEqual([
+      { path: "agreements.0.version" },
+    ]);
+    expect(refusals((c) => withSetting(c, "agreements.privacy.version", undefined))).toEqual([
+      { path: "agreements.0.version" },
+    ]);
   });
 });
 

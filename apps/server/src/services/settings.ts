@@ -22,7 +22,10 @@ import type { ConferenceRow } from "../repo";
 /*
  * Changing a conference's configuration through the app (spec 02, §1.9): what a change would
  * do. Who may make one is the route's to say (any chair, in person: every chair may save any
- * valid configuration); it saves only what a review lets through.
+ * valid configuration); it saves only what a review lets through. Two things a review does not
+ * let through although the configuration is valid: showing the authors of an anonymized review
+ * that has begun (namesRevealed), and changing what an agreement says under the version people
+ * have accepted (agreementsReworded).
  *
  * Everything here answers in paths, codes, counts and opaque submission IDs: never a name, a
  * title or a word of anyone's text. A problem with the wording of an email names the
@@ -56,7 +59,8 @@ export const configToken = (config: ConferenceConfig): string =>
 
 /**
  * A problem with a submitted configuration, by keyed path, with a code a screen can explain:
- * what the schema refuses, and what the conference's proposals do not allow (namesRevealed).
+ * what the schema refuses, what the conference's proposals do not allow (namesRevealed), and
+ * what the consent already recorded does not allow (agreementsReworded).
  */
 export type ConfigIssue = {
   path: string;
@@ -99,7 +103,8 @@ export function configIssues(error: ZodError, input: unknown): ConfigIssue[] {
         params = { min: Number(issue.minimum) + (issue.inclusive === false ? 1 : 0) };
       }
     } else if (issue.code === "too_big") {
-      code = "too_big";
+      // A text that is too long is not a number that is too large.
+      code = issue.origin === "string" ? "too_long" : "too_big";
       params = { max: Number(issue.maximum) - (issue.inclusive === false ? 1 : 0) };
     } else if (issue.code === "invalid_format") {
       if (["email", "url", "date", "datetime"].includes(issue.format)) code = issue.format;
@@ -209,6 +214,35 @@ function namesRevealed(
 }
 
 /**
+ * Consent is recorded against an agreement's version (`agreement_acks`: person, conference,
+ * key, version). A person who accepted "privacy" at version 1 accepted the words it had then.
+ * So what an agreement says, its title, its text or its link in any language, is changed only
+ * together with its version: a save that changes one of them and keeps the stored version is
+ * refused, at the version, which is the value to change. The new version only has to differ
+ * from the stored one. Changing the version alone is always allowed.
+ *
+ * Agreements are matched by key. One that is new has no stored version to keep, and one that is
+ * removed says nothing any more; neither is this rule's concern (and neither has a screen).
+ */
+function agreementsReworded(before: ConferenceConfig, after: ConferenceConfig): ConfigIssue[] {
+  const said = (a: ConferenceConfig["agreements"][number]) =>
+    JSON.stringify(canonical({ title: a.title, text: a.text ?? null, url: a.url ?? null }));
+  return after.agreements.flatMap((agreement) => {
+    const stored = before.agreements.find((a) => a.key === agreement.key);
+    if (!stored || stored.version !== agreement.version || said(stored) === said(agreement)) {
+      return [];
+    }
+    return [
+      {
+        path: `agreements.${agreement.key}.version`,
+        code: "agreement_version_required",
+        message: "what an agreement says can only change together with its version",
+      },
+    ];
+  });
+}
+
+/**
  * What saving `input` over the stored configuration would do. Nothing is written. `records` are
  * the conference's submissions as they are now; `base` is the token of the configuration the
  * person started from, when they said so. `viewer` decides one thing only: which of the
@@ -241,7 +275,7 @@ export function reviewConfig(args: {
   const next = parsed.data;
   const before = conference.config;
   review.changes = configChanges(before, next);
-  review.issues = namesRevealed(before, next, records);
+  review.issues = [...namesRevealed(before, next, records), ...agreementsReworded(before, next)];
 
   const byCode: Record<string, number> = {};
   const submissionIds: string[] = [];

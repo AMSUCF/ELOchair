@@ -178,11 +178,13 @@ export const conferenceRoutes = new Hono<AppEnv>()
         now,
       });
       if (review.stale) throw new Refusal(409, "stale", { token: review.token });
-      // A proposal that has a reviewer and is reviewed anonymized stays so: the value that
-      // would show its authors is named, as in the review.
-      if (review.issues.length > 0) {
-        throw new Refusal(409, "reviewers_assigned", { issues: review.issues });
-      }
+      // What a valid configuration still may not do is named at the value that would do it,
+      // as in the review: show the authors of a proposal that has a reviewer and is reviewed
+      // anonymized (`reviewers_assigned`), or change what an agreement says under the version
+      // people have accepted (`agreement_version_required`). The answer carries every such
+      // issue, under the code of the first.
+      const [refused] = review.issues;
+      if (refused) throw new Refusal(409, refused.code, { issues: review.issues });
       if (review.blocked) {
         throw new Refusal(409, "submitted_work_invalid", { blocked: review.blocked });
       }

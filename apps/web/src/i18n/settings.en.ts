@@ -4,9 +4,9 @@ export const settingsEn = {
   settingsTitle: "Conference settings",
   settingsNoAccess: "Only the chairs of this conference can change its settings.",
   settingsIntro:
-    "Change the conference's details, dates, limits and texts here, how proposals are reviewed, and the wording of the emails the app sends. You review every change before it is saved, and each save is recorded.",
+    "Change the conference's details, dates, limits and texts here, how proposals are reviewed, the wording of the emails the app sends, and the agreements people accept. You review every change before it is saved, and each save is recorded.",
   settingsScopeNote:
-    "Formats, fields, languages, review pools and criteria are added or removed by importing a configuration on the server, not here.",
+    "Formats, fields, languages, review pools, criteria and agreements are added or removed by importing a configuration on the server, not here.",
   settingsBackToManage: "Back to the submissions",
   settingsSectionConference: "The conference",
   settingsSectionDeadlines: "Deadlines",
@@ -14,6 +14,7 @@ export const settingsEn = {
   settingsSectionFormats: "Formats",
   settingsSectionReview: "Review",
   settingsSectionEmails: "Emails",
+  settingsSectionAgreements: "Agreements",
   settingsSectionOther: "Formats not submitted here",
   settingsSectionTracks: "Tracks",
   settingsSectionTopics: "Topics",
@@ -122,6 +123,23 @@ export const settingsEn = {
   settingsEmailSample_person: "Bruno Sample",
   settingsEmailSample_title: "A made-up title",
   settingsStandardText: "the standard text",
+  settingsAgreementsIntro:
+    "People accept these when they submit a proposal or confirm an invitation. The app records which version of each agreement each person accepted.",
+  settingsAgreementHint:
+    "If you change what this agreement says (its title, its text or its link), give it a new version. With a new version, everyone who submits a proposal or confirms an invitation from then on accepts the new one. What people have already accepted stays recorded against the old version. Nobody is emailed, and proposals already submitted are not affected.",
+  settingsLabel_agreement_title: "Title",
+  settingsLabel_agreement_text: "Text",
+  settingsLabel_agreement_url: "Link",
+  settingsLabel_agreement_version: "Version",
+  settingsAgreementTextHint:
+    "Optional if the agreement has a link. People read this under the title when they accept, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
+  settingsAgreementUrlHint:
+    "Optional if the agreement has a text. A page people can open to read the agreement. It starts with https://",
+  settingsAgreementVersionHint:
+    "This names what people accept. Change it whenever the title, the text or the link changes. Anything different from the saved version will do: a date such as 2026-12, or a number.",
+  settingsQuotedTitle: "“{title}”",
+  settingsWarnNewVersion:
+    "New version of {agreements}. Everyone who submits a proposal or confirms an invitation from now on accepts the new version. What people have already accepted stays recorded against the old one. Nobody is emailed, and proposals already submitted are not affected. Someone who has a proposal or an invitation open right now has to reload the page before they can accept.",
   settingsLabel_other_name: "Name",
   settingsLabel_other_description: "Description",
   settingsLabel_track_name: "Name",
@@ -198,5 +216,9 @@ export const settingsEn = {
   issue_settings_message_missing_placeholder: "The text must contain {names}.",
   issue_settings_message_link_touched:
     "Put a space or a line break before and after {names}. Whatever touches the link would become part of its address.",
+  issue_settings_agreement_version_required:
+    "You changed what this agreement says. People accepted the old words under this version, so enter a new version.",
+  issue_settings_agreement_needs_text_or_link: "An agreement needs a text or a link.",
+  issue_settings_too_long: "This is too long. Use {max} characters or fewer.",
   issue_settings_invalid: "Check this value.",
 };

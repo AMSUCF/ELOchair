@@ -16,6 +16,8 @@ import {
  * put it back. No blind mode is ever saved: other tests read who is shown to reviewers. Of the
  * emails, the others read the invitation, the receipt, the answer to the owner and the notice
  * to people invited to withdrawn work: those are reworded here only as far as the review step.
+ * Nothing about an agreement is ever saved either: the others accept the call's agreements at
+ * the versions they find, and a new version would refuse them.
  */
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -115,6 +117,13 @@ type Stored = {
     title: Record<string, string>;
     defaultLanguage: string;
     messages?: Record<string, { subject?: Record<string, string>; body?: Record<string, string> }>;
+    agreements: {
+      key: string;
+      title: Record<string, string>;
+      text?: Record<string, string>;
+      url?: string;
+      version: string;
+    }[];
     reviewPools: {
       key: string;
       name: Record<string, string>;
@@ -189,7 +198,7 @@ test.describe("conference settings", () => {
     // Every chair is told the same thing about what this screen does not offer.
     await expect(
       chair.getByText(
-        "Formats, fields, languages, review pools and criteria are added or removed by importing a configuration on the server, not here.",
+        "Formats, fields, languages, review pools, criteria and agreements are added or removed by importing a configuration on the server, not here.",
       ),
     ).toBeVisible();
     await expectAccessibleInBothThemes(chair);
@@ -984,6 +993,133 @@ test.describe("conference settings", () => {
     expect(JSON.stringify(after.config)).toBe(JSON.stringify(before.config));
     expect(after.token).toBe(before.token);
     await expect.poll(() => unsavedValues(chair)).toBeNull();
+  });
+
+  test("an agreement's words change only with a new version, and the review says what that does", async () => {
+    test.slow();
+    // Nothing here is saved. Whatever the call's first agreement says is read first, changed
+    // in the form as far as the review step, and taken back.
+    const before = await stored(chair, CALL);
+    const agreement = before.config.agreements[0];
+    if (!agreement) throw new Error("the call has no agreement");
+    const name = agreement.title.en ?? "";
+    const was = { url: agreement.url ?? "", text: agreement.text?.en ?? "" };
+
+    await openSettings(chair);
+    await expect(
+      chair.getByRole("heading", { level: 2, name: "Agreements", exact: true }),
+    ).toBeVisible();
+    await expect(
+      chair.getByText(
+        "People accept these when they submit a proposal or confirm an invitation. The app records which version of each agreement each person accepted.",
+      ),
+    ).toBeVisible();
+
+    // Each agreement is in its own section, closed until asked for. Its first lines say what
+    // a new version is for and what it does.
+    const summary = chair
+      .locator("summary")
+      .filter({ hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) });
+    await expectTouchTarget(summary);
+    const section = chair.locator("details").filter({ has: summary });
+    await expect(section.getByLabel("Version")).toBeHidden();
+    await summary.click();
+    await expect(section.locator("p.meta").first()).toHaveText(
+      "If you change what this agreement says (its title, its text or its link), give it a new version. With a new version, everyone who submits a proposal or confirms an invitation from then on accepts the new one. What people have already accepted stays recorded against the old version. Nobody is emailed, and proposals already submitted are not affected.",
+    );
+
+    // Its title and its text in each language of the conference, its link and its version.
+    const title = section.getByLabel("Title (English)");
+    const text = section.getByRole("group", { name: "Text" }).getByLabel("Text (English)");
+    const link = section.getByLabel("Link");
+    const version = section.getByLabel("Version");
+    await expect(title).toHaveValue(name);
+    await expect(text).toHaveValue(was.text);
+    await expect(text).toHaveAccessibleDescription(
+      /^Optional if the agreement has a link\. People read this under the title when they accept/,
+    );
+    await expect(link).toHaveValue(was.url);
+    await expect(link).toHaveAccessibleDescription(
+      "Optional if the agreement has a text. A page people can open to read the agreement. It starts with https://",
+    );
+    await expect(version).toHaveValue(agreement.version);
+    const versionHint =
+      "This names what people accept. Change it whenever the title, the text or the link changes. Anything different from the saved version will do: a date such as 2026-12, or a number.";
+    await expect(version).toHaveAccessibleDescription(versionHint);
+    await expectTouchTarget(version);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // The title is changed and the version is not: the review refuses it beside the version,
+    // which is the value to change, and offers no save.
+    const revised = `${name} (revised)`;
+    await title.fill(revised);
+    await expect(chair.getByText("Values changed and not saved yet: 1.")).toBeVisible();
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const problems = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(problems).toBeFocused();
+    const why =
+      "You changed what this agreement says. People accepted the old words under this version, so enter a new version.";
+    await expect(problems.getByRole("listitem")).toHaveText([`${name} · Version: ${why}`]);
+    await expect(section.locator(".field-error")).toHaveText(why);
+    await expect(version).toHaveAttribute("aria-invalid", "true");
+    await expect(version).toHaveAccessibleDescription(`${versionHint} ${why}`);
+    await expect(title).not.toHaveAttribute("aria-invalid", "true");
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expect(chair.getByRole("region", { name: "Review your changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    // The summary's link leads to the version.
+    await problems.getByRole("link").click();
+    await expect(version).toBeFocused();
+
+    // A link has to be an https address, said beside it.
+    const next = `${agreement.version}-next`;
+    await version.fill(next);
+    await link.fill("http://example.org/agreement");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(problems).toBeFocused();
+    await expect(problems.getByRole("listitem")).toHaveText([
+      `${name} · Link: Enter a web address that starts with https://`,
+    ]);
+    await link.fill(was.url);
+
+    // With a new version the change can be reviewed: both values by name, and what a new
+    // version does, before anything is saved. It is not saved here.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const review = chair.getByRole("region", { name: "Review your changes" });
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveText([
+      `${name} · Title (English)from “${name}” to “${revised}”`,
+      `${name} · Versionfrom “${agreement.version}” to “${next}”`,
+    ]);
+    await expect(review.locator("p.notice")).toHaveText(
+      `New version of “${name}”. Everyone who submits a proposal or confirms an invitation from now on accepts the new version. What people have already accepted stays recorded against the old one. Nobody is emailed, and proposals already submitted are not affected. Someone who has a proposal or an invitation open right now has to reload the page before they can accept.`,
+    );
+    await expectTouchTarget(chair.getByRole("button", { name: "Save changes" }));
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // A new version alone is a change too, and says the same.
+    await title.fill(name);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(review.getByRole("listitem")).toHaveText([
+      `${name} · Versionfrom “${agreement.version}” to “${next}”`,
+    ]);
+    await expect(review.locator("p.notice")).toContainText(`New version of “${name}”.`);
+
+    // Taken back, nothing has changed, nothing is kept in the browser, and the call is as it
+    // was for the tests that accept its agreements beside this one.
+    await version.fill(agreement.version);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+    const after = await stored(chair, CALL);
+    expect(after.token).toBe(before.token);
+    expect(after.config.agreements).toEqual(before.config.agreements);
   });
 
   test("showing the authors of an anonymized review is refused beside the choice once reviewers are assigned", async () => {
