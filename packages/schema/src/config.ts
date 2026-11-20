@@ -109,13 +109,17 @@ export const FieldKind = z.enum([
 
 /**
  * Something participants must acknowledge: the privacy notice, code of conduct, recordings policy.
- * Owners acknowledge the current version to submit; invitees to confirm. Bump the version when
- * the text changes, and everyone acknowledges again next time.
+ * Owners acknowledge the current version to submit; invitees to confirm. Consent is recorded
+ * against the version, so what an agreement says is changed only together with its version
+ * (the server refuses a save that changes one without the other; spec 02, §1.5), and everyone
+ * acknowledges the new one next time.
+ *
+ * The link is an https address: people open it from the page where they accept.
  */
 export const Agreement = z.object({
   key: Key,
   title: LocalizedText,
-  url: z.url().optional(),
+  url: z.url({ protocol: /^https$/, error: "use an https:// address" }).optional(),
   text: LocalizedText.optional(),
   version: z.string().min(1).max(40),
 });
@@ -177,6 +181,7 @@ export type ConfigIssueCode =
   | "deadline_order"
   | "dates_order"
   | "final_before_conference"
+  | "agreement_needs_text_or_link"
   | MessageProblemCode;
 
 /**
@@ -365,7 +370,12 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
   for (const [i, a] of c.agreements.entries()) {
     text(["agreements", i, "title"], a.title);
     text(["agreements", i, "text"], a.text);
-    if (!a.url && !a.text) issue(["agreements", i], "an agreement needs a url or a text");
+    if (!a.url && !a.text) {
+      issue(["agreements", i], "an agreement needs a url or a text", {
+        code: "agreement_needs_text_or_link",
+        leaf: "url",
+      });
+    }
   }
   unique(
     ["reviewPools"],

@@ -6,9 +6,9 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsTitle: "Configuración del congreso",
   settingsNoAccess: "Solo quienes presiden este congreso pueden cambiar su configuración.",
   settingsIntro:
-    "Cambia aquí los datos, las fechas, los límites y los textos del congreso, cómo se revisan las propuestas y la redacción de los correos que envía la aplicación. Revisas cada cambio antes de guardarlo, y cada guardado queda registrado.",
+    "Cambia aquí los datos, las fechas, los límites y los textos del congreso, cómo se revisan las propuestas, la redacción de los correos que envía la aplicación y los acuerdos que aceptan las personas. Revisas cada cambio antes de guardarlo, y cada guardado queda registrado.",
   settingsScopeNote:
-    "Los formatos, los campos, los idiomas, los grupos de revisión y los criterios se añaden o se quitan importando una configuración en el servidor, no aquí.",
+    "Los formatos, los campos, los idiomas, los grupos de revisión, los criterios y los acuerdos se añaden o se quitan importando una configuración en el servidor, no aquí.",
   settingsBackToManage: "Volver a los envíos",
   settingsSectionConference: "El congreso",
   settingsSectionDeadlines: "Plazos",
@@ -16,6 +16,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsSectionFormats: "Formatos",
   settingsSectionReview: "Revisión",
   settingsSectionEmails: "Correos",
+  settingsSectionAgreements: "Acuerdos",
   settingsSectionOther: "Formatos que no se envían aquí",
   settingsSectionTracks: "Líneas temáticas",
   settingsSectionTopics: "Temas",
@@ -130,6 +131,23 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsEmailSample_person: "Bruno Muestra",
   settingsEmailSample_title: "Un título inventado",
   settingsStandardText: "el texto estándar",
+  settingsAgreementsIntro:
+    "Las personas los aceptan cuando envían una propuesta o confirman una invitación. La aplicación registra qué versión de cada acuerdo aceptó cada persona.",
+  settingsAgreementHint:
+    "Si cambias lo que dice este acuerdo (su título, su texto o su enlace), dale una versión nueva. Con una versión nueva, todas las personas que envíen una propuesta o confirmen una invitación a partir de entonces aceptan la nueva. Lo que ya se aceptó sigue registrado con la versión anterior. No se envía ningún correo, y las propuestas ya enviadas no se ven afectadas.",
+  settingsLabel_agreement_title: "Título",
+  settingsLabel_agreement_text: "Texto",
+  settingsLabel_agreement_url: "Enlace",
+  settingsLabel_agreement_version: "Versión",
+  settingsAgreementTextHint:
+    "Opcional si el acuerdo tiene un enlace. Las personas lo leen debajo del título cuando aceptan, en su idioma si lo has escrito en él y, si no, en el idioma principal del congreso. Los saltos de línea se conservan.",
+  settingsAgreementUrlHint:
+    "Opcional si el acuerdo tiene un texto. Una página que se puede abrir para leer el acuerdo. Empieza por https://",
+  settingsAgreementVersionHint:
+    "Da nombre a lo que se acepta. Cámbiala cada vez que cambie el título, el texto o el enlace. Sirve cualquier valor distinto de la versión guardada: una fecha como 2026-12, o un número.",
+  settingsQuotedTitle: "«{title}»",
+  settingsWarnNewVersion:
+    "Versión nueva de {agreements}. Todas las personas que envíen una propuesta o confirmen una invitación a partir de ahora aceptan la versión nueva. Lo que ya se aceptó sigue registrado con la anterior. No se envía ningún correo, y las propuestas ya enviadas no se ven afectadas. Quien tenga abierta ahora mismo una propuesta o una invitación tiene que volver a cargar la página antes de poder aceptar.",
   settingsLabel_other_name: "Nombre",
   settingsLabel_other_description: "Descripción",
   settingsLabel_track_name: "Nombre",
@@ -206,6 +224,10 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   issue_settings_message_missing_placeholder: "El texto debe contener {names}.",
   issue_settings_message_link_touched:
     "Pon un espacio o un salto de línea antes y después de {names}. Lo que toque el enlace pasaría a formar parte de su dirección.",
+  issue_settings_agreement_version_required:
+    "Has cambiado lo que dice este acuerdo. Las personas aceptaron el texto anterior con esta versión, así que escribe una versión nueva.",
+  issue_settings_agreement_needs_text_or_link: "Un acuerdo necesita un texto o un enlace.",
+  issue_settings_too_long: "Es demasiado largo. Usa {max} caracteres o menos.",
   issue_settings_message_name_touched:
     "{names} representa un nombre que escribió una persona, así que tiene que ser una palabra aparte. Pon un espacio antes y después. Solo pueden tocarla paréntesis, comillas y la puntuación que cierra una frase: cualquier otra cosa podría convertir el nombre en parte de un enlace o de una dirección.",
   issue_settings_message_invisible:

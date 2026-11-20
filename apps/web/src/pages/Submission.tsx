@@ -1538,6 +1538,10 @@ function ReadOnly({
                           })}
                         </span>
                       </label>
+                      {/* What is accepted is shown wherever it is accepted, as on submitting. */}
+                      {a.text && (
+                        <p className="meta">{localize(a.text, lang, config.defaultLanguage)}</p>
+                      )}
                       {a.url && (
                         <a className="block-link" href={a.url} target="_blank" rel="noreferrer">
                           {t("editRead")}

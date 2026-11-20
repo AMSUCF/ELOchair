@@ -35,8 +35,8 @@ type Definition = {
   /** Names the setting whatever format or field it belongs to; screens label it by this. */
   id: string;
   /**
-   * "*" stands for the key of an existing format, field, track, topic, review pool or
-   * criterion; "@" for a language; "#" for the key of an email the app sends (messages.ts).
+   * "*" stands for the key of an existing format, field, track, topic, review pool, criterion
+   * or agreement; "@" for a language; "#" for the key of an email the app sends (messages.ts).
    *
    * "*" walks what a configuration holds. "#" does not: the emails are a fixed list, and each
    * of their texts is offered whether or not the conference has written it. A text that is not
@@ -55,8 +55,8 @@ type Definition = {
 /**
  * Stage one: the values the settings screen offers. Everything else in a configuration (adding,
  * removing, reordering or re-keying anything; languages and the time zone; which pool reviews a
- * format, and a format's own blind mode; agreements; what kind a field is and who sees it) has
- * no screen yet. This list is what is offered, not a permission: the server lets a chair save
+ * format, and a format's own blind mode; what kind a field is and who sees it) has no screen
+ * yet. This list is what is offered, not a permission: the server lets a chair save
  * any valid configuration.
  */
 const STAGE_ONE = [
@@ -147,6 +147,10 @@ const STAGE_ONE = [
   { id: "criterion.max", pattern: "reviewPools.*.criteria.*.max", kind: "int" },
   { id: "message.subject", pattern: "messages.#.subject.@", kind: "text", optional: true },
   { id: "message.body", pattern: "messages.#.body.@", kind: "longtext", optional: true },
+  { id: "agreement.title", pattern: "agreements.*.title.@", kind: "text" },
+  { id: "agreement.text", pattern: "agreements.*.text.@", kind: "longtext", optional: true },
+  { id: "agreement.url", pattern: "agreements.*.url", kind: "url", optional: true },
+  { id: "agreement.version", pattern: "agreements.*.version", kind: "text" },
   { id: "other.name", pattern: "otherFormats.*.name.@", kind: "text" },
   { id: "other.description", pattern: "otherFormats.*.description.@", kind: "longtext" },
   { id: "track.name", pattern: "tracks.*.name.@", kind: "text" },
@@ -183,7 +187,7 @@ const isKeyed = (v: unknown): v is ({ key: string } & Record<string, unknown>)[]
 /**
  * Every value of a configuration that the settings screen offers, in the order of STAGE_ONE:
  * texts once per language of the conference, and the settings of each existing format, field,
- * review pool and criterion.
+ * review pool, criterion and agreement.
  * - A text is offered only in the languages the conference has: one in any other language would
  *   add a language to the conference.
  * - A setting that only some kinds of field have (most words; a number's range) is offered only

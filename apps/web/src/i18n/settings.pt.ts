@@ -6,9 +6,9 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsTitle: "Configuração do congresso",
   settingsNoAccess: "Só quem preside a este congresso pode alterar a sua configuração.",
   settingsIntro:
-    "Altere aqui os dados, as datas, os limites e os textos do congresso, a forma como as propostas são revistas e a redação dos emails que a aplicação envia. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
+    "Altere aqui os dados, as datas, os limites e os textos do congresso, a forma como as propostas são revistas, a redação dos emails que a aplicação envia e os acordos que as pessoas aceitam. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
   settingsScopeNote:
-    "Os formatos, os campos, os idiomas, os grupos de revisão e os critérios são acrescentados ou retirados importando uma configuração no servidor, e não aqui.",
+    "Os formatos, os campos, os idiomas, os grupos de revisão, os critérios e os acordos são acrescentados ou retirados importando uma configuração no servidor, e não aqui.",
   settingsBackToManage: "Voltar às submissões",
   settingsSectionConference: "O congresso",
   settingsSectionDeadlines: "Prazos",
@@ -16,6 +16,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsSectionFormats: "Formatos",
   settingsSectionReview: "Revisão",
   settingsSectionEmails: "Emails",
+  settingsSectionAgreements: "Acordos",
   settingsSectionOther: "Formatos que não se submetem aqui",
   settingsSectionTracks: "Linhas temáticas",
   settingsSectionTopics: "Tópicos",
@@ -127,6 +128,23 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmailSample_person: "Bruno Amostra",
   settingsEmailSample_title: "Um título inventado",
   settingsStandardText: "o texto padrão",
+  settingsAgreementsIntro:
+    "As pessoas aceitam-nos quando submetem uma proposta ou confirmam um convite. A aplicação regista que versão de cada acordo cada pessoa aceitou.",
+  settingsAgreementHint:
+    "Se alterar o que este acordo diz (o título, o texto ou a ligação), dê-lhe uma versão nova. Com uma versão nova, todas as pessoas que submetam uma proposta ou confirmem um convite a partir daí aceitam a nova. O que já foi aceite continua registado com a versão anterior. Não é enviado nenhum email, e as propostas já submetidas não são afetadas.",
+  settingsLabel_agreement_title: "Título",
+  settingsLabel_agreement_text: "Texto",
+  settingsLabel_agreement_url: "Ligação",
+  settingsLabel_agreement_version: "Versão",
+  settingsAgreementTextHint:
+    "Opcional se o acordo tiver uma ligação. As pessoas leem-no por baixo do título quando aceitam, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
+  settingsAgreementUrlHint:
+    "Opcional se o acordo tiver um texto. Uma página que se pode abrir para ler o acordo. Começa por https://",
+  settingsAgreementVersionHint:
+    "Dá nome ao que as pessoas aceitam. Altere-a sempre que o título, o texto ou a ligação mudarem. Serve qualquer valor diferente da versão guardada: uma data como 2026-12, ou um número.",
+  settingsQuotedTitle: "«{title}»",
+  settingsWarnNewVersion:
+    "Versão nova de {agreements}. Todas as pessoas que submetam uma proposta ou confirmem um convite a partir de agora aceitam a versão nova. O que já foi aceite continua registado com a anterior. Não é enviado nenhum email, e as propostas já submetidas não são afetadas. Quem tiver agora mesmo uma proposta ou um convite aberto tem de voltar a carregar a página antes de poder aceitar.",
   settingsLabel_other_name: "Nome",
   settingsLabel_other_description: "Descrição",
   settingsLabel_track_name: "Nome",
@@ -203,6 +221,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_message_missing_placeholder: "O texto tem de conter {names}.",
   issue_settings_message_link_touched:
     "Ponha um espaço ou uma quebra de linha antes e depois de {names}. O que tocar na ligação passaria a fazer parte do seu endereço.",
+  issue_settings_agreement_version_required:
+    "Alterou o que este acordo diz. As pessoas aceitaram o texto anterior com esta versão, por isso escreva uma versão nova.",
+  issue_settings_agreement_needs_text_or_link: "Um acordo precisa de um texto ou de uma ligação.",
+  issue_settings_too_long: "É demasiado longo. Use {max} caracteres ou menos.",
   issue_settings_message_name_touched:
     "{names} representa um nome que uma pessoa escreveu, por isso tem de ser uma palavra à parte. Ponha um espaço antes e depois. Só lhe podem tocar parênteses, aspas e a pontuação que fecha uma frase: qualquer outra coisa poderia transformar o nome em parte de uma ligação ou de um endereço.",
   issue_settings_message_invisible:
