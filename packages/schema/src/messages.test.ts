@@ -128,8 +128,8 @@ describe("the messages", () => {
   it("name what each has always carried, and require what it is useless without", () => {
     const shape = Object.fromEntries(
       MESSAGE_KEYS.map((key) => {
-        const { placeholders, required, bodyOnly } = MESSAGES[key];
-        return [key, { placeholders, required, bodyOnly }];
+        const { placeholders, required, bodyOnly, names } = MESSAGES[key];
+        return [key, { placeholders, required, bodyOnly, names }];
       }),
     );
     expect(shape).toEqual({
@@ -137,27 +137,36 @@ describe("the messages", () => {
         placeholders: ["owner", "role", "format", "conference", "link"],
         required: ["link"],
         bodyOnly: ["owner", "link"],
+        names: ["owner"],
       },
       submission_received: {
         placeholders: ["title", "format", "conference", "deadline", "link"],
         required: ["link"],
         bodyOnly: ["link"],
+        names: [],
       },
       submission_withdrawn: {
         placeholders: ["title", "format", "conference", "link"],
         required: ["link"],
         bodyOnly: ["link"],
+        names: [],
       },
-      invitation_withdrawn: { placeholders: ["conference"], required: [], bodyOnly: [] },
+      invitation_withdrawn: {
+        placeholders: ["conference"],
+        required: [],
+        bodyOnly: [],
+        names: [],
+      },
       invitation_answered: {
         placeholders: ["person", "answer", "conference", "link"],
         required: ["person", "answer", "link"],
         bodyOnly: ["link"],
+        names: ["person"],
       },
-      draft_deleted: { placeholders: ["conference"], required: [], bodyOnly: [] },
+      draft_deleted: { placeholders: ["conference"], required: [], bodyOnly: [], names: [] },
     });
     for (const key of MESSAGE_KEYS) {
-      for (const name of MESSAGES[key].bodyOnly) {
+      for (const name of [...MESSAGES[key].bodyOnly, ...MESSAGES[key].names]) {
         expect(MESSAGES[key].placeholders, `${key} ${name}`).toContain(name);
       }
     }
@@ -485,6 +494,252 @@ describe("a link in a text", () => {
   });
 });
 
+describe("a name in a text", () => {
+  /** An invitation's body around `{owner}`, with the link it has to have. */
+  const body = (around: string) => `${around}\n\n{link}`;
+  const touched = (name: string) => [
+    { code: "message_name_touched", values: { names: `{${name}}` } },
+  ];
+  /** Text that leaves the name a word of its own. */
+  const apart = [
+    "{owner} has listed you",
+    "Listed by {owner}",
+    "{owner}",
+    "({owner})",
+    "[{owner}]",
+    "{owner}, who created the proposal",
+    "You were listed by {owner}.",
+    "You were listed by {owner}. Please answer.",
+    "Listed by: {owner}",
+    "{owner}: a proposal",
+    "{owner}'s proposal",
+    "{owner}’s proposal",
+    "It is {owner}'s.",
+    "«{owner}»",
+    "“{owner}”",
+    '"{owner}"',
+    "'{owner}'",
+    "‘{owner}’",
+    "({owner}).",
+    "“{owner}”, they wrote",
+    "¿Conoces a {owner}?",
+    "¡{owner}!",
+    "{owner}; then",
+    "{owner}…",
+    "First line\n{owner}\nlast line",
+    "{owner}\tand a tab",
+    "{owner} {role}",
+    "Twice: {owner} and {owner}.",
+  ];
+  /** Text that would make the name part of a link or an address, or of another word. */
+  const joined = [
+    "https://{owner}.example",
+    "http://{owner}",
+    "{owner}.com",
+    "{owner}.example.org",
+    "www.{owner}.org",
+    "www.{owner}",
+    "{owner}@example.org",
+    "user@{owner}",
+    "@{owner}",
+    "mailto:{owner}",
+    "tel:{owner}",
+    "x{owner}",
+    "{owner}x",
+    "1{owner}",
+    "{owner}1",
+    "{owner}/path",
+    "/{owner}",
+    "example.org/{owner}",
+    "example.org/?q={owner}",
+    "{owner}-site.org",
+    "-{owner}",
+    "{owner}_x",
+    "{owner}:8080",
+    "{owner}://example.org",
+    "{owner}:x",
+    "{owner}#top",
+    "{owner}?q=1",
+    "{owner}.1",
+    "10.0.0.{owner}",
+    // The dots that mail clients also take for a domain's.
+    "{owner}\u3002com",
+    "{owner}\uFF0Ecom",
+    "{owner}\uFF61com",
+    "www\u3002{owner}",
+    "{owner}\uFF20example.org",
+    // Next to another placeholder, whose value could be anything.
+    "{owner}{role}",
+    "{role}{owner}",
+    "{conference}/{owner}",
+    // What touches it counts as far as the next space: an address runs on through a bracket.
+    "user@example.org({owner})",
+    "https://example.org/({owner})",
+    "({owner})@example.org",
+    "“{owner}”.example.org",
+    "{owner}'s@example.org",
+    "{owner}'sx",
+    "{owner}—and others",
+    // A mark that an address is made with, though nothing follows it yet.
+    "{owner}/",
+    "{owner}/ and",
+    "{owner}#",
+    "{owner}@",
+    "{owner}-",
+    "{owner}_",
+    "{owner}=",
+    "{owner}&",
+    "{owner}*",
+    "#{owner}",
+    "={owner}",
+    "_{owner}",
+    "*{owner}*",
+    ":{owner}",
+    ".{owner}",
+    // One that stands apart does not excuse one that does not.
+    "{owner} and www.{owner}.org",
+  ];
+
+  it("may be touched by brackets, quotation marks and the punctuation that ends a phrase", () => {
+    for (const text of apart) {
+      expect(messageProblems("invitation", "body", body(text)), text).toEqual([]);
+    }
+  });
+
+  it("is refused next to anything that could make it part of a link or an address", () => {
+    for (const text of joined) {
+      expect(messageProblems("invitation", "body", body(text)), text).toEqual(touched("owner"));
+    }
+  });
+
+  it("is the same for the name an owner typed for someone, in a subject as in a body", () => {
+    const answered = (text: string) => text.replaceAll("{owner}", "{person}");
+    for (const text of apart) {
+      // "{role}" is an invitation's; the answer to an owner has "{answer}" instead.
+      const mine = answered(text).replaceAll("{role}", "{answer}");
+      expect(
+        messageProblems("invitation_answered", "subject", mine.replaceAll(/\s+/g, " ")),
+        mine,
+      ).toEqual([]);
+      expect(
+        messageProblems("invitation_answered", "body", `${mine}\n\n{answer} {person}\n\n{link}`),
+        mine,
+      ).toEqual([]);
+    }
+    for (const text of joined) {
+      const mine = answered(text).replaceAll("{role}", "{answer}");
+      expect(messageProblems("invitation_answered", "subject", mine), mine).toEqual(
+        touched("person"),
+      );
+      expect(
+        messageProblems("invitation_answered", "body", `${mine}\n\n{answer} {person}\n\n{link}`),
+        mine,
+      ).toEqual(touched("person"));
+    }
+  });
+
+  it("is not a rule for what nobody typed: a title, a format, the conference", () => {
+    expect(
+      messageProblems("submission_received", "body", "“{title}”/{format}:{conference}\n\n{link}"),
+    ).toEqual([]);
+    for (const key of MESSAGE_KEYS) {
+      const { names } = MESSAGES[key];
+      expect([...names], key).toEqual(
+        key === "invitation" ? ["owner"] : key === "invitation_answered" ? ["person"] : [],
+      );
+    }
+  });
+
+  it("is set apart by a space where it and its neighbours still read as a link", () => {
+    const invitation = (text: string, owner: string) =>
+      fillMessage("invitation", "body", text, { owner, link: "L", role: "co-author" });
+    // The rule lets a comma and a question mark touch a name. These names end in what the
+    // detectors take for the start of a link, so the mark is kept off them.
+    expect(invitation("Listed by {owner}, as {role}.", "Tel:")).toBe(
+      "Listed by Tel: , as co-author.",
+    );
+    expect(invitation("Do you know {owner}?", "J.R")).toBe("Do you know J.R ?");
+    expect(invitation("({owner})", "Data:")).toBe("(Data: )");
+    // Ordinary names are left exactly where the text puts them.
+    for (const owner of ["Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil", "Tel", "Data"]) {
+      expect(invitation("({owner}), {owner}'s, “{owner}”. Is it {owner}?", owner)).toBe(
+        `(${owner}), ${owner}'s, “${owner}”. Is it ${owner}?`,
+      );
+    }
+    // Whatever a text says, were one stored that the rule refuses: the name is no part of a link.
+    expect(invitation("https://{owner}.example\n\n{link}", "attacker")).toBe(
+      "https:// attacker .example\n\nL",
+    );
+    expect(invitation("{owner}@example.org www.{owner}.org", "attacker")).toBe(
+      "attacker @example.org www. attacker .org",
+    );
+  });
+
+  it("keeps what is a link in the name itself, where the name is shown as its owner typed it", () => {
+    const answered = (text: string, person: string) =>
+      fillMessage("invitation_answered", "body", text, { person, answer: "declined", link: "L" });
+    // The owner invited an address and is told about that address: brackets do not change it.
+    expect(answered("({person}) {answer}.", "bruno@example.net")).toBe(
+      "(bruno@example.net) declined.",
+    );
+    expect(answered("{person}, {answer}", "Bruno bruno@example.net")).toBe(
+      "Bruno bruno@example.net, declined",
+    );
+    // What the text would add to a plain name is still kept off it.
+    expect(answered("{person}@example.org", "Bruno")).toBe("Bruno @example.org");
+  });
+});
+
+describe("invisible characters in a text", () => {
+  it("are refused: a bidi override or a zero-width character can hide or reorder words", () => {
+    const invisible = [{ code: "message_invisible" }];
+    // The two texts the reviewers filed: a subject that reads backwards from a point on, and a
+    // body that hides text between zero-width characters.
+    expect(messageProblems("invitation", "subject", "Hello\u202Eevil")).toEqual(invisible);
+    expect(
+      messageProblems(
+        "invitation",
+        "body",
+        "Please answer:\n\n{link}\n\nThank you\u202Edetucexe\u202C.\u200B\u200Bhidden\u200B",
+      ),
+    ).toEqual(invisible);
+    for (const hidden of [
+      "\u200B",
+      "\u200E",
+      "\u2066",
+      "\u00AD",
+      "\uFEFF",
+      "\u{E0041}",
+      "\uFE01",
+    ]) {
+      expect(messageProblems("draft_deleted", "body", `Never${hidden} mind.`), hidden).toEqual(
+        invisible,
+      );
+      expect(messageProblems("draft_deleted", "subject", `Never${hidden} mind`), hidden).toEqual(
+        invisible,
+      );
+    }
+    // A joiner where no writing needs one: between Latin letters.
+    expect(messageProblems("draft_deleted", "body", "Nev\u200Der mind.")).toEqual(invisible);
+  });
+
+  it("are taken where writing needs them: joiners in Persian and Indic words, and in emoji", () => {
+    const persian = "می\u200Cخواهم";
+    const artist = "\u{1F469}\u{1F3FD}\u200D\u{1F3A8}";
+    const heart = "❤\uFE0F";
+    for (const text of [persian, `Thank you ${artist}`, `With ${heart} from the chairs`]) {
+      expect(messageProblems("draft_deleted", "subject", text), text).toEqual([]);
+      expect(messageProblems("draft_deleted", "body", `${text}\n\n{conference}`), text).toEqual([]);
+    }
+  });
+
+  it("are a text that says nothing when there is nothing else", () => {
+    expect(messageProblems("draft_deleted", "body", "\u202E\u200B")).toEqual([
+      { code: "message_empty" },
+    ]);
+  });
+});
+
 describe("the words and the deadline that placeholders stand for", () => {
   it("has a word for every role and every answer in each language", () => {
     for (const lang of MAIL_LANGUAGES) {
@@ -703,10 +958,61 @@ describe("a conference's own wording in its configuration", () => {
     ]);
     // Half a character is no text, and a text is plain: line breaks and tabs, and no other
     // control character (Postgres refuses both a lone surrogate and NUL inside JSON).
-    expect(at("body", "{link} \uD83D")).toEqual([{ path: "messages.invitation.body.es" }]);
+    expect(at("body", "{link} \uD83D")).toEqual([
+      { path: "messages.invitation.body.es", params: { code: "message_invisible" } },
+    ]);
     expect(at("body", "{link} \u0000")).toEqual([{ path: "messages.invitation.body.es" }]);
     expect(at("body", "{link} \u001B[31m")).toEqual([{ path: "messages.invitation.body.es" }]);
     expect(at("body", "Hola:\r\n\t{link}\n")).toEqual([]);
+  });
+
+  it("refuses a text that builds a link around a name, as a reviewer filed it", () => {
+    // RC-github---amsucf-elochair-39-001: the name "attacker" would have been mailed as
+    // https://attacker.example to someone who has agreed to nothing.
+    expect(
+      refusals(withMessages({ invitation: { body: { en: "https://{owner}.example\n\n{link}" } } })),
+    ).toEqual([
+      {
+        path: "messages.invitation.body.en",
+        params: { code: "message_name_touched", values: { names: "{owner}" } },
+      },
+    ]);
+    expect(
+      refusals(withMessages({ invitation_answered: { subject: { es: "{person}@example.org" } } })),
+    ).toEqual([
+      {
+        path: "messages.invitation_answered.subject.es",
+        params: { code: "message_name_touched", values: { names: "{person}" } },
+      },
+    ]);
+  });
+
+  it("refuses a text with invisible characters, in a subject and in a body, as two reviewers filed it", () => {
+    // RC-github---amsucf-elochair-39-002 and -003.
+    const invisible = (path: string) => [{ path, params: { code: "message_invisible" } }];
+    expect(refusals(withMessages({ invitation: { subject: { en: "Hello\u202Eevil" } } }))).toEqual(
+      invisible("messages.invitation.subject.en"),
+    );
+    expect(
+      refusals(
+        withMessages({
+          invitation: {
+            body: {
+              en: "Please answer:\n\n{link}\n\nThank you\u202Edetucexe\u202C.\u200Bhidden\u200B",
+            },
+          },
+        }),
+      ),
+    ).toEqual(invisible("messages.invitation.body.en"));
+    // A joiner that Persian spelling needs is taken, in a subject and in a body.
+    const persian = "می\u200Cخواهم";
+    expect(
+      refusals(
+        withMessages({
+          draft_deleted: { subject: { en: persian }, body: { en: `${persian} {conference}` } },
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it("says so whatever else is wrong with the configuration", () => {
@@ -741,6 +1047,9 @@ describe("a conference's own wording in its configuration", () => {
     ]);
     expect(
       refusals(withMessages({ invitation: { body: { en: "{link} \uD83D" } }, draft_deleted: {} })),
-    ).toEqual([{ path: "messages.invitation.body.en" }, { path: "messages.draft_deleted" }]);
+    ).toEqual([
+      { path: "messages.invitation.body.en", params: { code: "message_invisible" } },
+      { path: "messages.draft_deleted" },
+    ]);
   });
 });

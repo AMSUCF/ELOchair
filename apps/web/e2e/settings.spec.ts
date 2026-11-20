@@ -804,7 +804,10 @@ test.describe("conference settings", () => {
       subject: "O seu convite para {conference} foi cancelado",
       body: "Olá:\n\no rascunho para {conference} para o qual foi convidado já não existe.\n\nNão precisa de fazer nada.",
     };
-    await subject.fill(reworded.subject);
+    // The subject arrives as a paste often does, with characters nobody can see: a byte-order
+    // mark, and a mark that would make what follows read backwards. They are taken out: the
+    // email shown under the boxes, the review and what is saved have the words only.
+    await subject.fill(`\uFEFF${reworded.subject.replace("para", "\u202Epara")}`);
     await body.fill(reworded.body);
     await expect(preview.locator(".email-subject")).toHaveText(
       `O seu convite para ${conference} foi cancelado`,
@@ -836,6 +839,9 @@ test.describe("conference settings", () => {
     ]);
     await expect(invited).toContainText(`${L.name}: ${L.roles}`);
     await expect(invited.locator("dd").first()).toContainText("It cannot go in the subject.");
+    await expect(invited.locator("dd").first()).toContainText(
+      "It has to be a word of its own: only brackets, quotation marks and the punctuation that ends a phrase may touch it.",
+    );
     await expect(invited.locator("dd").last()).toContainText(
       "The text must contain it, and it cannot go in the subject.",
     );
@@ -877,9 +883,21 @@ test.describe("conference settings", () => {
     await summary.getByRole("link").last().click();
     await expect(itsBody).toBeFocused();
 
+    // A text that would build a link around the owner's name is refused beside it: the name
+    // has to stay a word of its own.
+    await itsSubject.fill(itsWas.subject);
+    await itsBody.fill("See https://{owner}.example\n\n{link}");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(summary).toBeFocused();
+    const ownWord =
+      "{owner} stands for a name a person typed, so it has to be a word of its own. Put a space before and after it. Only brackets, quotation marks and the punctuation that ends a phrase may touch it: anything else could turn the name into part of a link or an address.";
+    await expect(summary.getByRole("listitem")).toHaveText([
+      `${INVITATION} · Text (${L.name}): ${ownWord}`,
+    ]);
+    await expect(tried.locator(".field-error")).toHaveText(ownWord);
+
     // An emptied text is not quietly the standard text again: it is refused, and says how to
     // get the standard text back.
-    await itsSubject.fill(itsWas.subject);
     await itsBody.fill("");
     await chair.getByRole("button", { name: "Review changes" }).click();
     await expect(summary).toBeFocused();

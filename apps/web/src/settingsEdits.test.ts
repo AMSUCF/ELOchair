@@ -1,6 +1,14 @@
 import type { Setting } from "@elochair/schema/pure";
 import { describe, expect, it } from "vitest";
-import { editsAfterSave, parts, rawOf, restoredEdits, storedRaw, typedText } from "./settingsEdits";
+import {
+  editsAfterSave,
+  emailText,
+  parts,
+  rawOf,
+  restoredEdits,
+  storedRaw,
+  typedText,
+} from "./settingsEdits";
 
 /** Settings as the screen lists them: only what restoring looks at is filled in. */
 const setting = (path: string, kind: Setting["kind"]) =>
@@ -239,6 +247,24 @@ describe("the texts of an email", () => {
     // An ordinary optional text that is emptied is simply absent.
     expect(typedText({ ...body, standard: undefined }, "  ")).toBeUndefined();
     expect(typedText({ ...body, standard: undefined }, " Help. ")).toBe("Help.");
+  });
+
+  it("takes out of an email's text what cannot be seen, before it is reviewed or saved", () => {
+    // A paste brings a zero-width space, a byte-order mark and a direction mark along.
+    expect(emailText("\uFEFFOur\u200B own\u200E words.\u200B ")).toBe("Our own words.");
+    expect(typedText(body, "\uFEFFOur\u200B own\u200E words.\u200B ")).toBe("Our own words.");
+    // A bidi override that would make the rest read backwards is gone, and the words stay.
+    expect(typedText(subject, "Hello\u202Eevil")).toBe("Helloevil");
+    // The standard text with such characters in it is still the standard text: nothing to store.
+    expect(typedText(body, "\u200BStandard.\uFEFF")).toBeUndefined();
+    // Nothing but such characters is an emptied text, which the review refuses.
+    expect(typedText(body, "\u200B\u202E ")).toBe("");
+    // What writing needs stays: a joiner inside a Persian word, and the one in an emoji.
+    const persian = "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645";
+    const artist = "\u{1F469}\u{1F3FD}\u200D\u{1F3A8}";
+    expect(typedText(body, ` ${persian} ${artist} `)).toBe(`${persian} ${artist}`);
+    // Only an email's text is cleaned this way; other texts are as they were.
+    expect(typedText({ ...body, standard: undefined }, "Help\u200B. ")).toBe("Help\u200B.");
   });
 
   it("restores what was typed for an email, and drops what is not one of its texts", () => {

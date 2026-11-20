@@ -45,6 +45,7 @@ import {
   DATETIME,
   type Edits,
   editsAfterSave,
+  emailText,
   parts,
   type Raw,
   rawOf,
@@ -1043,15 +1044,16 @@ function Email({
   const placeholders: readonly MessagePlaceholder[] = MESSAGES[emailKey].placeholders;
   const required: readonly string[] = MESSAGES[emailKey].required;
   const bodyOnly: readonly string[] = MESSAGES[emailKey].bodyOnly;
+  const names: readonly string[] = MESSAGES[emailKey].names;
   /** What a text must or must not do with a placeholder, if anything. */
-  const rule = (name: string): MessageKey | null =>
-    required.includes(name)
-      ? bodyOnly.includes(name)
-        ? "settingsEmailRequiredBodyOnly"
-        : "settingsEmailRequired"
-      : bodyOnly.includes(name)
-        ? "settingsEmailBodyOnly"
-        : null;
+  const rules = (name: string): MessageKey[] => {
+    const out: MessageKey[] = [];
+    if (required.includes(name)) {
+      out.push(bodyOnly.includes(name) ? "settingsEmailRequiredBodyOnly" : "settingsEmailRequired");
+    } else if (bodyOnly.includes(name)) out.push("settingsEmailBodyOnly");
+    if (names.includes(name)) out.push("settingsEmailNameRule");
+    return out;
+  };
   const langs = [...new Set(list.flatMap((s) => (s.lang ? [s.lang] : [])))].filter(isMailLanguage);
   return (
     <>
@@ -1061,7 +1063,7 @@ function Email({
         <p>{t("settingsEmailPlaceholders")}</p>
         <dl>
           {placeholders.map((name) => {
-            const must = rule(name);
+            const must = rules(name);
             return (
               <div key={name}>
                 <dt>
@@ -1079,7 +1081,9 @@ function Email({
                         })}
                       </span>
                     ))}
-                  {must && <strong>{t(must)}</strong>}
+                  {must.map((key) => (
+                    <strong key={key}>{t(key)}</strong>
+                  ))}
                 </dd>
               </div>
             );
@@ -1183,11 +1187,11 @@ function EmailLanguage({
         <dl>
           <dt>{t("settingsLabel_message_subject")}</dt>
           <dd className="email-subject" lang={lang}>
-            {fillMessage(emailKey, "subject", shown(subject).trim(), values)}
+            {fillMessage(emailKey, "subject", emailText(shown(subject)), values)}
           </dd>
           <dt>{t("settingsLabel_message_body")}</dt>
           <dd className="email-body" lang={lang}>
-            {fillMessage(emailKey, "body", shown(body).trim(), values)}
+            {fillMessage(emailKey, "body", emailText(shown(body)), values)}
           </dd>
         </dl>
       </figure>

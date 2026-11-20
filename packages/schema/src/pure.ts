@@ -11,6 +11,7 @@ export { effectiveBlindMode, findType } from "./lookup";
 export {
   ANSWER_WORDS,
   type ConferenceMessages,
+  filledMessage,
   fillMessage,
   fillPlaceholders,
   formatDeadline,
@@ -33,6 +34,7 @@ export {
   placeholdersIn,
   placeholdersOf,
   ROLE_WORDS,
+  type TextSpan,
   UNNAMED_OWNER,
 } from "./messages";
 export { CONFERENCE_PHASES, canWithdrawIn, nextPhase, previousPhase } from "./phases";

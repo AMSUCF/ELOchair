@@ -1,6 +1,7 @@
 import type { ContributionRole } from "./config";
-import { removeStrayInvisible } from "./invisible";
+import { hasStrayInvisible, removeStrayInvisible } from "./invisible";
 import { LIMITS } from "./limits";
+import { linkSpans } from "./links";
 
 /*
  * The emails the app sends to the people on a proposal: one definition of each, shared by the
@@ -63,6 +64,13 @@ type MessageDefinition = {
   required: readonly string[];
   /** Those only a body may hold: a subject that names one is refused, and is never given it. */
   bodyOnly: readonly string[];
+  /**
+   * Those that stand for a name a person typed: the owner's own display name, or what the owner
+   * typed for someone they invited. A text must leave such a placeholder standing as a word of
+   * its own, and the name put in its place is never joined to the text around it (see
+   * NAME_OPENS, NAME_CLOSES and setApart).
+   */
+  names: readonly string[];
   standard: Record<MailLang, Record<MessagePart, string>>;
 };
 
@@ -89,6 +97,13 @@ type MessageDefinition = {
  *   A name is chosen by its owner, and the first line a person reads should not be.
  * Allowing either later would be a decision; forbidding one later would make stored
  * configurations unreadable.
+ *
+ * A name is a word of its own. The server takes links out of an owner's name (sanitizeName), but
+ * a text could put the rest of a link around the placeholder: "https://{owner}.example" would
+ * turn the name "attacker" into an address in ELO-signed mail. So the placeholders that stand
+ * for a name a person typed are marked (`names`), a text may let only brackets, quotation marks
+ * and the punctuation that ends a phrase touch them, and the name is set apart by a space
+ * wherever it and its neighbours would still read as a link or an address.
  */
 export const MESSAGES = {
   /** To someone an owner has added to a proposal, and again when the owner sends it again. */
@@ -97,6 +112,8 @@ export const MESSAGES = {
     // The invitee's only way to see the proposal and to confirm or decline, account or not.
     required: ["link"],
     bodyOnly: ["owner", "link"],
+    // The owner's display name, cleaned by the server. Its reader has agreed to nothing.
+    names: ["owner"],
     standard: {
       en: {
         subject: "{conference}: please confirm your participation",
@@ -118,6 +135,7 @@ export const MESSAGES = {
     // Which proposal was received (a person may be on several), and where it can be edited.
     required: ["link"],
     bodyOnly: ["link"],
+    names: [],
     standard: {
       en: {
         subject: "{conference}: proposal received",
@@ -139,6 +157,7 @@ export const MESSAGES = {
     // So that its readers, the contact address among them, can tell which proposal it was.
     required: ["link"],
     bodyOnly: ["link"],
+    names: [],
     standard: {
       en: {
         subject: "{conference}: proposal withdrawn",
@@ -160,6 +179,7 @@ export const MESSAGES = {
     // It says that something ended, and has no link to give.
     required: [],
     bodyOnly: [],
+    names: [],
     standard: {
       en: {
         subject: "{conference}: a proposal you were invited to was withdrawn",
@@ -182,6 +202,9 @@ export const MESSAGES = {
     // it does not say which of the owner's proposals.
     required: ["person", "answer", "link"],
     bodyOnly: ["link"],
+    // The name, or the address, the owner typed for the person. Its only reader is that owner,
+    // and it is shown as typed, so it may itself be an address: the text adds nothing to it.
+    names: ["person"],
     standard: {
       en: {
         subject: "{conference}: {person} {answer} your proposal",
@@ -203,6 +226,7 @@ export const MESSAGES = {
     // As for a withdrawn invitation: there is nothing left to link to.
     required: [],
     bodyOnly: [],
+    names: [],
     standard: {
       en: {
         subject: "{conference}: an invitation was cancelled",
@@ -310,15 +334,99 @@ export function placeholdersIn(text: string): string[] {
   return [...new Set(Array.from(text.matchAll(PLACEHOLDER), (m) => m[1] ?? ""))];
 }
 
+/** A stretch of a text: [start, end). */
+export type TextSpan = { start: number; end: number };
+
+/**
+ * A text with its placeholders filled from `values`, and where the value of each placeholder
+ * that `marks` names came to stand. A name `values` does not have is left as it is written.
+ */
+function fill(
+  text: string,
+  values: Readonly<Record<string, string>>,
+  marks: readonly string[] = [],
+): { text: string; marked: TextSpan[] } {
+  let out = "";
+  let from = 0;
+  const marked: TextSpan[] = [];
+  for (const m of text.matchAll(PLACEHOLDER)) {
+    const name = m[1] ?? "";
+    const value = Object.hasOwn(values, name) ? values[name] : undefined;
+    if (value === undefined) continue;
+    out += text.slice(from, m.index);
+    if (marks.includes(name)) marked.push({ start: out.length, end: out.length + value.length });
+    out += value;
+    from = m.index + m[0].length;
+  }
+  return { text: out + text.slice(from), marked };
+}
+
 /**
  * A text with its placeholders filled from `values`. A name `values` does not have is left as
  * it is written, braces and all. Each value is put in once and is not read again: a value that
  * itself holds "{link}" stays those six characters.
  */
 export function fillPlaceholders(text: string, values: Readonly<Record<string, string>>): string {
-  return text.replace(PLACEHOLDER, (written: string, name: string) =>
-    Object.hasOwn(values, name) ? (values[name] ?? written) : written,
-  );
+  return fill(text, values).text;
+}
+
+/**
+ * A filled text with each name set apart from what stands next to it, wherever the two together
+ * read as a link or an address (linkSpans) and the name on its own does not: a space goes
+ * between them, on the side where they join. `names` says where each name stands in `text`, in
+ * order; the answer says where each stands afterwards.
+ *
+ * The rule for a text (NAME_OPENS, NAME_CLOSES) leaves little for this to do: a name that ends
+ * "Tel:" before a comma, or "J.R" before a question mark, which the detectors take for a link.
+ * It is also what holds whatever a text says, should one ever be stored that the rule refuses.
+ * What is a link inside the name itself is not this function's: an owner's name has none left
+ * (sanitizeName), and the name an owner typed for an invitee is shown to that owner as typed.
+ * No standard text is changed by it: there a name has a space on either side already.
+ */
+function setApart(text: string, names: readonly TextSpan[]): { text: string; names: TextSpan[] } {
+  let out = text;
+  /** How far the spaces put in so far have moved what comes after them. */
+  let moved = 0;
+  const placed: TextSpan[] = [];
+  for (const original of names) {
+    const name = { start: original.start + moved, end: original.end + moved };
+    // Looked at again after a space has gone in: with one side closed, a link on the other may
+    // only then show. A name gets two spaces at most, one on each side, so three looks do.
+    for (let round = 0; round < 3; round++) {
+      // Nothing a detector matches holds a space, so only the words that touch the name count.
+      const from = out.slice(0, name.start).search(/\S*$/u);
+      const to = name.end + (/^\S*/u.exec(out.slice(name.end))?.[0].length ?? 0);
+      const own = linkSpans(out.slice(name.start, name.end));
+      const itsOwn = (at: number) =>
+        own.some((o) => name.start + o.start <= at && at < name.start + o.end);
+      let before = false;
+      let after = false;
+      for (const found of linkSpans(out.slice(from, to))) {
+        const link = { start: from + found.start, end: from + found.end };
+        if (link.start >= name.start && link.end <= name.end) continue;
+        let more = false;
+        for (let at = Math.max(link.start, name.start); at < Math.min(link.end, name.end); at++) {
+          if (!itsOwn(at)) more = true;
+        }
+        if (!more) continue;
+        before ||= link.start < name.start;
+        after ||= link.end > name.end;
+      }
+      if (!before && !after) break;
+      if (after) {
+        out = `${out.slice(0, name.end)} ${out.slice(name.end)}`;
+        moved += 1;
+      }
+      if (before) {
+        out = `${out.slice(0, name.start)} ${out.slice(name.start)}`;
+        name.start += 1;
+        name.end += 1;
+        moved += 1;
+      }
+    }
+    placed.push(name);
+  }
+  return { text: out, names: placed };
 }
 
 /**
@@ -332,21 +440,34 @@ export function placeholdersOf(key: MailMessageKey, part: MessagePart): readonly
 }
 
 /**
- * One part of a message, filled. Only the placeholders that part may hold are filled, whatever
- * `values` has and whatever the text names: this is where a subject is kept free of the link
- * and of an owner's name.
+ * One part of a message, filled, and where each name a person typed stands in it (for whoever
+ * has to show that a name is no part of a link: the tests do). Only the placeholders that part
+ * may hold are filled, whatever `values` has and whatever the text names: this is where a
+ * subject is kept free of the link and of an owner's name. And a name a person typed is never
+ * joined to the text around it into a link or an address (setApart).
  */
+export function filledMessage(
+  key: MailMessageKey,
+  part: MessagePart,
+  text: string,
+  values: Readonly<Record<string, string>>,
+): { text: string; names: TextSpan[] } {
+  const allowed: Record<string, string> = {};
+  for (const name of placeholdersOf(key, part)) {
+    if (Object.hasOwn(values, name)) allowed[name] = values[name] ?? "";
+  }
+  const filled = fill(text, allowed, MESSAGES[key].names);
+  return setApart(filled.text, filled.marked);
+}
+
+/** One part of a message, filled (filledMessage): the text that is sent. */
 export function fillMessage(
   key: MailMessageKey,
   part: MessagePart,
   text: string,
   values: Readonly<Record<string, string>>,
 ): string {
-  const allowed: Record<string, string> = {};
-  for (const name of placeholdersOf(key, part)) {
-    if (Object.hasOwn(values, name)) allowed[name] = values[name] ?? "";
-  }
-  return fillPlaceholders(text, allowed);
+  return filledMessage(key, part, text, values).text;
 }
 
 /** A conference's own wording, as its configuration holds it (`ConferenceConfig.messages`). */
@@ -379,6 +500,22 @@ const NOT_ONE_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
  * invitee needs does not work. Nothing shows that in a preview.
  */
 const LINK_TOUCHED = /(?<!^|\s)\{link\}|\{link\}(?!\s|$)/u;
+/**
+ * What may touch a name, so that it stays a word of its own. Before it, between it and the
+ * space or the start: only brackets and quotation marks that open, and the Spanish ¿ and ¡.
+ * After it, up to the next space or the end: an English possessive ('s), then only brackets
+ * and quotation marks that close and the punctuation that ends a phrase.
+ *
+ * None of these is a letter, a digit, a hyphen, an underscore, a slash, an at sign or a domain
+ * dot followed by more, which is what a link or an address is made of: "({owner})",
+ * "{owner}," and "{owner}'s proposal" pass; "https://{owner}.example", "{owner}.com",
+ * "{owner}@example.org", "mailto:{owner}", "{owner}-site.org", "{owner}:8080" and "x{owner}"
+ * do not. Everything from the name to the nearest space counts, not only the character next to
+ * it, because an address runs on to the space: in "x@y.org({owner})" the bracket would not
+ * stop it.
+ */
+const NAME_OPENS = /^[\p{Ps}\p{Pi}"'¿¡]*$/u;
+const NAME_CLOSES = /^(?:['’]s)?[\p{Pe}\p{Pf}"',.;:!?…]*$/u;
 
 export type MessageProblemCode =
   | "message_empty"
@@ -387,7 +524,9 @@ export type MessageProblemCode =
   | "message_unknown_placeholder"
   | "message_not_in_subject"
   | "message_missing_placeholder"
-  | "message_link_touched";
+  | "message_link_touched"
+  | "message_name_touched"
+  | "message_invisible";
 
 /** Why a text cannot be a message's subject or body, with what the explanation names. */
 export type MessageProblem = {
@@ -399,6 +538,9 @@ export type MessageProblem = {
 /**
  * What is wrong with a text written for one part of a message; nothing when it can be sent.
  * - It has to say something that shows: spaces and invisible characters alone are nothing.
+ * - It holds no invisible character that writing does not need (hasStrayInvisible: the same
+ *   definition as for what an owner writes). A bidi override or a zero-width character can
+ *   hide or reorder words, in ELO's own mail as in a name.
  * - A subject is one line.
  * - A subject has at most LIMITS.messageSubject characters and a body LIMITS.messageBody,
  *   before its placeholders are filled.
@@ -406,6 +548,8 @@ export type MessageProblem = {
  *   (placeholdersOf).
  * - A body names every placeholder the message requires.
  * - In a body the link stands apart, with a space or a line break (or nothing) on either side.
+ * - A placeholder that stands for a name a person typed stands as a word of its own
+ *   (NAME_OPENS, NAME_CLOSES).
  */
 export function messageProblems(
   key: MailMessageKey,
@@ -415,6 +559,7 @@ export function messageProblems(
   if (removeStrayInvisible(text).trim() === "") return [{ code: "message_empty" }];
   const out: MessageProblem[] = [];
   const inBraces = (names: readonly string[]) => names.map((name) => `{${name}}`).join(", ");
+  if (hasStrayInvisible(text)) out.push({ code: "message_invisible" });
   if (part === "subject" && NOT_ONE_LINE.test(text)) out.push({ code: "message_not_one_line" });
   const max = part === "subject" ? LIMITS.messageSubject : LIMITS.messageBody;
   if (text.length > max) out.push({ code: "message_too_long", values: { max } });
@@ -439,6 +584,18 @@ export function messageProblems(
     if (known.includes("link") && LINK_TOUCHED.test(text)) {
       out.push({ code: "message_link_touched", values: { names: inBraces(["link"]) } });
     }
+  }
+  const names: readonly string[] = MESSAGES[key].names;
+  const touched = new Set<string>();
+  for (const m of text.matchAll(PLACEHOLDER)) {
+    const name = m[1] ?? "";
+    if (!names.includes(name) || !placeholdersOf(key, part).includes(name)) continue;
+    const before = /\S*$/u.exec(text.slice(0, m.index))?.[0] ?? "";
+    const after = /^\S*/u.exec(text.slice(m.index + m[0].length))?.[0] ?? "";
+    if (!NAME_OPENS.test(before) || !NAME_CLOSES.test(after)) touched.add(name);
+  }
+  if (touched.size > 0) {
+    out.push({ code: "message_name_touched", values: { names: inBraces([...touched]) } });
   }
   return out;
 }

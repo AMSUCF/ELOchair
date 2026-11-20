@@ -194,13 +194,13 @@ type IssueParams = {
  * One text of an email in each language it is written in, among those the app writes mail in:
  * any of them, whether or not it is a language of the conference, and none is required.
  * Plain text: line breaks and tabs, and no other control character. (Postgres refuses NUL
- * inside JSON, as it refuses half a character.)
+ * inside JSON, as it refuses half a character: that one is refused with the other invisible
+ * characters, by messageProblems.)
  */
 const MessageTexts = z.partialRecord(
   z.enum(MAIL_LANGUAGES),
   z
     .string()
-    .refine((s) => !/\p{Cs}/u.test(s), "text without broken characters (unpaired surrogates)")
     .refine(
       (s) => !/\p{Cc}/u.test(s.replace(/[\t\n\r]/g, "")),
       "text without control characters (other than tabs and line breaks)",
@@ -215,6 +215,8 @@ const WHY_NOT: Record<MessageProblemCode, string> = {
   message_not_in_subject: "a subject cannot hold this placeholder",
   message_missing_placeholder: "a required placeholder is missing",
   message_link_touched: "put a space or a line break before and after the link",
+  message_name_touched: "a name must stand as a word of its own",
+  message_invisible: "invisible characters that writing does not need",
 };
 
 /**
@@ -225,9 +227,10 @@ const WHY_NOT: Record<MessageProblemCode, string> = {
  * all. Only known messages and their own parts are taken.
  *
  * Each text is checked here, whatever else is wrong with the configuration: it says something,
- * names only its message's placeholders and all the required ones, a subject is one line, and
- * neither is too long (messageProblems). Chairs write these texts and they are used as written,
- * as plain text.
+ * names only its message's placeholders and all the required ones, a subject is one line,
+ * neither is too long, none holds an invisible character that writing does not need, and a
+ * person's name stands as a word of its own (messageProblems). Chairs write these texts and
+ * they are used as written, as plain text.
  */
 const Messages = z
   .partialRecord(

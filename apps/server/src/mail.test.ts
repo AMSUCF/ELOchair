@@ -1,4 +1,4 @@
-import { hasStrayInvisible } from "@elochair/schema";
+import { hasStrayInvisible, linkSpans } from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -370,8 +370,8 @@ describe("review fixes, round 6: removals never join, cuts never strand a joiner
 
   it("a joiner after an ideographic full stop does not hide an internationalized domain", () => {
     expect(
-      sanitizeName("Ana P\u00E9rez verify at elo-signin\u3002\u200D\u0915\u0949\u092E now", "?"),
-    ).toBe("Ana P\u00E9rez verify at now");
+      sanitizeName("Ana Pérez verify at elo-signin\u3002\u200D\u0915\u0949\u092E now", "?"),
+    ).toBe("Ana Pérez verify at now");
     expect(sanitizeName("Ana paypal\u3002\u200D\u0DBD\u0D82\u0D9A\u0DCF", "?")).toBe("Ana");
     expect(sanitizeName("Ana \u0628\u0646\u0643\u200D\u3002\u200D\u0645\u0635\u0631", "?")).toBe(
       "Ana",
@@ -401,6 +401,62 @@ describe("review fixes, round 6: removals never join, cuts never strand a joiner
         expect(sanitizeName(parts.join(""), "?")).not.toMatch(HOST);
       }),
       { numRuns: 30_000 },
+    );
+  });
+
+  it("sanitizeName goes on until nothing is left to take out", () => {
+    // Taking the numbers out gives "tel" the word break it lacked: what is left is a link too.
+    expect(sanitizeName("1.2.3.4tel:5550100", "?")).toBe("?");
+    expect(sanitizeName("Ana 1.2.3.4data:text/html,x Pérez", "?")).toBe("Ana Pérez");
+    // The cut at 100 characters ends a run of digits early: "1.2.3.4567" is no address, and
+    // the "1.2.3.4" the cut would leave is one.
+    const cut = sanitizeName(`${"A".repeat(92)} 1.2.3.4567`, "?");
+    expect(cut).toBe("A".repeat(92));
+    expect(linkSpans(cut)).toEqual([]);
+    // Names that had nothing to take out are as they were.
+    for (const name of [
+      "Ana Mar\u00EDa Pérez-G\u00F3mez",
+      "J. R. R. Tolkien",
+      "Tel: Aviv",
+      "Data:",
+    ]) {
+      expect(sanitizeName(name, "?")).toBe(name);
+    }
+  });
+
+  it("nothing the detectors take for a link or an address survives sanitizeName", () => {
+    const atoms = [
+      ..."aZ0159 .-/@:#*'()",
+      "com",
+      "org",
+      "https://",
+      "www.",
+      "tel:",
+      "Data:",
+      "mailto:",
+      "1.2.3.4",
+      "1.2.3.4567",
+      "\u3002",
+      "\uFF20",
+      "\u200B",
+      "\u200C",
+      "\u200D",
+      "\uFE0F",
+      "\u0646",
+      "\u{1F469}",
+      "\u202F",
+      "\u0915\u0949\u092E",
+      "Ana",
+    ];
+    fc.assert(
+      // Long enough for the cut at 100 characters to fall anywhere.
+      fc.property(fc.array(fc.constantFrom(...atoms), { maxLength: 90 }), (parts) => {
+        const name = sanitizeName(parts.join(""), "?");
+        expect(linkSpans(name)).toEqual([]);
+        expect(sanitizeName(name, "?")).toBe(name);
+        expect(Array.from(name).length).toBeLessThanOrEqual(100);
+      }),
+      { numRuns: 20_000 },
     );
   });
 

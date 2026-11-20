@@ -109,6 +109,8 @@ export const settingsEn = {
   settingsEmailRequired: "The text must contain it.",
   settingsEmailBodyOnly: "It cannot go in the subject.",
   settingsEmailRequiredBodyOnly: "The text must contain it, and it cannot go in the subject.",
+  settingsEmailNameRule:
+    "It has to be a word of its own: only brackets, quotation marks and the punctuation that ends a phrase may touch it.",
   settingsLabel_message_subject: "Subject",
   settingsLabel_message_body: "Text",
   settingsEmailIsStandard: "This is the standard text.",
@@ -198,5 +200,9 @@ export const settingsEn = {
   issue_settings_message_missing_placeholder: "The text must contain {names}.",
   issue_settings_message_link_touched:
     "Put a space or a line break before and after {names}. Whatever touches the link would become part of its address.",
+  issue_settings_message_name_touched:
+    "{names} stands for a name a person typed, so it has to be a word of its own. Put a space before and after it. Only brackets, quotation marks and the punctuation that ends a phrase may touch it: anything else could turn the name into part of a link or an address.",
+  issue_settings_message_invisible:
+    "This text has invisible characters, which can hide or reorder words. Type it again, or paste it as plain text.",
   issue_settings_invalid: "Check this value.",
 };
