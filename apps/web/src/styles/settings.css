@@ -46,7 +46,7 @@
   font-size: 0.875rem;
 }
 
-/* What a save would change: one value to a line, long texts wrapped. */
+/* What a save would change: one value to a line, long texts wrapped, their line breaks kept. */
 .changes {
   list-style: none;
   margin: 8px 0;
@@ -61,6 +61,7 @@
   border-radius: var(--radius-s);
   background: var(--surface);
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .changes strong {
@@ -74,4 +75,77 @@
 
 .review .notice {
   margin: 0;
+}
+
+/* What a section is for, said once under its heading. */
+.settings .section-intro {
+  margin: 0;
+}
+
+/* An email: the words in braces its texts may hold, each with what it stands for. */
+.placeholders p {
+  margin: 0 0 6px;
+}
+
+.placeholders dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.placeholders dt {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.placeholders code {
+  font-family: inherit;
+}
+
+.placeholders dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.placeholders dd > * {
+  display: block;
+}
+
+.placeholders dd > strong {
+  color: var(--text);
+}
+
+/* The email as it would be sent: line breaks kept, a long link wrapped. */
+.email-preview {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--sunken);
+}
+
+.email-preview dl {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.email-preview dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.email-preview dd {
+  margin: 0 0 6px;
+}
+
+.email-preview .email-subject {
+  font-weight: 600;
+}
+
+.email-preview .email-body {
+  white-space: pre-wrap;
 }

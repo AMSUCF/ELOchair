@@ -6,7 +6,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsTitle: "Configuração do congresso",
   settingsNoAccess: "Só quem preside a este congresso pode alterar a sua configuração.",
   settingsIntro:
-    "Altere aqui os dados, as datas, os limites e os textos do congresso, e a forma como as propostas são revistas. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
+    "Altere aqui os dados, as datas, os limites e os textos do congresso, a forma como as propostas são revistas e a redação dos emails que a aplicação envia. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
   settingsScopeNote:
     "Os formatos, os campos, os idiomas, os grupos de revisão e os critérios são acrescentados ou retirados importando uma configuração no servidor, e não aqui.",
   settingsBackToManage: "Voltar às submissões",
@@ -15,6 +15,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsSectionRules: "Regras",
   settingsSectionFormats: "Formatos",
   settingsSectionReview: "Revisão",
+  settingsSectionEmails: "Emails",
   settingsSectionOther: "Formatos que não se submetem aqui",
   settingsSectionTracks: "Linhas temáticas",
   settingsSectionTopics: "Tópicos",
@@ -70,6 +71,62 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "Uma revisão anónima continua anónima depois de atribuídas as pessoas que reveem: a partir daí, já não pode ser alterada para mostrar as pessoas autoras.",
   settingsGuidelinesHint:
     "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
+  settingsEmailsIntro:
+    "A aplicação envia estes emails às pessoas de uma proposta. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
+  settingsEmailsNote:
+    "Estão cá os três idiomas, sejam quais forem os do congresso, porque cada pessoa recebe o email no seu idioma: alguém pode ser convidado em português para um congresso que decorre em inglês e espanhol. Um idioma que não tenha alterado mantém o texto padrão. Estes textos não são privados: tal como o resto desta configuração, podem ser lidos por qualquer pessoa que possa ver o congresso. O email para entrar é igual para toda a gente e não pode ser alterado aqui.",
+  settingsEmail_invitation: "Convite para uma proposta",
+  settingsEmail_submission_received: "Recibo de uma proposta submetida",
+  settingsEmail_submission_withdrawn: "Aviso de que uma proposta foi retirada",
+  settingsEmail_invitation_withdrawn: "Aviso a quem tinha um convite para uma proposta retirada",
+  settingsEmail_invitation_answered: "Resposta a um convite, para quem criou a proposta",
+  settingsEmail_draft_deleted: "Aviso a quem tinha um convite para um rascunho eliminado",
+  settingsEmailWhen_invitation:
+    "É enviado a uma pessoa quando quem criou uma proposta a inclui nela, e outra vez se lhe voltar a enviar o convite. Essa pessoa ainda não aceitou nada.",
+  settingsEmailWhen_submission_received:
+    "É enviado a quem criou a proposta e a cada pessoa confirmada nela quando a proposta é submetida.",
+  settingsEmailWhen_submission_withdrawn:
+    "É enviado a quem criou a proposta, a cada pessoa confirmada nela e ao email de contacto do congresso quando uma proposta submetida é retirada.",
+  settingsEmailWhen_invitation_withdrawn:
+    "É enviado a quem tinha um convite para uma proposta e não tinha respondido, quando quem a criou a retira. Não pode nomear a proposta: essas pessoas não aceitaram nada.",
+  settingsEmailWhen_invitation_answered:
+    "É enviado a quem criou uma proposta quando uma pessoa convidada confirma ou recusa, ou quando alguém que participava sai.",
+  settingsEmailWhen_draft_deleted:
+    "É enviado a quem tinha um convite para um rascunho e não tinha respondido, quando quem o criou o elimina. Não pode nomear a proposta: essas pessoas não aceitaram nada.",
+  settingsEmailPlaceholders:
+    "Pode pôr estas palavras, com as suas chavetas, no assunto e no texto. Cada uma é substituída quando o email é enviado:",
+  settingsEmailPlaceholder_conference: "o título do congresso",
+  settingsEmailPlaceholder_format: "o formato da proposta",
+  settingsEmailPlaceholder_title: "o título da proposta",
+  settingsEmailPlaceholder_deadline:
+    "a data e a hora em que a chamada fecha, no fuso horário do congresso",
+  settingsEmailPlaceholder_link: "a ligação para a proposta",
+  settingsEmailPlaceholder_invitationLink:
+    "a ligação onde a pessoa vê a proposta e confirma ou recusa",
+  settingsEmailPlaceholder_owner: "o nome de quem criou a proposta",
+  settingsEmailPlaceholder_role: "o papel da pessoa na proposta",
+  settingsEmailPlaceholder_person:
+    "a pessoa que respondeu: o seu nome, ou o seu endereço, como o escreveu quem criou a proposta",
+  settingsEmailPlaceholder_answer: "o que essa pessoa fez",
+  settingsEmailWords: "{language}: {words}",
+  settingsEmailRequired: "O texto tem de a conter.",
+  settingsEmailBodyOnly: "Não pode ficar no assunto.",
+  settingsEmailRequiredBodyOnly: "O texto tem de a conter, e não pode ficar no assunto.",
+  settingsEmailNameRule:
+    "Tem de ser uma palavra à parte: só lhe podem tocar parênteses, aspas e a pontuação que fecha uma frase.",
+  settingsLabel_message_subject: "Assunto",
+  settingsLabel_message_body: "Texto",
+  settingsEmailIsStandard: "Este é o texto padrão.",
+  settingsEmailChanged: "Este não é o texto padrão.",
+  settingsEmailUseStandard: "Usar o texto padrão",
+  settingsEmailUseStandardFor: "Usar o texto padrão: {email}, {language}",
+  settingsEmailUseStandardConfirm:
+    "Substituir o que escreveu pelo texto padrão? Perde-se o que escreveu nestas duas caixas e ainda não guardou.",
+  settingsEmailPreview: "O email tal como seria enviado, com nomes e títulos inventados:",
+  settingsEmailSample_owner: "Ana Exemplo",
+  settingsEmailSample_person: "Bruno Amostra",
+  settingsEmailSample_title: "Um título inventado",
+  settingsStandardText: "o texto padrão",
   settingsLabel_other_name: "Nome",
   settingsLabel_other_description: "Descrição",
   settingsLabel_track_name: "Nome",
@@ -137,5 +194,18 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_dates_order: "O último dia não pode ser anterior ao primeiro.",
   issue_settings_final_before_conference:
     "Os materiais finais têm de ser entregues antes de o congresso começar.",
+  issue_settings_message_empty: "Escreva o texto, ou escolha «Usar o texto padrão».",
+  issue_settings_message_not_one_line: "Um assunto é uma só linha. Retire as quebras de linha.",
+  issue_settings_message_too_long: "É demasiado longo. Use {max} caracteres ou menos.",
+  issue_settings_message_unknown_placeholder:
+    "Este email não tem nada para pôr no lugar de {names}. Use apenas as palavras entre chavetas da lista acima, ou retire as chavetas.",
+  issue_settings_message_not_in_subject: "O assunto não pode conter {names}. Só o texto.",
+  issue_settings_message_missing_placeholder: "O texto tem de conter {names}.",
+  issue_settings_message_link_touched:
+    "Ponha um espaço ou uma quebra de linha antes e depois de {names}. O que tocar na ligação passaria a fazer parte do seu endereço.",
+  issue_settings_message_name_touched:
+    "{names} representa um nome que uma pessoa escreveu, por isso tem de ser uma palavra à parte. Ponha um espaço antes e depois. Só lhe podem tocar parênteses, aspas e a pontuação que fecha uma frase: qualquer outra coisa poderia transformar o nome em parte de uma ligação ou de um endereço.",
+  issue_settings_message_invisible:
+    "Este texto tem caracteres invisíveis, que podem esconder ou reordenar palavras. Escreva-o de novo, ou cole-o como texto simples.",
   issue_settings_invalid: "Verifique este valor.",
 };

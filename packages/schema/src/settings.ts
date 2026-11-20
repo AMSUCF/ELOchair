@@ -1,4 +1,11 @@
 import type { ConferenceConfig } from "./config";
+import {
+  type MailMessageKey,
+  MESSAGE_KEYS,
+  MESSAGE_PARTS,
+  MESSAGES,
+  mailLanguagesFor,
+} from "./messages";
 
 /*
  * Conference settings: the values of a configuration that the settings screen offers, and what
@@ -6,7 +13,8 @@ import type { ConferenceConfig } from "./config";
  * changes) and the settings screen share this one definition.
  *
  * Paths name a value by keys, never by position: "submissionTypes.paper.abstract.maxWords",
- * "submissionTypes.workshop.fields.needs.label.es", "deadlines.submissionsClose".
+ * "submissionTypes.workshop.fields.needs.label.es", "deadlines.submissionsClose",
+ * "messages.invitation.subject.es".
  */
 
 /** How a setting is edited. "int" is a whole number, "number" any number. */
@@ -28,7 +36,13 @@ type Definition = {
   id: string;
   /**
    * "*" stands for the key of an existing format, field, track, topic, review pool or
-   * criterion; "@" for a language.
+   * criterion; "@" for a language; "#" for the key of an email the app sends (messages.ts).
+   *
+   * "*" walks what a configuration holds. "#" does not: the emails are a fixed list, and each
+   * of their texts is offered whether or not the conference has written it. A text that is not
+   * written is absent from the configuration, all the way up (no empty `messages`), and stands
+   * for the standard text. Below a "#", "@" is each language the app writes mail in, not each
+   * language of the conference.
    */
   pattern: string;
   kind: SettingKind;
@@ -131,6 +145,8 @@ const STAGE_ONE = [
   { id: "criterion.label", pattern: "reviewPools.*.criteria.*.label.@", kind: "text" },
   { id: "criterion.min", pattern: "reviewPools.*.criteria.*.min", kind: "int" },
   { id: "criterion.max", pattern: "reviewPools.*.criteria.*.max", kind: "int" },
+  { id: "message.subject", pattern: "messages.#.subject.@", kind: "text", optional: true },
+  { id: "message.body", pattern: "messages.#.body.@", kind: "longtext", optional: true },
   { id: "other.name", pattern: "otherFormats.*.name.@", kind: "text" },
   { id: "other.description", pattern: "otherFormats.*.description.@", kind: "longtext" },
   { id: "track.name", pattern: "tracks.*.name.@", kind: "text" },
@@ -149,6 +165,11 @@ export type Setting = {
   lang?: string;
   /** The value now; undefined when it is absent (an optional setting, or a text not written). */
   value: unknown;
+  /**
+   * For a text of an email: the standard text, which is what is sent while `value` is absent.
+   * A control starts from it, and a text equal to it is not a value to store.
+   */
+  standard?: string;
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -169,11 +190,16 @@ const isKeyed = (v: unknown): v is ({ key: string } & Record<string, unknown>)[]
  *   on a field of such a kind, although the schema would take it on any field.
  * - A rule the conference does not have (no presenter cap, no bio rule) has no setting: adding
  *   one is not a change of value.
+ * - The subject and the body of every email the app sends are offered, written or not, in all
+ *   three languages the app writes mail in, the conference's main language first
+ *   (mailLanguagesFor). Mail goes out in each of them whatever the conference's languages are,
+ *   so here, and only here, a text is offered in a language the conference may not have. One
+ *   that is not written has no value and stands for its `standard`.
  */
 export function stageOneSettings(config: ConferenceConfig): Setting[] {
   const out: Setting[] = [];
   for (const def of STAGE_ONE as readonly Definition[]) {
-    const emit = (path: string[], value: unknown, lang?: string) =>
+    const emit = (path: string[], value: unknown, lang?: string, standard?: string) =>
       out.push({
         path: path.join("."),
         id: def.id as SettingId,
@@ -181,16 +207,36 @@ export function stageOneSettings(config: ConferenceConfig): Setting[] {
         optional: def.optional ?? false,
         ...(lang ? { lang } : {}),
         value,
+        ...(standard === undefined ? {} : { standard }),
       });
-    const walk = (node: unknown, tokens: string[], path: string[]): void => {
+    /** `email` is the message the walk is inside, once it has passed a "#". */
+    const walk = (
+      node: unknown,
+      tokens: string[],
+      path: string[],
+      email?: MailMessageKey,
+    ): void => {
       const [head, ...rest] = tokens;
       if (head === undefined) {
         emit(path, node);
         return;
       }
       if (head === "@") {
-        for (const lang of config.languages) {
-          emit([...path, lang], isObject(node) ? node[lang] : undefined, lang);
+        const text = (lang: string) => (isObject(node) ? node[lang] : undefined);
+        const part = MESSAGE_PARTS.find((p) => p === path.at(-1));
+        if (!email) {
+          for (const lang of config.languages) emit([...path, lang], text(lang), lang);
+        } else if (part) {
+          // An email is written in the languages the app writes mail in, and has a standard text.
+          for (const lang of mailLanguagesFor(config.defaultLanguage)) {
+            emit([...path, lang], text(lang), lang, MESSAGES[email].standard[lang][part]);
+          }
+        }
+        return;
+      }
+      if (head === "#") {
+        for (const key of MESSAGE_KEYS) {
+          walk(isObject(node) ? node[key] : undefined, rest, [...path, key], key);
         }
         return;
       }
@@ -206,10 +252,15 @@ export function stageOneSettings(config: ConferenceConfig): Setting[] {
         return;
       }
       // A missing parent (no bio rule) has no settings; a missing text or leaf is just absent.
-      if (!isObject(node)) return;
-      const next = node[head];
-      if (rest.length > 0 && rest[0] !== "@" && next == null) return;
-      walk(next, rest, [...path, head]);
+      // The emails are the exception: each is offered although nothing is written for it, so
+      // the walk goes on to them, and inside one, through what the configuration does not hold.
+      const offeredAbsent = email !== undefined || rest[0] === "#";
+      const next = isObject(node) ? node[head] : undefined;
+      if (!offeredAbsent) {
+        if (!isObject(node)) return;
+        if (rest.length > 0 && rest[0] !== "@" && next == null) return;
+      }
+      walk(next, rest, [...path, head], email);
     };
     walk(config, def.pattern.split("."), []);
   }
@@ -296,7 +347,9 @@ export function settingAt(root: unknown, path: string): unknown {
 /**
  * A copy of `root` with the value at a keyed path replaced; undefined removes it. A text that
  * loses its last language, or any object left empty, is removed with it, so that an optional
- * text can be cleared. Items of keyed lists are only ever changed, never added.
+ * text can be cleared. Objects that the path needs and `root` lacks are made on the way, so an
+ * email's text can be written where there was no `messages`, and removing the last one leaves
+ * none. Items of keyed lists are only ever changed, never added.
  */
 export function withSetting<T>(root: T, path: string, value: unknown): T {
   const put = (node: unknown, tokens: string[]): unknown => {

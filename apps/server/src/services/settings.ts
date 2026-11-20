@@ -25,7 +25,8 @@ import type { ConferenceRow } from "../repo";
  * valid configuration); it saves only what a review lets through.
  *
  * Everything here answers in paths, codes, counts and opaque submission IDs: never a name, a
- * title or a word of anyone's text.
+ * title or a word of anyone's text. A problem with the wording of an email names the
+ * placeholders it is about ("{link}"): they come from the configuration that was sent in.
  */
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -60,7 +61,8 @@ export const configToken = (config: ConferenceConfig): string =>
 export type ConfigIssue = {
   path: string;
   code: string;
-  params?: Record<string, number>;
+  /** What the explanation names: a bound, or the placeholders of an email's text. */
+  params?: Record<string, string | number>;
   message: string;
 };
 
@@ -71,12 +73,15 @@ export function configIssues(error: ZodError, input: unknown): ConfigIssue[] {
   return error.issues.map((issue) => {
     let code = "invalid";
     let leaf: string | undefined;
-    let params: Record<string, number> | undefined;
+    let params: Record<string, string | number> | undefined;
     if (issue.code === "custom") {
-      const named = issue.params as { code?: string; leaf?: string } | undefined;
+      const named = issue.params as
+        | { code?: string; leaf?: string; values?: Record<string, string | number> }
+        | undefined;
       if (named?.code) {
         code = named.code;
         leaf = named.leaf;
+        params = named.values;
       }
     } else if (issue.code === "invalid_type") {
       // A text that is missing altogether is missing in the default language.

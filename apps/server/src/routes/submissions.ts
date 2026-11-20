@@ -2,6 +2,7 @@ import { projectCheck, projectSubmission, submissionIssues } from "@elochair/pol
 import {
   ContributorChangeInput,
   findType,
+  formatDeadline,
   InviteInput,
   isCallOpen,
   type Submission,
@@ -43,7 +44,6 @@ import { ownCapCount } from "../services/submissions";
 import {
   answeredMessage,
   draftDeletedMessage,
-  formatDeadline,
   invitationMessage,
   invitationWithdrawnMessage,
   type MailLang,
@@ -261,7 +261,12 @@ export const submissionRoutes = new Hono<AppEnv>()
           if (to)
             await mail(
               "draft_deleted",
-              draftDeletedMessage(lang, to, mailContext(conference, rec, lang, origin)),
+              draftDeletedMessage(
+                conference.config,
+                lang,
+                to,
+                mailContext(conference, rec, lang, origin),
+              ),
             );
         }
         await tx.delete(submissions).where(eq(submissions.id, id));
@@ -335,7 +340,7 @@ export const submissionRoutes = new Hono<AppEnv>()
           const lang = personLang(p, conference);
           await mail(
             "submission_received",
-            receivedMessage(lang, p.email, {
+            receivedMessage(config, lang, p.email, {
               ...mailContext(conference, rec, lang, origin),
               title: rec.submission.title,
               deadline: formatDeadline(config.deadlines.submissionsClose, config.timezone, lang),
@@ -424,8 +429,13 @@ export const submissionRoutes = new Hono<AppEnv>()
           await mail(
             "submission_withdrawn",
             invitee
-              ? invitationWithdrawnMessage(lang, to, { conference: ctx.conference })
-              : withdrawnMessage(lang, to, { ...ctx, title: rec.submission.title }),
+              ? invitationWithdrawnMessage(conference.config, lang, to, {
+                  conference: ctx.conference,
+                })
+              : withdrawnMessage(conference.config, lang, to, {
+                  ...ctx,
+                  title: rec.submission.title,
+                }),
           );
         }
         await audit(tx, viewer, {
@@ -539,7 +549,7 @@ export const submissionRoutes = new Hono<AppEnv>()
         const ctx = mailContext(conference, rec, input.lang, origin);
         await mail(
           "invitation",
-          invitationMessage(input.lang, email, {
+          invitationMessage(conference.config, input.lang, email, {
             ownerName: owner?.displayName ?? null,
             conference: ctx.conference,
             format: ctx.format,
@@ -735,7 +745,7 @@ export const submissionRoutes = new Hono<AppEnv>()
         const ctx = mailContext(conference, rec, lang, origin);
         await mail(
           "invitation",
-          invitationMessage(lang, mine.invitedEmail, {
+          invitationMessage(conference.config, lang, mine.invitedEmail, {
             ownerName: rec.people.get(viewer.personId)?.displayName ?? null,
             conference: ctx.conference,
             format: ctx.format,
@@ -793,7 +803,7 @@ export const submissionRoutes = new Hono<AppEnv>()
           const mine = rec.contributions.find((x) => x.personId === viewer.personId);
           await mail(
             "invitation_answered",
-            answeredMessage(lang, owner.email, {
+            answeredMessage(conference.config, lang, owner.email, {
               conference: ctx.conference,
               // As in the confirm and decline notices: the name the owner typed, else the
               // address they invited.

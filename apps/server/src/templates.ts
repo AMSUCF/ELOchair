@@ -1,17 +1,64 @@
-import { type ContributionRole, LIMITS, removeStrayInvisible } from "@elochair/schema";
+import {
+  ADDRESS,
+  ANSWER_WORDS,
+  BARE_HOST,
+  type ConferenceConfig,
+  type ContributionRole,
+  fillMessage,
+  HOST_WITH_PATH,
+  type InvitationAnswer,
+  IPV4,
+  LIMITS,
+  type MailLang,
+  type MailMessageKey,
+  type MessagePart,
+  type MessageValues,
+  messageText,
+  ROLE_WORDS,
+  removeStrayInvisible,
+  SCHEME_LINK,
+  UNNAMED_OWNER,
+} from "@elochair/schema";
 import type { MailMessage } from "./mail";
 
 /*
- * Participant emails: fixed text in en, es and pt.
+ * Participant emails, in en, es and pt. Their wording is the standard text, or the conference's
+ * own where its chairs have written one (`messages` in its configuration; both are defined in
+ * packages/schema/src/messages.ts). This file supplies what only the server knows: the values
+ * that go into a text, cleaned.
  * - Invitations go to people who have agreed to nothing yet. They carry no text an owner wrote
  *   except the owner's display name, sanitized to one line without links (sanitizeName): ELO's
  *   signed mail must not become a vehicle for someone else's message.
  * - Mail to people who are part of the proposal (confirmed contributors, its owner, the
  *   conference's contact address) shows owner-written text, such as the title, as it was
  *   typed, cleaned up to one line (oneLine).
+ *
+ * A conference's own wording changes none of that:
+ * - Every value is cleaned here, before it is put in, exactly as for the standard text. No text
+ *   can ask for it uncleaned.
+ * - A text gets the values of its own message and no others. An invitation has no title to
+ *   give, whatever its text names (and the schema refuses a text that names one).
+ * - Values are put in once and never read again: a name or a title that holds "{link}" stays
+ *   those characters.
+ * - A subject is never given the link (fillMessage), so that an invitation's link is only ever
+ *   in the body, where mail.ts removes it from the stored copy. The subject of an invitation
+ *   is not given the owner's name either: that stays in the body, where it has always been.
+ * - A name stays a word of its own. sanitizeName takes links out of an owner's name; the schema
+ *   refuses a text that puts the rest of a link around the name's placeholder
+ *   ("https://{owner}.example"); and the fill sets a name apart by a space wherever it and its
+ *   neighbours would still read as a link or an address. One definition of what that is serves
+ *   all three: packages/schema/src/links.ts.
+ * Chairs' text is used as it is written, as plain text, and the schema refuses one that holds
+ * invisible characters writing does not need, as owners' names are cleaned of them.
  */
 
-export type MailLang = "en" | "es" | "pt";
+export type { MailLang };
+
+/**
+ * What these functions read of a conference's configuration: its own wording of the emails.
+ * Every call passes the configuration in force, so that no mail is built without it.
+ */
+export type Wording = Pick<ConferenceConfig, "messages">;
 
 /** The best supported language for a person ("pt-BR" → pt), else the fallback. */
 export function mailLang(preferences: readonly string[], fallback: string): MailLang {
@@ -22,62 +69,58 @@ export function mailLang(preferences: readonly string[], fallback: string): Mail
   return "en";
 }
 
-/** Dots that mail clients and IDNA treat as a domain separator. */
-const DOT = "[.\\u3002\\uFF0E\\uFF61]";
-/** A host label. Joiners count as part of it: a kept joiner must not split "evil.c<ZWJ>om". */
-const LABEL = "[\\p{L}\\p{M}\\p{N}_\\u200C\\u200D-]+";
+const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
+
 /**
- * Links with a scheme: "https://...", "ftp://...", "mailto:a@b", "tel:5550100". A scheme
- * without "//" needs a target right after its colon, so words such as "Data:" or "Tel: Aviv"
- * stay.
+ * A name on one line without anything a mail client might turn into a link, and without the
+ * invisible characters that could hide or reorder text.
  */
-const SCHEME_LINK =
-  /\b(?:[a-z][a-z0-9+.-]*:\/\/\S*|(?:mailto|tel|sms|callto|javascript|data):\S+)/giu;
-/**
- * Bare host names ("evil-phish.com", "www.x.org/path"): a dotted name whose last label has two
- * or more letters, like every top-level domain. Initials ("J.R.R.") and "e.g." do not match.
- */
-const BARE_HOST = new RegExp(
-  `${LABEL}(?:${DOT}${LABEL})*${DOT}[\\u200C\\u200D]*\\p{L}[\\p{L}\\p{M}\\u200C\\u200D-]+\\S*`,
-  "gu",
-);
-/** A dotted name followed by a path, whatever it ends in ("10.0.0.1/x"). */
-const HOST_WITH_PATH = new RegExp(`${LABEL}(?:${DOT}${LABEL})+[/?#]\\S*`, "gu");
-/** Four dotted numbers, marks after a digit included ("10<U+FE0F>.0.0.1"). */
-const IPV4 = /(?<!\p{N})(?:\d\p{M}*){1,3}(?:\.(?:\d\p{M}*){1,3}){3}(?!\p{N})/gu;
+function withoutLinks(name: string): string {
+  let text = name;
+  // Until nothing more goes. Taking one thing out can uncover another: "1.2.3.4tel:5550100" has
+  // no word break before "tel", so no link, until the numbers are gone. Every round that changes
+  // the text takes something out of it, so this ends.
+  for (;;) {
+    // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule.
+    // Each removal leaves a space, so what is left on either side cannot join into a new link
+    // ("evil.c1.2.3.4om" must not become "evil.com").
+    const next = removeStrayInvisible(text)
+      .replace(/\p{Co}/gu, "")
+      .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
+      .replace(ADDRESS, " ")
+      .replace(SCHEME_LINK, " ")
+      .replace(HOST_WITH_PATH, " ")
+      .replace(BARE_HOST, " ")
+      .replace(IPV4, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (next === text) return text;
+    text = next;
+  }
+}
 
 /**
  * Owner-written text for ELO-signed mail to people who have agreed to nothing (the owner's name
  * in an invitation): one line, at most 100 characters, without links. It removes anything a
- * mail client might turn into a link (URLs, bare domains, email addresses) and invisible
+ * mail client might turn into a link (URLs, bare domains, email addresses: the detectors of
+ * packages/schema/src/links.ts, which an email's text is held to as well) and invisible
  * characters other than those writing needs (removeStrayInvisible), which could otherwise hide
  * or reorder text. Ordinary names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil",
  * Persian and Indic names spelled with joiners) pass.
  */
-const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
-
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
-  // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule. Each
-  // removal leaves a space, so what is left on either side can never join into a new link
-  // ("evil.c1.2.3.4om" must not become "evil.com").
-  const clean = removeStrayInvisible(name ?? "")
-    .replace(/\p{Co}/gu, "")
-    .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
-    .replace(/\S*[@＠]\S*/gu, " ")
-    .replace(SCHEME_LINK, " ")
-    .replace(HOST_WITH_PATH, " ")
-    .replace(BARE_HOST, " ")
-    .replace(IPV4, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const clean = withoutLinks(name ?? "");
   // At most 100 code points, cut between whole characters so no flag or joiner sequence is
-  // split, then cleaned again in case a removal left a joiner with nothing to join.
+  // split.
   let kept = "";
   for (const { segment } of GRAPHEMES.segment(clean)) {
     if (Array.from(kept + segment).length > 100) break;
     kept += segment;
   }
-  return removeStrayInvisible(kept).trim() || fallback;
+  // Cleaned again. The cut can leave a joiner with nothing to join, and it can end a run of
+  // digits early: "1.2.3.4567" is no address, and "1.2.3.4" is one. A name the cut did not
+  // change comes out of this as it went in.
+  return withoutLinks(kept) || fallback;
 }
 
 /**
@@ -102,45 +145,26 @@ export function oneLine(text: string | null | undefined, fallback: string, max =
   return `${kept}…`;
 }
 
-const DATE_LOCALE: Record<MailLang, string> = { en: "en", es: "es-CO", pt: "pt-BR" };
-
-/** A deadline for mail: in the reader's language, in the conference's time zone (named). */
-export function formatDeadline(iso: string, timeZone: string, lang: MailLang): string {
-  const when = new Intl.DateTimeFormat(DATE_LOCALE[lang], {
-    dateStyle: "long",
-    timeStyle: "short",
-    timeZone,
-  }).format(new Date(iso));
-  return `${when} (${timeZone})`;
+/**
+ * One message as it is sent: for the subject and for the body, the text in force for this
+ * reader's language (the conference's own where it has one, else the standard text), with the
+ * values put in. `values` holds every placeholder of the message and nothing else, each already
+ * cleaned by the caller.
+ */
+function message<K extends MailMessageKey>(
+  wording: Wording,
+  key: K,
+  lang: MailLang,
+  to: string,
+  values: MessageValues<K>,
+): MailMessage {
+  const filled = (part: MessagePart) =>
+    fillMessage(key, part, messageText(wording.messages, key, part, lang), values);
+  return { to, subject: filled("subject"), text: filled("body") };
 }
 
-const ROLE: Record<MailLang, Record<ContributionRole, string>> = {
-  en: {
-    lead: "lead author",
-    presenter: "presenter",
-    coauthor: "co-author",
-    panelist: "panelist",
-    moderator: "moderator",
-  },
-  es: {
-    lead: "autoría principal",
-    presenter: "presentación",
-    coauthor: "coautoría",
-    panelist: "panelista",
-    moderator: "moderación",
-  },
-  pt: {
-    lead: "autoria principal",
-    presenter: "apresentação",
-    coauthor: "coautoria",
-    panelist: "painelista",
-    moderator: "moderação",
-  },
-};
-
-const SOMEONE: Record<MailLang, string> = { en: "Someone", es: "Alguien", pt: "Alguém" };
-
 export function invitationMessage(
+  wording: Wording,
   lang: MailLang,
   to: string,
   v: {
@@ -151,40 +175,28 @@ export function invitationMessage(
     link: string;
   },
 ): MailMessage {
-  const owner = sanitizeName(v.ownerName, SOMEONE[lang]);
-  const role = ROLE[lang][v.role];
-  const text = {
-    en: `${owner} has listed you as ${role} on a proposal (${v.format}) for ${v.conference}.\n\nOpen this link to see the proposal and confirm or decline. You can decline without an account:\n\n${v.link}\n\nIf you do not know this person or this proposal, decline it: you will not be listed.`,
-    es: `${owner} te ha incluido con el rol de ${role} en una propuesta (${v.format}) para ${v.conference}.\n\nAbre este enlace para ver la propuesta y confirmar o rechazar. Puedes rechazar sin tener cuenta:\n\n${v.link}\n\nSi no conoces a esta persona o esta propuesta, recházala: no aparecerás en ella.`,
-    pt: `${owner} incluiu-o com o papel de ${role} numa proposta (${v.format}) para ${v.conference}.\n\nAbra este link para ver a proposta e confirmar ou recusar. Pode recusar sem ter conta:\n\n${v.link}\n\nSe não conhece esta pessoa ou esta proposta, recuse-a: não ficará associado/a a ela.`,
-  }[lang];
-  const subject = {
-    en: `${v.conference}: please confirm your participation`,
-    es: `${v.conference}: confirma tu participación`,
-    pt: `${v.conference}: confirme a sua participação`,
-  }[lang];
-  return { to, subject, text };
+  return message(wording, "invitation", lang, to, {
+    owner: sanitizeName(v.ownerName, UNNAMED_OWNER[lang]),
+    role: ROLE_WORDS[lang][v.role],
+    format: v.format,
+    conference: v.conference,
+    link: v.link,
+  });
 }
 
 export function receivedMessage(
+  wording: Wording,
   lang: MailLang,
   to: string,
   v: { conference: string; format: string; title: string; link: string; deadline: string },
 ): MailMessage {
-  const title = oneLine(v.title, "—");
-  return {
-    to,
-    subject: {
-      en: `${v.conference}: proposal received`,
-      es: `${v.conference}: propuesta recibida`,
-      pt: `${v.conference}: proposta recebida`,
-    }[lang],
-    text: {
-      en: `Your proposal "${title}" (${v.format}) for ${v.conference} has been submitted.\n\nIt can still be edited until ${v.deadline}:\n\n${v.link}`,
-      es: `Tu propuesta «${title}» (${v.format}) para ${v.conference} se ha enviado.\n\nAún puede editarse hasta el ${v.deadline}:\n\n${v.link}`,
-      pt: `A sua proposta «${title}» (${v.format}) para ${v.conference} foi submetida.\n\nAinda pode ser editada até ${v.deadline}:\n\n${v.link}`,
-    }[lang],
-  };
+  return message(wording, "submission_received", lang, to, {
+    title: oneLine(v.title, "—"),
+    format: v.format,
+    conference: v.conference,
+    deadline: v.deadline,
+    link: v.link,
+  });
 }
 
 /**
@@ -192,24 +204,17 @@ export function receivedMessage(
  * and the proposal's link, so that the contact address can tell which proposal it was.
  */
 export function withdrawnMessage(
+  wording: Wording,
   lang: MailLang,
   to: string,
   v: { conference: string; format: string; title: string; link: string },
 ): MailMessage {
-  const title = oneLine(v.title, "—");
-  return {
-    to,
-    subject: {
-      en: `${v.conference}: proposal withdrawn`,
-      es: `${v.conference}: propuesta retirada`,
-      pt: `${v.conference}: proposta retirada`,
-    }[lang],
-    text: {
-      en: `The proposal "${title}" (${v.format}) for ${v.conference} has been withdrawn by its owner.\n\n${v.link}`,
-      es: `La propuesta «${title}» (${v.format}) para ${v.conference} ha sido retirada por quien la creó.\n\n${v.link}`,
-      pt: `A proposta «${title}» (${v.format}) para ${v.conference} foi retirada por quem a criou.\n\n${v.link}`,
-    }[lang],
-  };
+  return message(wording, "submission_withdrawn", lang, to, {
+    title: oneLine(v.title, "—"),
+    format: v.format,
+    conference: v.conference,
+    link: v.link,
+  });
 }
 
 /**
@@ -217,26 +222,15 @@ export function withdrawnMessage(
  * title or other owner-written text (like the invitation itself).
  */
 export function invitationWithdrawnMessage(
+  wording: Wording,
   lang: MailLang,
   to: string,
   v: { conference: string },
 ): MailMessage {
-  return {
-    to,
-    subject: {
-      en: `${v.conference}: a proposal you were invited to was withdrawn`,
-      es: `${v.conference}: se retiró una propuesta a la que te invitaron`,
-      pt: `${v.conference}: foi retirada uma proposta para a qual foi convidado/a`,
-    }[lang],
-    text: {
-      en: `A proposal for ${v.conference} that listed you was withdrawn by its owner. It can no longer be confirmed, and there is nothing you need to do.`,
-      es: `Quien creó una propuesta para ${v.conference} en la que figurabas la ha retirado. Ya no se puede confirmar y no tienes que hacer nada.`,
-      pt: `Foi retirada por quem a criou uma proposta para ${v.conference} em que constava. Já não pode ser confirmada e não precisa de fazer nada.`,
-    }[lang],
-  };
+  return message(wording, "invitation_withdrawn", lang, to, { conference: v.conference });
 }
 
-export type Answer = "confirmed" | "declined" | "left";
+export type Answer = InvitationAnswer;
 
 /**
  * Tells the owner, its only recipient, that someone confirmed, declined or left. `who` is what
@@ -244,55 +238,24 @@ export type Answer = "confirmed" | "declined" | "left";
  * line.
  */
 export function answeredMessage(
+  wording: Wording,
   lang: MailLang,
   to: string,
   v: { conference: string; who: string; answer: Answer; link: string },
 ): MailMessage {
-  const who = oneLine(v.who, "—", LIMITS.name);
-  const verb = {
-    en: { confirmed: "confirmed", declined: "declined", left: "left" },
-    es: {
-      confirmed: "confirmó su participación en",
-      declined: "rechazó participar en",
-      left: "dejó",
-    },
-    pt: {
-      confirmed: "confirmou a participação em",
-      declined: "recusou participar em",
-      left: "saiu de",
-    },
-  }[lang][v.answer];
-  return {
-    to,
-    subject: {
-      en: `${v.conference}: ${who} ${verb} your proposal`,
-      es: `${v.conference}: ${who} ${verb} tu propuesta`,
-      pt: `${v.conference}: ${who} ${verb} a sua proposta`,
-    }[lang],
-    text: {
-      en: `${who} ${verb} your proposal for ${v.conference}. Check that it still meets the format's requirements:\n\n${v.link}`,
-      es: `${who} ${verb} tu propuesta para ${v.conference}. Comprueba que sigue cumpliendo los requisitos del formato:\n\n${v.link}`,
-      pt: `${who} ${verb} a sua proposta para ${v.conference}. Verifique se continua a cumprir os requisitos do formato:\n\n${v.link}`,
-    }[lang],
-  };
+  return message(wording, "invitation_answered", lang, to, {
+    person: oneLine(v.who, "—", LIMITS.name),
+    answer: ANSWER_WORDS[lang][v.answer],
+    conference: v.conference,
+    link: v.link,
+  });
 }
 
 export function draftDeletedMessage(
+  wording: Wording,
   lang: MailLang,
   to: string,
   v: { conference: string },
 ): MailMessage {
-  return {
-    to,
-    subject: {
-      en: `${v.conference}: an invitation was cancelled`,
-      es: `${v.conference}: se canceló una invitación`,
-      pt: `${v.conference}: um convite foi cancelado`,
-    }[lang],
-    text: {
-      en: `A draft proposal for ${v.conference} that listed you was deleted by its owner. There is nothing you need to do.`,
-      es: `Se eliminó un borrador de propuesta para ${v.conference} en el que figurabas. No tienes que hacer nada.`,
-      pt: `Foi eliminado um rascunho de proposta para ${v.conference} em que constava. Não precisa de fazer nada.`,
-    }[lang],
-  };
+  return message(wording, "draft_deleted", lang, to, { conference: v.conference });
 }

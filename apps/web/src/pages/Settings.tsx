@@ -1,8 +1,17 @@
 import type { BlindMode, ConferenceConfig } from "@elochair/schema";
 import {
+  ANSWER_WORDS,
   type ConfigChange,
   configChanges,
+  fillMessage,
+  isMailLanguage,
   localize,
+  type MailLang,
+  type MailMessageKey,
+  MESSAGE_KEYS,
+  MESSAGES,
+  type MessagePlaceholder,
+  ROLE_WORDS,
   type Setting,
   type SettingId,
   stageOneSettings,
@@ -19,25 +28,38 @@ import {
 } from "react";
 import { Link, useBlocker, useParams } from "react-router";
 import { type ApiResult, api, type Issue, type Me } from "../api";
+import { sampleValues } from "../emailPreview";
 import { formatDateTime, viewerTimeZone } from "../format";
 import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { isMessageKey, LANG_NAMES, type MessageKey, useT } from "../i18n";
-import { blindChoiceKey, deadlineKey, modalityKey, ownModeKey } from "../labels";
+import {
+  blindChoiceKey,
+  deadlineKey,
+  emailNameKey,
+  emailWhenKey,
+  modalityKey,
+  ownModeKey,
+  placeholderKey,
+} from "../labels";
 import {
   DATETIME,
   type Edits,
   editsAfterSave,
+  emailText,
   parts,
   type Raw,
   rawOf,
   restoredEdits,
+  typedText,
 } from "../settingsEdits";
 import { Localized, PageHeading } from "../ui";
 import { useUnsaved } from "../useUnsaved";
 
 /*
  * Conference settings for chairs (spec 02, §1.9). The screen shows the stage-one values
- * (stageOneSettings): existing values only, the same for every chair. Formats, fields,
+ * (stageOneSettings): existing values, and the wording of the emails the app sends, whether the
+ * conference has written its own or not, in the three languages mail goes out in; the same for
+ * every chair. Formats, fields,
  * languages, review pools and criteria are added or removed by importing a configuration, and
  * the page says so. It keeps what was typed apart from the configuration, and saves nothing
  * that has not been reviewed: the server says what a save would change, what is wrong with it,
@@ -60,7 +82,7 @@ type SettingsData = {
 type Review = {
   token: string;
   stale: boolean;
-  issues: { path: string; code: string; params?: Record<string, number> }[];
+  issues: { path: string; code: string; params?: Record<string, string | number> }[];
   changes: ConfigChange[];
   blocked: { count: number; byCode: Record<string, number>; submissionIds: string[] } | null;
   warnings: { drafts: number; callOpens: boolean; callCloses: boolean; pastDeadlines: string[] };
@@ -107,6 +129,8 @@ const LABELS: Record<SettingId, MessageKey> = {
   "criterion.label": "settingsLabel_criterion_label",
   "criterion.min": "settingsLabel_criterion_min",
   "criterion.max": "settingsLabel_criterion_max",
+  "message.subject": "settingsLabel_message_subject",
+  "message.body": "settingsLabel_message_body",
   "other.name": "settingsLabel_other_name",
   "other.description": "settingsLabel_other_description",
   "track.name": "settingsLabel_track_name",
@@ -116,7 +140,10 @@ const LABELS: Record<SettingId, MessageKey> = {
 /** How a pool's reviewers are shown the authors: the choices, most hidden first. */
 const BLIND_MODES = ["double", "single", "open"] as const satisfies readonly BlindMode[];
 
-/** The value a control stands for. Blank is absent; a blank number that is needed is null. */
+/**
+ * The value a control stands for. Blank is absent; a blank number that is needed is null. An
+ * email's text has its own rule (typedText).
+ */
 function typed(s: Setting, raw: Raw): unknown {
   // A box never ticked stays absent rather than becoming an explicit "no".
   if (s.kind === "bool") return raw === true ? true : s.value === undefined ? undefined : false;
@@ -126,7 +153,7 @@ function typed(s: Setting, raw: Raw): unknown {
     const n = Number(text);
     return Number.isFinite(n) ? n : null;
   }
-  return text === "" ? undefined : text;
+  return typedText(s, raw);
 }
 
 /**
@@ -160,7 +187,10 @@ function build(config: ConferenceConfig, settings: Setting[], edits: Edits): Con
 /** The collapsible section a path belongs to ("submissionTypes.paper"), if it is in one. */
 const sectionOf = (path: string) => {
   const [list, key] = path.split(".");
-  return list === "submissionTypes" || list === "reviewPools" || list === "otherFormats"
+  return list === "submissionTypes" ||
+    list === "reviewPools" ||
+    list === "otherFormats" ||
+    list === "messages"
     ? `${list}.${key}`
     : null;
 };
@@ -473,12 +503,19 @@ function SettingsForm({
     } else if (list === "topics") {
       const topic = config.topics.find((x) => x.key === key);
       if (topic) context.push(text(topic.label));
+    } else if (list === "messages") {
+      const email = MESSAGE_KEYS.find((x) => x === key);
+      if (email) context.push(t(emailNameKey(email)));
     }
     return [...context, label(s)].join(" · ");
   };
 
   const show = (path: string, value: unknown): string => {
-    if (value === undefined || value === null || value === "") return t("settingsEmpty");
+    if (value === undefined || value === null || value === "") {
+      // An email's text that the conference has not written is the standard text, not nothing.
+      const standard = settings.find((s) => s.path === path)?.standard !== undefined;
+      return t(standard ? "settingsStandardText" : "settingsEmpty");
+    }
     // A deadline: the instant in the conference's time zone, and the text as it is stored.
     if (path.startsWith("deadlines.") && typeof value === "string" && DATETIME.test(value)) {
       return t("settingsInstant", {
@@ -516,9 +553,12 @@ function SettingsForm({
   const under = (prefix: string) => settings.filter((s) => s.path.startsWith(prefix));
   const profile = settings.filter(
     (s) =>
-      !/^(deadlines|rules|submissionTypes|reviewPools|otherFormats|tracks|topics)\./.test(s.path),
+      !/^(deadlines|rules|submissionTypes|reviewPools|messages|otherFormats|tracks|topics)\./.test(
+        s.path,
+      ),
   );
   const rules = under("rules.");
+  const emails = under("messages.");
 
   /**
    * What a pool's settings apply to: the formats it reviews, and any of them that has a blind
@@ -647,6 +687,26 @@ function SettingsForm({
             </>,
           );
         })}
+
+        {/* Every conference has these: the emails are offered in the three languages the app
+            writes mail in, whichever of them are the conference's own. */}
+        <h2>{t("settingsSectionEmails")}</h2>
+        <p className="section-intro">{t("settingsEmailsIntro")}</p>
+        <p className="setting-hint">{t("settingsEmailsNote")}</p>
+        {MESSAGE_KEYS.map((key) =>
+          section(
+            `messages.${key}`,
+            t(emailNameKey(key)),
+            <Email
+              emailKey={key}
+              list={emails.filter((s) => s.path.startsWith(`messages.${key}.`))}
+              config={config}
+              edits={edits}
+              set={set}
+              controls={controls}
+            />,
+          ),
+        )}
 
         {config.otherFormats.length > 0 && (
           <>
@@ -855,8 +915,8 @@ function Control({
       {s.kind === "longtext" ? (
         <textarea
           {...common}
-          // Guidelines run to paragraphs; the other long texts are a sentence or two.
-          rows={s.id === "pool.guidelines" ? 6 : 3}
+          // Guidelines and emails run to paragraphs; the other long texts are a sentence or two.
+          rows={s.id === "message.body" ? 8 : s.id === "pool.guidelines" ? 6 : 3}
           lang={s.lang}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -952,6 +1012,189 @@ function Deadline({
           : t("settingsDeadlineIncomplete")}
       </p>
       <FieldError path={s.path} issues={issues} />
+    </fieldset>
+  );
+}
+
+/** The placeholders that stand for fixed words in each language, and those words. */
+const WORDS = { role: ROLE_WORDS, answer: ANSWER_WORDS };
+
+/**
+ * One email the app sends: when it goes and to whom, what its texts may name, and its subject
+ * and body in each language, with the email as it would be sent.
+ */
+function Email({
+  emailKey,
+  list,
+  config,
+  edits,
+  set,
+  controls,
+}: {
+  emailKey: MailMessageKey;
+  /** This email's settings: a subject and a body in each language the app writes mail in. */
+  list: Setting[];
+  config: ConferenceConfig;
+  edits: Edits;
+  set: (path: string, raw: Raw, stored: Raw) => void;
+  controls: (list: Setting[], sharedHint?: string) => ReactNode;
+}) {
+  const { t } = useT();
+  const hint = `${fieldId(`messages.${emailKey}`)}-placeholders`;
+  const placeholders: readonly MessagePlaceholder[] = MESSAGES[emailKey].placeholders;
+  const required: readonly string[] = MESSAGES[emailKey].required;
+  const bodyOnly: readonly string[] = MESSAGES[emailKey].bodyOnly;
+  const names: readonly string[] = MESSAGES[emailKey].names;
+  /** What a text must or must not do with a placeholder, if anything. */
+  const rules = (name: string): MessageKey[] => {
+    const out: MessageKey[] = [];
+    if (required.includes(name)) {
+      out.push(bodyOnly.includes(name) ? "settingsEmailRequiredBodyOnly" : "settingsEmailRequired");
+    } else if (bodyOnly.includes(name)) out.push("settingsEmailBodyOnly");
+    if (names.includes(name)) out.push("settingsEmailNameRule");
+    return out;
+  };
+  const langs = [...new Set(list.flatMap((s) => (s.lang ? [s.lang] : [])))].filter(isMailLanguage);
+  return (
+    <>
+      <p className="meta">{t(emailWhenKey(emailKey))}</p>
+      {/* The whole list describes the two boxes of each language: the sentence and what it lists. */}
+      <div className="placeholders" id={hint}>
+        <p>{t("settingsEmailPlaceholders")}</p>
+        <dl>
+          {placeholders.map((name) => {
+            const must = rules(name);
+            return (
+              <div key={name}>
+                <dt>
+                  <code>{`{${name}}`}</code>
+                </dt>
+                <dd>
+                  <span>{t(placeholderKey(emailKey, name))}</span>
+                  {/* Words the app supplies: a chair who rewords the sentence needs them. */}
+                  {(name === "role" || name === "answer") &&
+                    langs.map((lang) => (
+                      <span key={lang} lang={lang}>
+                        {t("settingsEmailWords", {
+                          language: LANG_NAMES[lang],
+                          words: Object.values(WORDS[name][lang]).join(" · "),
+                        })}
+                      </span>
+                    ))}
+                  {must.map((key) => (
+                    <strong key={key}>{t(key)}</strong>
+                  ))}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      </div>
+      {langs.map((lang) => {
+        const at = (part: string) => list.find((s) => s.path.endsWith(`.${part}.${lang}`));
+        const subject = at("subject");
+        const body = at("body");
+        return subject && body ? (
+          <EmailLanguage
+            key={lang}
+            emailKey={emailKey}
+            lang={lang}
+            subject={subject}
+            body={body}
+            config={config}
+            edits={edits}
+            set={set}
+            controls={controls}
+            hint={hint}
+          />
+        ) : null;
+      })}
+    </>
+  );
+}
+
+/**
+ * An email in one language. The two boxes show what is sent: the conference's own text, or the
+ * standard text while it has none. A box that holds the standard text stores nothing, so "Use
+ * the standard text" puts it back in both and the customization is gone once that is saved.
+ * It asks first when that would lose text typed and not saved. Below them is the email filled
+ * with made-up values, as it is typed.
+ */
+function EmailLanguage({
+  emailKey,
+  lang,
+  subject,
+  body,
+  config,
+  edits,
+  set,
+  controls,
+  hint,
+}: {
+  emailKey: MailMessageKey;
+  lang: MailLang;
+  subject: Setting;
+  body: Setting;
+  config: ConferenceConfig;
+  edits: Edits;
+  set: (path: string, raw: Raw, stored: Raw) => void;
+  controls: (list: Setting[], sharedHint?: string) => ReactNode;
+  /** The id of the list that says what the placeholders are. */
+  hint: string;
+}) {
+  const { t } = useT();
+  const shown = (s: Setting) => String(edits[s.path] ?? rawOf(s));
+  const changed = [subject, body].some((s) => typedText(s, shown(s)) !== undefined);
+  // Made up once for a stored configuration, not at every key pressed anywhere in the form.
+  const values = useMemo(
+    () => sampleValues(emailKey, lang, config, window.location.origin),
+    [emailKey, lang, config],
+  );
+  /** Typed here, not saved, and not the standard text: the button would lose it for good. */
+  const typedOwn = [subject, body].some(
+    (s) => edits[s.path] !== undefined && typedText(s, shown(s)) !== undefined,
+  );
+  const toStandard = () => {
+    if (typedOwn && !window.confirm(t("settingsEmailUseStandardConfirm"))) return;
+    for (const s of [subject, body]) set(s.path, s.standard ?? "", rawOf(s));
+  };
+  return (
+    <fieldset>
+      <legend lang={lang}>{LANG_NAMES[lang]}</legend>
+      {controls([subject, body], hint)}
+      {/* Said again when it changes: after "Use the standard text", and at the first change. */}
+      <p className="setting-hint" aria-live="polite">
+        {t(changed ? "settingsEmailChanged" : "settingsEmailIsStandard")}
+      </p>
+      <p className="actions">
+        {/* Always there, so that focus stays on it once it has been used. Its name says which
+            email and language it is for: the page has one for each. */}
+        <button
+          type="button"
+          className="secondary"
+          aria-label={t("settingsEmailUseStandardFor", {
+            email: t(emailNameKey(emailKey)),
+            language: LANG_NAMES[lang],
+          })}
+          aria-disabled={changed ? undefined : "true"}
+          onClick={() => changed && toStandard()}
+        >
+          {t("settingsEmailUseStandard")}
+        </button>
+      </p>
+      <figure className="email-preview">
+        <figcaption className="setting-hint">{t("settingsEmailPreview")}</figcaption>
+        <dl>
+          <dt>{t("settingsLabel_message_subject")}</dt>
+          <dd className="email-subject" lang={lang}>
+            {fillMessage(emailKey, "subject", emailText(shown(subject)), values)}
+          </dd>
+          <dt>{t("settingsLabel_message_body")}</dt>
+          <dd className="email-body" lang={lang}>
+            {fillMessage(emailKey, "body", emailText(shown(body)), values)}
+          </dd>
+        </dl>
+      </figure>
     </fieldset>
   );
 }

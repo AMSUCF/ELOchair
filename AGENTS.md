@@ -59,13 +59,14 @@ These are invariants. Do not trade them away for convenience.
 
 5. **People approve irreversible actions.**
    - Sending mail to participants, recording decisions and publishing follow *plan → approve*. An agent may create the plan; only a person, in the web UI, approves it.
-   - Conference configuration and phase changes are human-only, and for the conference's chairs. The `chair` and `admin` roles and site admins are one group (`isConferenceChair`): a chair may do whatever an admin may, and `admin` means nothing more than `chair`. The settings screen offers the stage-one values, the review pools' among them; formats, fields, languages, review pools and criteria are added or removed by importing a configuration. The phase is moved from "Manage submissions" (spec 02, §1.3 and §1.9). A change never makes submitted work invalid, and never shows a reviewer the authors of a proposal they were assigned as anonymized.
+   - Conference configuration and phase changes are human-only, and for the conference's chairs. The `chair` and `admin` roles and site admins are one group (`isConferenceChair`): a chair may do whatever an admin may, and `admin` means nothing more than `chair`. The settings screen offers the stage-one values, the review pools' and the wording of the emails among them; formats, fields, languages, review pools and criteria are added or removed by importing a configuration. The phase is moved from "Manage submissions" (spec 02, §1.3 and §1.9). A change never makes submitted work invalid, and never shows a reviewer the authors of a proposal they were assigned as anonymized.
 
 6. **Everything is audited.** Every mutation calls `audit()`. Agent requests are audited automatically by middleware. The audit table is append-only, enforced by a database trigger.
 
 7. **Three languages, always.**
    - Every user-visible string lives in `apps/web/src/i18n/{en,es,pt}.ts`; a missing key fails the typecheck.
-   - Server emails live in `mail.ts`, in all three languages.
+   - Server emails are in all three languages. The sign-in email lives in `mail.ts`. The emails to the people on a proposal are defined once, in `packages/schema/src/messages.ts`: their standard texts, their placeholders, and which a text must contain. Chairs may reword them on the settings screen, in each of the three languages whichever of them the conference has, because mail goes out in all three (spec 02, §1.9); a reader gets the conference's text in their own language or else the standard text in their own language, never another language's.
+   - Values that go into an email are cleaned in `apps/server/src/templates.ts` (`sanitizeName`, `oneLine`), whatever text they go into. A new placeholder gets its value there, cleaned, and never reaches people who have agreed to nothing if an owner wrote it. One that stands for a name a person typed is listed in its message's `names`: a text must leave it a word of its own, so that no wording can build a link around it. What counts as a link or an address has one definition, `packages/schema/src/links.ts`, used by `sanitizeName` and by that rule.
    - Conference configuration text must include the conference's default language.
    - The Spanish and Portuguese text was machine-drafted and is awaiting native review.
 
@@ -119,5 +120,6 @@ Put self-contained static files in `docs/design/visitor-preview/` (the exact fil
 - `npm run e2e` uses the browsers installed for Playwright 1.63; `playwright-core` is pinned to match.
 - MCP tests drive `/api/mcp` with the real SDK `Client`, whose `fetch` is pointed at `app.request`. Every tool result goes through `findLeaks()`.
 - When you edit files with scripts, assert that each replacement matched. Biome reformats code, and a silent no-op edit cost an hour once.
+- The standard wording of the emails to participants is pinned. `MESSAGES_BEFORE` (`@elochair/schema/testing`) holds what each email said, for every message and language, and a schema test and a server test compare with it. Change a standard text and its captured cases in the same commit, and only on purpose.
 - Write invisible characters (zero-width, bidi, BOM, tag characters) as escapes such as `\u200B` or `\u{E007F}`, never literally. Some editing tools decode escapes into the real characters, so check changed files for them before committing.
 - Invisible characters in short text have one definition, `packages/schema/src/invisible.ts`. It is used by `OneLine`, by mail cleanup and by the browser.

@@ -5,6 +5,8 @@ import type {
   ConferenceRole,
   ContributionRole,
   ContributionStatus,
+  MailMessageKey,
+  MessagePlaceholder,
   ParticipationMode,
   SelfIdKind,
   SubmissionIssue,
@@ -31,6 +33,15 @@ export const reviewKey = (b: BlindMode): MessageKey => `review_${b}`;
 export const blindChoiceKey = (b: BlindMode): MessageKey => `settingsBlind_${b}`;
 /** The sentence that says a format has a blind mode of its own, whatever its pool's is. */
 export const ownModeKey = (b: BlindMode): MessageKey => `settingsPoolOwnMode_${b}`;
+/** The name of an email the app sends, as chairs read it on the settings screen. */
+export const emailNameKey = (k: MailMessageKey): MessageKey => `settingsEmail_${k}`;
+/** The sentence that says when that email is sent, and to whom. */
+export const emailWhenKey = (k: MailMessageKey): MessageKey => `settingsEmailWhen_${k}`;
+/** What a placeholder of an email stands for. An invitation's link is not a proposal's. */
+export const placeholderKey = (k: MailMessageKey, name: MessagePlaceholder): MessageKey =>
+  k === "invitation" && name === "link"
+    ? "settingsEmailPlaceholder_invitationLink"
+    : `settingsEmailPlaceholder_${name}`;
 export const selfIdKey = (k: SelfIdKind): MessageKey => `selfId_${k}`;
 export const conferenceRoleKey = (r: ConferenceRole): MessageKey => `role_${r}`;
 export const deadlineKey = (d: keyof ConferenceConfig["deadlines"]): MessageKey => `deadline_${d}`;

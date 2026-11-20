@@ -1,6 +1,14 @@
 import type { Setting } from "@elochair/schema/pure";
 import { describe, expect, it } from "vitest";
-import { editsAfterSave, parts, rawOf, restoredEdits, storedRaw } from "./settingsEdits";
+import {
+  editsAfterSave,
+  emailText,
+  parts,
+  rawOf,
+  restoredEdits,
+  storedRaw,
+  typedText,
+} from "./settingsEdits";
 
 /** Settings as the screen lists them: only what restoring looks at is filled in. */
 const setting = (path: string, kind: Setting["kind"]) =>
@@ -190,5 +198,94 @@ describe("editsAfterSave", () => {
     expect(
       editsAfterSave(sent, { ...sent, [TEAM]: "6", "title.pt": "ELO" }, before, after),
     ).toEqual({});
+  });
+});
+
+/*
+ * An email's text: the control shows the standard text while the conference has none of its
+ * own, and the standard text is never a value to store.
+ */
+describe("the texts of an email", () => {
+  const SUBJECT = "messages.draft_deleted.subject.en";
+  const BODY = "messages.draft_deleted.body.en";
+  const STANDARD: Record<string, string> = {
+    [SUBJECT]: "{conference}: an invitation was cancelled",
+    [BODY]: "Standard.",
+  };
+  /** The two settings, with the conference's own texts where it has written any. */
+  const emails = (own: Record<string, string> = {}): Setting[] =>
+    [SUBJECT, BODY].map((path) => ({
+      path,
+      id: path === SUBJECT ? "message.subject" : "message.body",
+      kind: path === SUBJECT ? "text" : "longtext",
+      optional: true,
+      lang: "en",
+      value: own[path],
+      standard: STANDARD[path],
+    }));
+  const [subject, body] = emails() as [Setting, Setting];
+
+  it("shows the standard text where the conference has written none, and its own where it has", () => {
+    expect(rawOf(subject)).toBe(STANDARD[SUBJECT]);
+    expect(storedRaw(emails(), BODY)).toBe("Standard.");
+    expect(storedRaw(emails({ [BODY]: "Our own words." }), BODY)).toBe("Our own words.");
+    // Any other text that is absent shows nothing.
+    expect(rawOf({ ...subject, standard: undefined })).toBe("");
+  });
+
+  it("stores nothing for the standard text, and the text itself for anything else", () => {
+    expect(typedText(body, "Standard.")).toBeUndefined();
+    // Spaces around it are not a change of wording.
+    expect(typedText(body, "  Standard.\n")).toBeUndefined();
+    expect(typedText(body, " Our own words.\n\nGoodbye. ")).toBe("Our own words.\n\nGoodbye.");
+    expect(typedText(body, "standard.")).toBe("standard.");
+  });
+
+  it("keeps an emptied text empty, so that the review refuses it instead of sending the standard", () => {
+    expect(typedText(body, "")).toBe("");
+    expect(typedText(subject, "   ")).toBe("");
+    // An ordinary optional text that is emptied is simply absent.
+    expect(typedText({ ...body, standard: undefined }, "  ")).toBeUndefined();
+    expect(typedText({ ...body, standard: undefined }, " Help. ")).toBe("Help.");
+  });
+
+  it("takes out of an email's text what cannot be seen, before it is reviewed or saved", () => {
+    // A paste brings a zero-width space, a byte-order mark and a direction mark along.
+    expect(emailText("\uFEFFOur\u200B own\u200E words.\u200B ")).toBe("Our own words.");
+    expect(typedText(body, "\uFEFFOur\u200B own\u200E words.\u200B ")).toBe("Our own words.");
+    // A bidi override that would make the rest read backwards is gone, and the words stay.
+    expect(typedText(subject, "Hello\u202Eevil")).toBe("Helloevil");
+    // The standard text with such characters in it is still the standard text: nothing to store.
+    expect(typedText(body, "\u200BStandard.\uFEFF")).toBeUndefined();
+    // Nothing but such characters is an emptied text, which the review refuses.
+    expect(typedText(body, "\u200B\u202E ")).toBe("");
+    // What writing needs stays: a joiner inside a Persian word, and the one in an emoji.
+    const persian = "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645";
+    const artist = "\u{1F469}\u{1F3FD}\u200D\u{1F3A8}";
+    expect(typedText(body, ` ${persian} ${artist} `)).toBe(`${persian} ${artist}`);
+    // Only an email's text is cleaned this way; other texts are as they were.
+    expect(typedText({ ...body, standard: undefined }, "Help\u200B. ")).toBe("Help\u200B.");
+  });
+
+  it("restores what was typed for an email, and drops what is not one of its texts", () => {
+    const typed = { [BODY]: "Typed, not saved.", "messages.draft_deleted.body.fr": "Écrit." };
+    expect(restoredEdits(typed, emails())).toEqual({ [BODY]: "Typed, not saved." });
+    expect(restoredEdits({ [BODY]: true }, emails())).toEqual({});
+  });
+
+  it("after a save, has no edit left where the control shows what was saved", () => {
+    const own = "Our own words.";
+    // A first text of the conference's own is saved: the control now shows it, as stored.
+    expect(
+      editsAfterSave({ [BODY]: own }, { [BODY]: own }, emails(), emails({ [BODY]: own })),
+    ).toEqual({});
+    // "Use the standard text" is saved: the stored text is gone and the control shows the
+    // standard one, with nothing left to save.
+    const back = { [BODY]: "Standard." };
+    expect(editsAfterSave(back, back, emails({ [BODY]: own }), emails())).toEqual({});
+    // Typed again while that save was on its way: still an unsaved change, to the standard text.
+    expect(
+      editsAfterSave(back, { [BODY]: "Third thoughts." }, emails({ [BODY]: own }), emails()),
+    ).toEqual({ [BODY]: "Third thoughts." });
   });
 });

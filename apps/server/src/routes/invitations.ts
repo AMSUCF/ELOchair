@@ -143,7 +143,7 @@ export async function answerInvitation(
       await enqueueMail(
         tx,
         "invitation_answered",
-        answeredMessage(lang, owner.email, {
+        answeredMessage(conference.config, lang, owner.email, {
           conference: ctx.conference,
           // The name as the owner typed it, else the address they invited: nothing the owner
           // has not seen, so answeredMessage() shows it as typed (on one line).

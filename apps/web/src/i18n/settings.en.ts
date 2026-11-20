@@ -4,7 +4,7 @@ export const settingsEn = {
   settingsTitle: "Conference settings",
   settingsNoAccess: "Only the chairs of this conference can change its settings.",
   settingsIntro:
-    "Change the conference's details, dates, limits and texts here, and how proposals are reviewed. You review every change before it is saved, and each save is recorded.",
+    "Change the conference's details, dates, limits and texts here, how proposals are reviewed, and the wording of the emails the app sends. You review every change before it is saved, and each save is recorded.",
   settingsScopeNote:
     "Formats, fields, languages, review pools and criteria are added or removed by importing a configuration on the server, not here.",
   settingsBackToManage: "Back to the submissions",
@@ -13,6 +13,7 @@ export const settingsEn = {
   settingsSectionRules: "Rules",
   settingsSectionFormats: "Formats",
   settingsSectionReview: "Review",
+  settingsSectionEmails: "Emails",
   settingsSectionOther: "Formats not submitted here",
   settingsSectionTracks: "Tracks",
   settingsSectionTopics: "Topics",
@@ -67,6 +68,62 @@ export const settingsEn = {
     "An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors.",
   settingsGuidelinesHint:
     "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
+  settingsEmailsIntro:
+    "The app sends these emails to the people on a proposal. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
+  settingsEmailsNote:
+    "All three languages are here, whichever of them the conference has, because each person gets the email in their own language: someone can be invited in Portuguese to a conference held in English and Spanish. A language you have not changed keeps the standard text. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
+  settingsEmail_invitation: "Invitation to a proposal",
+  settingsEmail_submission_received: "Receipt for a submitted proposal",
+  settingsEmail_submission_withdrawn: "Notice that a proposal was withdrawn",
+  settingsEmail_invitation_withdrawn: "Notice to people invited to a withdrawn proposal",
+  settingsEmail_invitation_answered: "Answer to an invitation, for the owner",
+  settingsEmail_draft_deleted: "Notice to people invited to a deleted draft",
+  settingsEmailWhen_invitation:
+    "Sent to a person when the owner of a proposal adds them to it, and again if the owner sends the invitation again. That person has not agreed to anything yet.",
+  settingsEmailWhen_submission_received:
+    "Sent to the owner and to every confirmed contributor when a proposal is submitted.",
+  settingsEmailWhen_submission_withdrawn:
+    "Sent to the owner, to every confirmed contributor and to the conference's contact email when a submitted proposal is withdrawn.",
+  settingsEmailWhen_invitation_withdrawn:
+    "Sent to people who were invited to a proposal and have not answered, when its owner withdraws it. It cannot name the proposal: they have not agreed to anything.",
+  settingsEmailWhen_invitation_answered:
+    "Sent to the owner of a proposal when someone they invited confirms or declines, or when a contributor leaves.",
+  settingsEmailWhen_draft_deleted:
+    "Sent to people who were invited to a draft and have not answered, when its owner deletes it. It cannot name the proposal: they have not agreed to anything.",
+  settingsEmailPlaceholders:
+    "You can put these words, with their braces, in the subject and in the text. Each is replaced when the email is sent:",
+  settingsEmailPlaceholder_conference: "the conference's title",
+  settingsEmailPlaceholder_format: "the proposal's format",
+  settingsEmailPlaceholder_title: "the proposal's title",
+  settingsEmailPlaceholder_deadline:
+    "the date and time the call closes, in the conference's time zone",
+  settingsEmailPlaceholder_link: "the link to the proposal",
+  settingsEmailPlaceholder_invitationLink:
+    "the link where the person sees the proposal and confirms or declines",
+  settingsEmailPlaceholder_owner: "the name of the proposal's owner",
+  settingsEmailPlaceholder_role: "the person's role on the proposal",
+  settingsEmailPlaceholder_person:
+    "the person who answered: their name, or their address, as the owner wrote it",
+  settingsEmailPlaceholder_answer: "what that person did",
+  settingsEmailWords: "{language}: {words}",
+  settingsEmailRequired: "The text must contain it.",
+  settingsEmailBodyOnly: "It cannot go in the subject.",
+  settingsEmailRequiredBodyOnly: "The text must contain it, and it cannot go in the subject.",
+  settingsEmailNameRule:
+    "It has to be a word of its own: only brackets, quotation marks and the punctuation that ends a phrase may touch it.",
+  settingsLabel_message_subject: "Subject",
+  settingsLabel_message_body: "Text",
+  settingsEmailIsStandard: "This is the standard text.",
+  settingsEmailChanged: "This is not the standard text.",
+  settingsEmailUseStandard: "Use the standard text",
+  settingsEmailUseStandardFor: "Use the standard text: {email}, {language}",
+  settingsEmailUseStandardConfirm:
+    "Replace what you typed with the standard text? What you typed in these two boxes and have not saved will be lost.",
+  settingsEmailPreview: "The email as it would be sent, with made-up names and titles:",
+  settingsEmailSample_owner: "Ana Example",
+  settingsEmailSample_person: "Bruno Sample",
+  settingsEmailSample_title: "A made-up title",
+  settingsStandardText: "the standard text",
   settingsLabel_other_name: "Name",
   settingsLabel_other_description: "Description",
   settingsLabel_track_name: "Name",
@@ -134,5 +191,18 @@ export const settingsEn = {
   issue_settings_dates_order: "The last day must not be before the first day.",
   issue_settings_final_before_conference:
     "Final materials must be due before the conference starts.",
+  issue_settings_message_empty: "Write the text, or choose “Use the standard text”.",
+  issue_settings_message_not_one_line: "A subject is one line. Remove the line breaks.",
+  issue_settings_message_too_long: "This is too long. Use {max} characters or fewer.",
+  issue_settings_message_unknown_placeholder:
+    "This email has nothing to put in place of {names}. Use only the words in braces listed above, or remove the braces.",
+  issue_settings_message_not_in_subject: "The subject cannot contain {names}. Only the text can.",
+  issue_settings_message_missing_placeholder: "The text must contain {names}.",
+  issue_settings_message_link_touched:
+    "Put a space or a line break before and after {names}. Whatever touches the link would become part of its address.",
+  issue_settings_message_name_touched:
+    "{names} stands for a name a person typed, so it has to be a word of its own. Put a space before and after it. Only brackets, quotation marks and the punctuation that ends a phrase may touch it: anything else could turn the name into part of a link or an address.",
+  issue_settings_message_invisible:
+    "This text has invisible characters, which can hide or reorder words. Type it again, or paste it as plain text.",
   issue_settings_invalid: "Check this value.",
 };

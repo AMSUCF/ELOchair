@@ -1,4 +1,4 @@
-import { hasStrayInvisible } from "@elochair/schema";
+import { hasStrayInvisible, linkSpans } from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -29,6 +29,8 @@ afterAll(() => db0.close());
 
 const at = new Date("2027-02-01T12:00:00Z");
 const now = () => at;
+/** A conference that has changed no email's wording: these tests are about the standard texts. */
+const STANDARD = {};
 
 describe("outbox delivery", () => {
   it("never sends a message twice when passes overlap", async () => {
@@ -128,7 +130,7 @@ describe("review fixes, round 2: delivery passes", () => {
 
 describe("review fixes, round 3: secrets and owner-written text in mail", () => {
   const invitation = (to: string, token: string) =>
-    invitationMessage("en", to, {
+    invitationMessage(STANDARD, "en", to, {
       ownerName: "Olga Owner",
       conference: "ELO 2027",
       format: "Talk",
@@ -261,14 +263,17 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
   it("receipts and withdrawal notices show the title as written (#2)", () => {
     for (const title of titles) {
       for (const lang of ["en", "es", "pt"] as const) {
-        const received = receivedMessage(lang, "a@example.org", {
+        const received = receivedMessage(STANDARD, lang, "a@example.org", {
           ...ctx,
           title,
           deadline: "3 March 2027",
         });
         expect(received.text).toContain(title);
         expect(received.text).toContain(ctx.link);
-        const withdrawn = withdrawnMessage(lang, "chairs@example.org", { ...ctx, title });
+        const withdrawn = withdrawnMessage(STANDARD, lang, "chairs@example.org", {
+          ...ctx,
+          title,
+        });
         expect(withdrawn.text).toContain(title);
       }
     }
@@ -276,7 +281,10 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
 
   it("withdrawal notices carry the proposal's link in every language (#2)", () => {
     for (const lang of ["en", "es", "pt"] as const) {
-      const text = withdrawnMessage(lang, "chairs@example.org", { ...ctx, title: "T" }).text;
+      const text = withdrawnMessage(STANDARD, lang, "chairs@example.org", {
+        ...ctx,
+        title: "T",
+      }).text;
       expect(text.split("\n").at(-1)).toBe(ctx.link);
     }
   });
@@ -310,7 +318,7 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
 
   it("the owner learns who answered from what they typed, the address included (#1)", () => {
     for (const lang of ["en", "es", "pt"] as const) {
-      const msg = answeredMessage(lang, "owner@example.org", {
+      const msg = answeredMessage(STANDARD, lang, "owner@example.org", {
         conference: "ELO 2027",
         who: "bruno@example.net",
         answer: "declined",
@@ -319,7 +327,7 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
       expect(msg.subject).toContain("bruno@example.net");
       expect(msg.text).toContain("bruno@example.net");
     }
-    const named = answeredMessage("en", "owner@example.org", {
+    const named = answeredMessage(STANDARD, "en", "owner@example.org", {
       conference: "ELO 2027",
       who: "Nina\nNuñez",
       answer: "confirmed",
@@ -330,7 +338,7 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
 
   it("invitations still strip links and addresses from the owner's name (#2)", () => {
     const text = (ownerName: string) =>
-      invitationMessage("en", "x@example.org", {
+      invitationMessage(STANDARD, "en", "x@example.org", {
         ownerName,
         conference: "ELO 2027",
         format: "Talk",
@@ -362,8 +370,8 @@ describe("review fixes, round 6: removals never join, cuts never strand a joiner
 
   it("a joiner after an ideographic full stop does not hide an internationalized domain", () => {
     expect(
-      sanitizeName("Ana P\u00E9rez verify at elo-signin\u3002\u200D\u0915\u0949\u092E now", "?"),
-    ).toBe("Ana P\u00E9rez verify at now");
+      sanitizeName("Ana Pérez verify at elo-signin\u3002\u200D\u0915\u0949\u092E now", "?"),
+    ).toBe("Ana Pérez verify at now");
     expect(sanitizeName("Ana paypal\u3002\u200D\u0DBD\u0D82\u0D9A\u0DCF", "?")).toBe("Ana");
     expect(sanitizeName("Ana \u0628\u0646\u0643\u200D\u3002\u200D\u0645\u0635\u0631", "?")).toBe(
       "Ana",
@@ -393,6 +401,62 @@ describe("review fixes, round 6: removals never join, cuts never strand a joiner
         expect(sanitizeName(parts.join(""), "?")).not.toMatch(HOST);
       }),
       { numRuns: 30_000 },
+    );
+  });
+
+  it("sanitizeName goes on until nothing is left to take out", () => {
+    // Taking the numbers out gives "tel" the word break it lacked: what is left is a link too.
+    expect(sanitizeName("1.2.3.4tel:5550100", "?")).toBe("?");
+    expect(sanitizeName("Ana 1.2.3.4data:text/html,x Pérez", "?")).toBe("Ana Pérez");
+    // The cut at 100 characters ends a run of digits early: "1.2.3.4567" is no address, and
+    // the "1.2.3.4" the cut would leave is one.
+    const cut = sanitizeName(`${"A".repeat(92)} 1.2.3.4567`, "?");
+    expect(cut).toBe("A".repeat(92));
+    expect(linkSpans(cut)).toEqual([]);
+    // Names that had nothing to take out are as they were.
+    for (const name of [
+      "Ana Mar\u00EDa Pérez-G\u00F3mez",
+      "J. R. R. Tolkien",
+      "Tel: Aviv",
+      "Data:",
+    ]) {
+      expect(sanitizeName(name, "?")).toBe(name);
+    }
+  });
+
+  it("nothing the detectors take for a link or an address survives sanitizeName", () => {
+    const atoms = [
+      ..."aZ0159 .-/@:#*'()",
+      "com",
+      "org",
+      "https://",
+      "www.",
+      "tel:",
+      "Data:",
+      "mailto:",
+      "1.2.3.4",
+      "1.2.3.4567",
+      "\u3002",
+      "\uFF20",
+      "\u200B",
+      "\u200C",
+      "\u200D",
+      "\uFE0F",
+      "\u0646",
+      "\u{1F469}",
+      "\u202F",
+      "\u0915\u0949\u092E",
+      "Ana",
+    ];
+    fc.assert(
+      // Long enough for the cut at 100 characters to fall anywhere.
+      fc.property(fc.array(fc.constantFrom(...atoms), { maxLength: 90 }), (parts) => {
+        const name = sanitizeName(parts.join(""), "?");
+        expect(linkSpans(name)).toEqual([]);
+        expect(sanitizeName(name, "?")).toBe(name);
+        expect(Array.from(name).length).toBeLessThanOrEqual(100);
+      }),
+      { numRuns: 20_000 },
     );
   });
 
