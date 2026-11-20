@@ -69,9 +69,9 @@ export const settingsEn = {
   settingsGuidelinesHint:
     "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
   settingsEmailsIntro:
-    "The app sends these emails to the people on a proposal. You can change their wording in each of the conference's languages. Each box shows the text that is sent: the standard text, until you change it.",
+    "The app sends these emails to the people on a proposal. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
   settingsEmailsNote:
-    "Each person gets the email in their own language. A language you have not changed keeps the standard text, and so does a language the conference does not have: the app writes email in English, Spanish and Portuguese, whichever of them the conference has. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
+    "All three languages are here, whichever of them the conference has, because each person gets the email in their own language: someone can be invited in Portuguese to a conference held in English and Spanish. A language you have not changed keeps the standard text. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
   settingsEmail_invitation: "Invitation to a proposal",
   settingsEmail_submission_received: "Receipt for a submitted proposal",
   settingsEmail_submission_withdrawn: "Notice that a proposal was withdrawn",
@@ -198,6 +198,5 @@ export const settingsEn = {
   issue_settings_message_missing_placeholder: "The text must contain {names}.",
   issue_settings_message_link_touched:
     "Put a space or a line break before and after {names}. Whatever touches the link would become part of its address.",
-  issue_settings_message_language: "The conference does not have this language.",
   issue_settings_invalid: "Check this value.",
 };

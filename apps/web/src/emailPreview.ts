@@ -20,7 +20,8 @@ export type PreviewSource = Pick<ConferenceConfig, "title" | "defaultLanguage" |
  * and titles are invented and say so, in the language of the email (not of the interface: a
  * chair reading in English still previews the Spanish email with Spanish samples). What the
  * conference itself supplies is real: its title, its first format and the close of its call,
- * written as the server writes them. The links have the shape of the real ones and lead nowhere.
+ * written as the server writes them, which for a language the conference has not written them
+ * in means in its main language. The links have the shape of the real ones and lead nowhere.
  *
  * `config` is the stored configuration, which is always valid, never the form as it is typed.
  */

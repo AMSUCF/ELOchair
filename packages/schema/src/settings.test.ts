@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as conferences from "./conferences";
 import { ConferenceConfig, type ConferenceConfigInput } from "./config";
-import { MESSAGE_KEYS, MESSAGES } from "./messages";
+import { MAIL_LANGUAGES, MESSAGE_KEYS, MESSAGES } from "./messages";
 import {
   configChanges,
   keyedPath,
@@ -227,11 +227,12 @@ describe("what the settings screen offers", () => {
       "tracks",
       "title",
       "title.en.extra",
-      // Of an email, its texts only, and only in a language the conference has.
+      // Of an email, its texts only, and only in a language the app writes mail in.
       "messages",
       "messages.invitation",
       "messages.invitation.subject",
-      "messages.invitation.subject.pt",
+      "messages.invitation.subject.fr",
+      "messages.invitation.subject.pt-BR",
       "messages.invitation.footer.en",
       "messages.reminder.subject.en",
       "nonsense",
@@ -338,9 +339,14 @@ describe("the settings of a configuration", () => {
       for (const s of found) {
         expect(settingAt(c, s.path), s.path).toEqual(s.value);
       }
-      // Every text is offered in each language of the conference, and in no other.
-      const offered = new Set(found.flatMap((s) => (s.lang ? [s.lang] : [])));
-      expect([...offered].sort()).toEqual([...c.languages].sort());
+      // Every text is offered in each language of the conference, and in no other. The
+      // wording of an email is the exception: it is offered in the three languages the app
+      // writes mail in, whichever of them the conference has.
+      const langs = (which: (s: Setting) => boolean) =>
+        [...new Set(found.filter(which).flatMap((s) => (s.lang ? [s.lang] : [])))].sort();
+      const email = (s: Setting) => s.path.startsWith("messages.");
+      expect(langs((s) => !email(s))).toEqual([...c.languages].sort());
+      expect(langs(email)).toEqual(["en", "es", "pt"]);
     }
   });
 
@@ -524,11 +530,13 @@ describe("the wording of the emails", () => {
   it("offers the subject and the body of every email, though the conference has written none", () => {
     expect(config).not.toHaveProperty("messages");
     const offered = emails(config);
-    // Six emails, a subject and a body, in the conference's two languages.
+    // Six emails, a subject and a body, in the three languages the app writes mail in: the
+    // conference's two, and Portuguese, which someone may be invited in all the same.
+    expect(config.languages).toEqual(["en", "es"]);
     expect(paths(offered)).toEqual(
       ["subject", "body"].flatMap((part) =>
         MESSAGE_KEYS.flatMap((key) =>
-          ["en", "es"].map((lang) => `messages.${key}.${part}.${lang}`),
+          ["en", "es", "pt"].map((lang) => `messages.${key}.${part}.${lang}`),
         ),
       ),
     );
@@ -552,9 +560,10 @@ describe("the wording of the emails", () => {
     for (const s of emails(config)) {
       const [, key, part, lang] = s.path.split(".");
       const message = MESSAGE_KEYS.find((k) => k === key);
-      if (!message || (part !== "subject" && part !== "body") || (lang !== "en" && lang !== "es"))
+      const mail = MAIL_LANGUAGES.find((l) => l === lang);
+      if (!message || (part !== "subject" && part !== "body") || !mail)
         throw new Error(`not an email's text: ${s.path}`);
-      expect(s.standard, s.path).toBe(MESSAGES[message].standard[lang][part]);
+      expect(s.standard, s.path).toBe(MESSAGES[message].standard[mail][part]);
     }
     // No other setting has one.
     for (const s of stageOneSettings(fuller)) {
@@ -573,15 +582,27 @@ describe("the wording of the emails", () => {
     expect(paths(emails(written))).toEqual(paths(emails(config)));
   });
 
-  it("offers them only in the languages the app writes mail in that the conference has", () => {
-    const langs = (languages: string[]) => [
-      ...new Set(emails(ConferenceConfig.parse({ ...input, languages })).map((s) => s.lang)),
+  it("offers them in all three mail languages whatever the conference's are, its main one first", () => {
+    const langs = (languages: string[], defaultLanguage = "en") => [
+      ...new Set(emails({ ...config, languages, defaultLanguage }).map((s) => s.lang)),
     ];
-    expect(langs(["en"])).toEqual(["en"]);
+    expect(langs(["en"])).toEqual(["en", "es", "pt"]);
     expect(langs(["en", "es", "pt"])).toEqual(["en", "es", "pt"]);
+    expect(langs(["es", "en"], "es")).toEqual(["es", "en", "pt"]);
+    expect(langs(["pt"], "pt")).toEqual(["pt", "en", "es"]);
     // French and a regional Portuguese are languages a conference may have, and not ones the
-    // app writes mail in: their readers get the standard text of the language they are sent.
-    expect(langs(["en", "fr", "pt-BR"])).toEqual(["en"]);
+    // app writes mail in: they add nothing here, and their readers are sent en or pt mail.
+    expect(langs(["en", "fr", "pt-BR"])).toEqual(["en", "es", "pt"]);
+    expect(langs(["pt-BR", "fr"], "pt-BR")).toEqual(["pt", "en", "es"]);
+    // Every other text of that conference is still offered in its own languages only.
+    const others = stageOneSettings({ ...config, languages: ["en", "fr", "pt-BR"] }).filter(
+      (s) => !s.path.startsWith("messages."),
+    );
+    expect([...new Set(others.flatMap((s) => (s.lang ? [s.lang] : [])))]).toEqual([
+      "en",
+      "fr",
+      "pt-BR",
+    ]);
   });
 
   it("writes a text where there was no `messages`, and removing the last one leaves none", () => {

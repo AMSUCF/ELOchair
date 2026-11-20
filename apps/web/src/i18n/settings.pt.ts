@@ -72,9 +72,9 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
   settingsEmailsIntro:
-    "A aplicação envia estes emails às pessoas de uma proposta. Pode alterar a sua redação em cada idioma do congresso. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
+    "A aplicação envia estes emails às pessoas de uma proposta. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
   settingsEmailsNote:
-    "Cada pessoa recebe o email no seu idioma. Um idioma que não tenha alterado mantém o texto padrão, e também um idioma que o congresso não tenha: a aplicação escreve emails em inglês, espanhol e português, sejam quais forem os do congresso. Estes textos não são privados: tal como o resto desta configuração, podem ser lidos por qualquer pessoa que possa ver o congresso. O email para entrar é igual para toda a gente e não pode ser alterado aqui.",
+    "Estão cá os três idiomas, sejam quais forem os do congresso, porque cada pessoa recebe o email no seu idioma: alguém pode ser convidado em português para um congresso que decorre em inglês e espanhol. Um idioma que não tenha alterado mantém o texto padrão. Estes textos não são privados: tal como o resto desta configuração, podem ser lidos por qualquer pessoa que possa ver o congresso. O email para entrar é igual para toda a gente e não pode ser alterado aqui.",
   settingsEmail_invitation: "Convite para uma proposta",
   settingsEmail_submission_received: "Recibo de uma proposta submetida",
   settingsEmail_submission_withdrawn: "Aviso de que uma proposta foi retirada",
@@ -201,6 +201,5 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_message_missing_placeholder: "O texto tem de conter {names}.",
   issue_settings_message_link_touched:
     "Ponha um espaço ou uma quebra de linha antes e depois de {names}. O que tocar na ligação passaria a fazer parte do seu endereço.",
-  issue_settings_message_language: "O congresso não tem este idioma.",
   issue_settings_invalid: "Verifique este valor.",
 };

@@ -15,6 +15,7 @@ import {
   MESSAGE_KEYS,
   MESSAGE_PARTS,
   MESSAGES,
+  mailLanguagesFor,
   messageProblems,
   messageText,
   placeholdersIn,
@@ -171,6 +172,17 @@ describe("the messages", () => {
     }
     expect(MESSAGES.invitation_withdrawn.placeholders).not.toContain("owner");
     expect(MESSAGES.draft_deleted.placeholders).not.toContain("owner");
+  });
+
+  it("are offered in all three languages at every conference, its main language first", () => {
+    expect(mailLanguagesFor("en")).toEqual(["en", "es", "pt"]);
+    expect(mailLanguagesFor("es")).toEqual(["es", "en", "pt"]);
+    expect(mailLanguagesFor("pt")).toEqual(["pt", "en", "es"]);
+    // A regional main language reads as its language; one the app does not write in changes
+    // nothing.
+    expect(mailLanguagesFor("pt-BR")).toEqual(["pt", "en", "es"]);
+    expect(mailLanguagesFor("fr")).toEqual(["en", "es", "pt"]);
+    expect(mailLanguagesFor("")).toEqual(["en", "es", "pt"]);
   });
 
   it("are written in the three languages the app writes mail in", () => {
@@ -599,28 +611,40 @@ describe("a conference's own wording in its configuration", () => {
     ]);
   });
 
-  it("takes a text only in a language the conference has", () => {
-    // Portuguese is a language the app writes mail in, and not one of this conference's.
-    expect(refusals(withMessages({ draft_deleted: { subject: { pt: "Esqueça." } } }))).toEqual([
-      { path: "messages.draft_deleted.subject.pt", params: { code: "message_language" } },
-    ]);
-    expect(
-      refusals(
-        withMessages(
-          { draft_deleted: { subject: { pt: "Esqueça." } } },
-          { languages: ["en", "es", "pt"] },
+  it("takes a text in any language the app writes mail in, whatever the conference's are", () => {
+    // This conference has English and Spanish. Someone can still be invited in Portuguese, and
+    // is then sent Portuguese mail: its wording may be the conference's own too.
+    expect(input.languages).toEqual(["en", "es"]);
+    const three = {
+      draft_deleted: { subject: { en: "Never mind.", es: "Olvídalo.", pt: "Esqueça." } },
+      invitation: { body: { pt: "Responda aqui: {link}" } },
+    };
+    expect(refusals(withMessages(three))).toEqual([]);
+    expect(ConferenceConfig.parse(withMessages(three)).messages).toEqual(three);
+    // None of them is required, not even the conference's main language (English here).
+    expect(refusals(withMessages({ draft_deleted: { body: { pt: "Não se preocupe." } } }))).toEqual(
+      [],
+    );
+    // And it makes no difference which languages the conference has.
+    for (const languages of [["en"], ["en", "fr"], ["en", "es", "pt"]]) {
+      expect(refusals(withMessages(three, { languages })), languages.join()).toEqual([]);
+    }
+  });
+
+  it("takes a text in no other language, even one the conference has", () => {
+    // French and a regional Portuguese are languages a conference may have, and not ones the
+    // app writes mail in: nobody would ever be sent such a text.
+    for (const lang of ["fr", "pt-BR", "de", "EN"]) {
+      expect(
+        refusals(
+          withMessages(
+            { draft_deleted: { subject: { [lang]: "Oubliez." } } },
+            { languages: ["en", "fr", "pt-BR"] },
+          ),
         ),
-      ),
-    ).toEqual([]);
-    // French is not a language the app writes mail in: nobody would ever be sent it.
-    expect(
-      refusals(
-        withMessages(
-          { draft_deleted: { subject: { fr: "Oubliez." } } },
-          { languages: ["en", "fr"] },
-        ),
-      ),
-    ).toEqual([{ path: "messages.draft_deleted.subject" }]);
+        lang,
+      ).toEqual([{ path: "messages.draft_deleted.subject" }]);
+    }
   });
 
   it("names what is wrong with a text, at the text", () => {

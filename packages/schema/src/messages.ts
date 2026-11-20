@@ -10,8 +10,8 @@ import { LIMITS } from "./limits";
  * A message has a subject and a body, each with a standard text in English, Spanish and
  * Portuguese. A text names what is only known when the mail is sent with a placeholder: a name
  * in braces, "{link}" or "{conference}". A conference may hold its own wording of any subject or
- * body, language by language (`messages` in its configuration); what it has not written is the
- * standard text.
+ * body, language by language (`messages` in its configuration), in each of the three languages
+ * whichever of them are its own; what it has not written is the standard text.
  *
  * The sign-in email is not here. It is the same for every conference (apps/server/src/mail.ts).
  */
@@ -22,6 +22,21 @@ export type MailLang = (typeof MAIL_LANGUAGES)[number];
 
 export const isMailLanguage = (lang: string): lang is MailLang =>
   (MAIL_LANGUAGES as readonly string[]).includes(lang);
+
+/**
+ * The languages an email's wording is offered in at a conference: all three, whatever the
+ * conference's own languages are, because mail goes out in any of them (an owner may invite in
+ * any, and everyone else is written to in the first their profile lists). The conference's main
+ * language comes first when it is one of them ("pt-BR" counts as pt), then the others in their
+ * usual order.
+ */
+export function mailLanguagesFor(mainLanguage: string): MailLang[] {
+  const main = mainLanguage.toLowerCase().split("-")[0];
+  return [
+    ...MAIL_LANGUAGES.filter((lang) => lang === main),
+    ...MAIL_LANGUAGES.filter((lang) => lang !== main),
+  ];
+}
 
 /**
  * The messages, by key. Keys are stored in configurations and in the audit log: one is never

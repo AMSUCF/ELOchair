@@ -74,9 +74,9 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quienes revisan en este grupo ven este texto encima de cada propuesta que se les asigna, en su idioma si lo has escrito en él y, si no, en el idioma principal del congreso. Los saltos de línea se conservan.",
   settingsEmailsIntro:
-    "La aplicación envía estos correos a las personas de una propuesta. Puedes cambiar su redacción en cada idioma del congreso. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
+    "La aplicación envía estos correos a las personas de una propuesta. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
   settingsEmailsNote:
-    "Cada persona recibe el correo en su idioma. Un idioma que no hayas cambiado conserva el texto estándar, y también un idioma que el congreso no tenga: la aplicación escribe correos en inglés, español y portugués, tenga el congreso los que tenga. Estos textos no son privados: como el resto de esta configuración, puede leerlos cualquiera que pueda ver el congreso. El correo para entrar es igual para todo el mundo y no se puede cambiar aquí.",
+    "Están los tres idiomas, tenga el congreso los que tenga, porque cada persona recibe el correo en su idioma: se puede invitar a alguien en portugués a un congreso que se celebra en inglés y español. Un idioma que no hayas cambiado conserva el texto estándar. Estos textos no son privados: como el resto de esta configuración, puede leerlos cualquiera que pueda ver el congreso. El correo para entrar es igual para todo el mundo y no se puede cambiar aquí.",
   settingsEmail_invitation: "Invitación a una propuesta",
   settingsEmail_submission_received: "Acuse de recibo de una propuesta enviada",
   settingsEmail_submission_withdrawn: "Aviso de que se retiró una propuesta",
@@ -204,6 +204,5 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   issue_settings_message_missing_placeholder: "El texto debe contener {names}.",
   issue_settings_message_link_touched:
     "Pon un espacio o un salto de línea antes y después de {names}. Lo que toque el enlace pasaría a formar parte de su dirección.",
-  issue_settings_message_language: "El congreso no tiene este idioma.",
   issue_settings_invalid: "Revisa este valor.",
 };

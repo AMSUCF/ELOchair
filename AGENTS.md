@@ -65,7 +65,7 @@ These are invariants. Do not trade them away for convenience.
 
 7. **Three languages, always.**
    - Every user-visible string lives in `apps/web/src/i18n/{en,es,pt}.ts`; a missing key fails the typecheck.
-   - Server emails are in all three languages. The sign-in email lives in `mail.ts`. The emails to the people on a proposal are defined once, in `packages/schema/src/messages.ts`: their standard texts, their placeholders, and which a text must contain. Chairs may reword them per language on the settings screen (spec 02, §1.9); a reader gets the conference's text in their own language or else the standard text in their own language, never another language's.
+   - Server emails are in all three languages. The sign-in email lives in `mail.ts`. The emails to the people on a proposal are defined once, in `packages/schema/src/messages.ts`: their standard texts, their placeholders, and which a text must contain. Chairs may reword them on the settings screen, in each of the three languages whichever of them the conference has, because mail goes out in all three (spec 02, §1.9); a reader gets the conference's text in their own language or else the standard text in their own language, never another language's.
    - Values that go into an email are cleaned in `apps/server/src/templates.ts` (`sanitizeName`, `oneLine`), whatever text they go into. A new placeholder gets its value there, cleaned, and never reaches people who have agreed to nothing if an owner wrote it.
    - Conference configuration text must include the conference's default language.
    - The Spanish and Portuguese text was machine-drafted and is awaiting native review.

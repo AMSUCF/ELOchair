@@ -634,6 +634,54 @@ describe("chairs change the wording, and people are sent it", () => {
     expect((await settings()).token).toBe(untouched.token);
   });
 
+  it("rewords mail in a language the conference does not have, for someone invited in it", async () => {
+    // The call is held in English and Spanish from here on. Mail still goes out in Portuguese
+    // to whoever is invited in Portuguese, so its wording is the conference's to choose too.
+    const portuguese = {
+      invitation: {
+        subject: { pt: "Convite para {conference}" },
+        body: { pt: "Olá. {owner} conta consigo ({role}).\n\nResponda aqui:\n\n{link}" },
+      },
+    };
+    const reviewed = await preview((c) => {
+      c.languages = ["en", "es"];
+      c.messages = portuguese;
+    });
+    expect(reviewed.json).toMatchObject({ canSave: true, issues: [] });
+    const saved = await save((c) => {
+      c.languages = ["en", "es"];
+      c.messages = portuguese;
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.json.config.languages).toEqual(["en", "es"]);
+    expect((await audited()).at(-1)?.map((change) => change.path)).toEqual([
+      "languages",
+      "messages.invitation.subject.pt",
+      "messages.invitation.body.pt",
+    ]);
+
+    let s = await draft("english", "Uma proposta");
+    s = await invite("english", s, "wording-pt@example.org", "pt");
+    await invite("english", s, "wording-es-3@example.org", "es");
+    const pt = await latest("wording-pt@example.org");
+    expect(pt.subject).toBe("Convite para Chamada de teste");
+    expect(pt.text).toBe(
+      `Olá. Edna English conta consigo (coautoria).\n\nResponda aqui:\n\n${ORIGIN}/pt/invitation#token=${tokenIn(pt)}`,
+    );
+    // Spanish, which the conference has and has not reworded, is the standard text.
+    expect((await latest("wording-es-3@example.org")).subject).toBe(
+      "Convocatoria de prueba: confirma tu participación",
+    );
+
+    // Back to the call as it was: three languages, and no wording of its own.
+    const back = await save((c) => {
+      c.languages = untouched.config.languages;
+      delete c.messages;
+    });
+    expect(back.status).toBe(200);
+    expect((await settings()).token).toBe(untouched.token);
+  });
+
   it("writes every email the app sends in the conference's words, whichever route sends it", async () => {
     // One marked body per message, in English, each with all of its placeholders.
     const marked = Object.fromEntries(

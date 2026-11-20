@@ -1,10 +1,10 @@
 import type { ConferenceConfig } from "./config";
 import {
-  isMailLanguage,
   type MailMessageKey,
   MESSAGE_KEYS,
   MESSAGE_PARTS,
   MESSAGES,
+  mailLanguagesFor,
 } from "./messages";
 
 /*
@@ -41,7 +41,8 @@ type Definition = {
    * "*" walks what a configuration holds. "#" does not: the emails are a fixed list, and each
    * of their texts is offered whether or not the conference has written it. A text that is not
    * written is absent from the configuration, all the way up (no empty `messages`), and stands
-   * for the standard text.
+   * for the standard text. Below a "#", "@" is each language the app writes mail in, not each
+   * language of the conference.
    */
   pattern: string;
   kind: SettingKind;
@@ -189,9 +190,11 @@ const isKeyed = (v: unknown): v is ({ key: string } & Record<string, unknown>)[]
  *   on a field of such a kind, although the schema would take it on any field.
  * - A rule the conference does not have (no presenter cap, no bio rule) has no setting: adding
  *   one is not a change of value.
- * - The subject and the body of every email the app sends are offered, written or not, in each
- *   language of the conference that the app writes mail in. One that is not written has no
- *   value and stands for its `standard`.
+ * - The subject and the body of every email the app sends are offered, written or not, in all
+ *   three languages the app writes mail in, the conference's main language first
+ *   (mailLanguagesFor). Mail goes out in each of them whatever the conference's languages are,
+ *   so here, and only here, a text is offered in a language the conference may not have. One
+ *   that is not written has no value and stands for its `standard`.
  */
 export function stageOneSettings(config: ConferenceConfig): Setting[] {
   const out: Setting[] = [];
@@ -219,13 +222,14 @@ export function stageOneSettings(config: ConferenceConfig): Setting[] {
         return;
       }
       if (head === "@") {
+        const text = (lang: string) => (isObject(node) ? node[lang] : undefined);
         const part = MESSAGE_PARTS.find((p) => p === path.at(-1));
-        for (const lang of config.languages) {
-          const value = isObject(node) ? node[lang] : undefined;
-          if (!email) emit([...path, lang], value, lang);
+        if (!email) {
+          for (const lang of config.languages) emit([...path, lang], text(lang), lang);
+        } else if (part) {
           // An email is written in the languages the app writes mail in, and has a standard text.
-          else if (part && isMailLanguage(lang)) {
-            emit([...path, lang], value, lang, MESSAGES[email].standard[lang][part]);
+          for (const lang of mailLanguagesFor(config.defaultLanguage)) {
+            emit([...path, lang], text(lang), lang, MESSAGES[email].standard[lang][part]);
           }
         }
         return;

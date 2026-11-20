@@ -12,7 +12,7 @@ import {
  * Conference settings (spec 02, §1.9), as a chair uses them on a phone. The tests share one
  * server with the others and run beside them, so they change only what no other test reads
  * (the length of a reading or performance, the day decisions are sent, a pool's guidelines,
- * the label of one criterion, and the Spanish wording of the notice about a deleted draft) and
+ * the label of one criterion, and the Portuguese wording of the notice about a deleted draft) and
  * put it back. No blind mode is ever saved: other tests read who is shown to reviewers. Of the
  * emails, the others read the invitation, the receipt, the answer to the owner and the notice
  * to people invited to withdrawn work: those are reworded here only as far as the review step.
@@ -113,7 +113,6 @@ type Stored = {
   token: string;
   config: {
     title: Record<string, string>;
-    languages: string[];
     defaultLanguage: string;
     messages?: Record<string, { subject?: Record<string, string>; body?: Record<string, string> }>;
     reviewPools: {
@@ -713,43 +712,24 @@ test.describe("conference settings", () => {
 
   test("a chair rewords an email, sees it as it would be sent, and goes back to the standard text", async () => {
     test.slow();
-    // The standard texts and sample names are the app's own, in each language it writes mail
-    // in. Which of those languages the call has, and any wording of its own, is read first:
-    // the test takes the call as it finds it and puts it back.
+    // The email reworded and saved here is the Portuguese one. Emails are offered in English,
+    // Spanish and Portuguese whatever the call's own languages are; the other tests invite in
+    // English and Spanish only, and none reads this notice in any language.
+    // The standard text and the sample name below are the app's own. Any wording the call has
+    // of its own is read first: the test takes the call as it finds it and puts it back.
     const DELETED = "Notice to people invited to a deleted draft";
     const INVITATION = "Invitation to a proposal";
-    const APP = {
-      es: {
-        name: "Español",
-        subject: "{conference}: se canceló una invitación",
-        body: "Se eliminó un borrador de propuesta para {conference} en el que figurabas. No tienes que hacer nada.",
-        invitation: "{owner} te ha incluido con el rol de {role} en una propuesta",
-        owner: "Ana Ejemplo",
-        roles: "autoría principal · presentación · coautoría · panelista · moderación",
-      },
-      pt: {
-        name: "Português",
-        subject: "{conference}: um convite foi cancelado",
-        body: "Foi eliminado um rascunho de proposta para {conference} em que constava. Não precisa de fazer nada.",
-        invitation: "{owner} incluiu-o com o papel de {role} numa proposta",
-        owner: "Ana Exemplo",
-        roles: "autoria principal · apresentação · coautoria · painelista · moderação",
-      },
-      en: {
-        name: "English",
-        subject: "{conference}: an invitation was cancelled",
-        body: "A draft proposal for {conference} that listed you was deleted by its owner. There is nothing you need to do.",
-        invitation: "{owner} has listed you as {role} on a proposal",
-        owner: "Ana Example",
-        roles: "lead author · presenter · co-author · panelist · moderator",
-      },
+    const NAMES = { en: "English", es: "Español", pt: "Português" };
+    const lang = "pt";
+    const L = {
+      name: NAMES[lang],
+      subject: "{conference}: um convite foi cancelado",
+      body: "Foi eliminado um rascunho de proposta para {conference} em que constava. Não precisa de fazer nada.",
+      invitation: "{owner} incluiu-o com o papel de {role} numa proposta",
+      owner: "Ana Exemplo",
+      roles: "autoria principal · apresentação · coautoria · painelista · moderação",
     };
     const before = await stored(chair, CALL);
-    // Spanish where the call has it: the other tests invite in English and Spanish, and none
-    // reads this notice in any language.
-    const lang = (["es", "pt", "en"] as const).find((l) => before.config.languages.includes(l));
-    if (!lang) throw new Error("the call has no language the app writes mail in");
-    const L = APP[lang];
     const own = before.config.messages?.draft_deleted;
     const was = {
       subject: own?.subject?.[lang] ?? L.subject,
@@ -758,8 +738,17 @@ test.describe("conference settings", () => {
     /** A text as the review names it: one the app supplies is "the standard text". */
     const named = (text: string) =>
       text === L.subject || text === L.body ? "the standard text" : text;
+    // The conference's title as mail in Portuguese gives it: in Portuguese where the call has
+    // written one, otherwise in its main language.
     const title = before.config.title;
-    const conference = title[lang] ?? title[before.config.defaultLanguage] ?? "";
+    const regional = Object.keys(title).find((key) => key.startsWith(`${lang}-`));
+    const conference =
+      title[lang] ?? (regional ? title[regional] : title[before.config.defaultLanguage]) ?? "";
+    // The three languages, the call's main one first.
+    const main = before.config.defaultLanguage.toLowerCase().split("-")[0];
+    const order = (["en", "es", "pt"] as const)
+      .filter((l) => l === main)
+      .concat((["en", "es", "pt"] as const).filter((l) => l !== main));
 
     await openSettings(chair);
     await expect(
@@ -774,7 +763,7 @@ test.describe("conference settings", () => {
     ).toBeVisible();
     await expect(
       chair.getByText(
-        "Each person gets the email in their own language. A language you have not changed keeps the standard text, and so does a language the conference does not have: the app writes email in English, Spanish and Portuguese, whichever of them the conference has. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
+        "All three languages are here, whichever of them the conference has, because each person gets the email in their own language: someone can be invited in Portuguese to a conference held in English and Spanish. A language you have not changed keeps the standard text. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
       ),
     ).toBeVisible();
 
@@ -789,6 +778,8 @@ test.describe("conference settings", () => {
     await expect(names.locator("dt")).toHaveText(["{conference}"]);
     await expect(names.locator("dd")).toHaveText(["the conference's title"]);
 
+    // Every email has its three languages, each in a group of its own.
+    await expect(section.locator("fieldset > legend")).toHaveText(order.map((l) => NAMES[l]));
     // The boxes show what is sent now: the standard text, unless the call has its own.
     const group = section.getByRole("group", { name: L.name });
     const subject = group.getByLabel(`Subject (${L.name})`);
@@ -810,13 +801,13 @@ test.describe("conference settings", () => {
       "The email as it would be sent, with made-up names and titles:",
     );
     const reworded = {
-      subject: "Se canceló tu invitación a {conference}",
-      body: "Hola:\n\nel borrador para {conference} al que te invitaron ya no existe.\n\nNo tienes que hacer nada.",
+      subject: "O seu convite para {conference} foi cancelado",
+      body: "Olá:\n\no rascunho para {conference} para o qual foi convidado já não existe.\n\nNão precisa de fazer nada.",
     };
     await subject.fill(reworded.subject);
     await body.fill(reworded.body);
     await expect(preview.locator(".email-subject")).toHaveText(
-      `Se canceló tu invitación a ${conference}`,
+      `O seu convite para ${conference} foi cancelado`,
     );
     await expect(preview.locator(".email-body")).toHaveText(
       reworded.body.replaceAll("{conference}", conference),

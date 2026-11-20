@@ -241,8 +241,8 @@ describe("the texts of an email", () => {
     expect(typedText({ ...body, standard: undefined }, " Help. ")).toBe("Help.");
   });
 
-  it("restores what was typed for an email, and drops it when the email's language is gone", () => {
-    const typed = { [BODY]: "Typed, not saved.", "messages.draft_deleted.body.pt": "Escrito." };
+  it("restores what was typed for an email, and drops what is not one of its texts", () => {
+    const typed = { [BODY]: "Typed, not saved.", "messages.draft_deleted.body.fr": "Écrit." };
     expect(restoredEdits(typed, emails())).toEqual({ [BODY]: "Typed, not saved." });
     expect(restoredEdits({ [BODY]: true }, emails())).toEqual({});
   });

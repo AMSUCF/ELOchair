@@ -27,6 +27,7 @@ export {
   type MessageProblem,
   type MessageProblemCode,
   type MessageValues,
+  mailLanguagesFor,
   messageProblems,
   messageText,
   placeholdersIn,

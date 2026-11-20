@@ -57,7 +57,8 @@ import { useUnsaved } from "../useUnsaved";
 /*
  * Conference settings for chairs (spec 02, §1.9). The screen shows the stage-one values
  * (stageOneSettings): existing values, and the wording of the emails the app sends, whether the
- * conference has written its own or not; the same for every chair. Formats, fields,
+ * conference has written its own or not, in the three languages mail goes out in; the same for
+ * every chair. Formats, fields,
  * languages, review pools and criteria are added or removed by importing a configuration, and
  * the page says so. It keeps what was typed apart from the configuration, and saves nothing
  * that has not been reviewed: the server says what a save would change, what is wrong with it,
@@ -686,26 +687,24 @@ function SettingsForm({
           );
         })}
 
-        {emails.length > 0 && (
-          <>
-            <h2>{t("settingsSectionEmails")}</h2>
-            <p className="section-intro">{t("settingsEmailsIntro")}</p>
-            <p className="setting-hint">{t("settingsEmailsNote")}</p>
-            {MESSAGE_KEYS.map((key) =>
-              section(
-                `messages.${key}`,
-                t(emailNameKey(key)),
-                <Email
-                  emailKey={key}
-                  list={emails.filter((s) => s.path.startsWith(`messages.${key}.`))}
-                  config={config}
-                  edits={edits}
-                  set={set}
-                  controls={controls}
-                />,
-              ),
-            )}
-          </>
+        {/* Every conference has these: the emails are offered in the three languages the app
+            writes mail in, whichever of them are the conference's own. */}
+        <h2>{t("settingsSectionEmails")}</h2>
+        <p className="section-intro">{t("settingsEmailsIntro")}</p>
+        <p className="setting-hint">{t("settingsEmailsNote")}</p>
+        {MESSAGE_KEYS.map((key) =>
+          section(
+            `messages.${key}`,
+            t(emailNameKey(key)),
+            <Email
+              emailKey={key}
+              list={emails.filter((s) => s.path.startsWith(`messages.${key}.`))}
+              config={config}
+              edits={edits}
+              set={set}
+              controls={controls}
+            />,
+          ),
         )}
 
         {config.otherFormats.length > 0 && (
@@ -1032,7 +1031,7 @@ function Email({
   controls,
 }: {
   emailKey: MailMessageKey;
-  /** This email's settings: a subject and a body for each language it can be written in. */
+  /** This email's settings: a subject and a body in each language the app writes mail in. */
   list: Setting[];
   config: ConferenceConfig;
   edits: Edits;

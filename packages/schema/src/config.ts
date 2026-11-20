@@ -177,7 +177,6 @@ export type ConfigIssueCode =
   | "deadline_order"
   | "dates_order"
   | "final_before_conference"
-  | "message_language"
   | MessageProblemCode;
 
 /**
@@ -192,7 +191,8 @@ type IssueParams = {
 };
 
 /**
- * One text of an email in each language it is written in, among those the app writes mail in.
+ * One text of an email in each language it is written in, among those the app writes mail in:
+ * any of them, whether or not it is a language of the conference, and none is required.
  * Plain text: line breaks and tabs, and no other control character. (Postgres refuses NUL
  * inside JSON, as it refuses half a character.)
  */
@@ -472,21 +472,9 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     });
   });
 
-  // An email's own wording is written in the languages the conference has: those are the ones
-  // its chairs answer for, and the only ones the screen has a control for. Mail still goes out
-  // in the other languages the app writes in (to someone invited in Portuguese by a conference
-  // in English and Spanish), in the standard text.
-  for (const key of MESSAGE_KEYS) {
-    for (const part of MESSAGE_PARTS) {
-      for (const lang of Object.keys(c.messages?.[key]?.[part] ?? {})) {
-        if (!c.languages.includes(lang)) {
-          issue(["messages", key, part, lang], `"${lang}" is not a language of the conference`, {
-            code: "message_language",
-          });
-        }
-      }
-    }
-  }
+  // An email's own wording is not held to the conference's languages, as its other texts are
+  // on the screen: it may be written in any language the app writes mail in (MessageTexts),
+  // because mail goes out in each of them whatever the conference's languages are.
 
   const d = c.deadlines;
   const order: [keyof typeof d, keyof typeof d][] = [
