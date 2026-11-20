@@ -1,4 +1,8 @@
-import type { Contribution, Submission } from "@elochair/schema";
+import {
+  type Contribution,
+  type Submission,
+  WITHDRAW_PHASES as WITHDRAWABLE,
+} from "@elochair/schema";
 import type { Viewer } from "./viewer";
 
 /*
@@ -42,7 +46,8 @@ export const ACTION_TIMING: Record<SubmissionAction, "open_call" | "withdraw_pha
   leave: "always",
 };
 
-export const WITHDRAW_PHASES = new Set(["cfp_open", "reviewing", "deciding"]);
+/** As a set of plain strings, for a phase read from the database (the list is the schema's). */
+export const WITHDRAW_PHASES: ReadonlySet<string> = new Set(WITHDRAWABLE);
 
 const EDITABLE = new Set<Submission["status"]>(["draft", "submitted"]);
 
