@@ -1,4 +1,4 @@
-import type { Setting } from "@elochair/schema/pure";
+import { removeStrayInvisible, type Setting } from "@elochair/schema/pure";
 import type { UnsavedValues } from "./unsaved";
 
 /** What is in a control of the settings screen: text as typed, or a ticked box. */
@@ -18,14 +18,29 @@ export const rawOf = (s: Setting): Raw =>
   s.kind === "bool" ? s.value === true : s.value == null ? (s.standard ?? "") : String(s.value);
 
 /**
+ * An email's text as it leaves the control: without the invisible characters that writing does
+ * not need, then without outer spaces. A paste often brings such characters along (direction
+ * marks, zero-width spaces, a byte-order mark), nobody can see them, and the server refuses a
+ * text that has any, because they can hide or reorder words in mail (removeStrayInvisible keeps
+ * the joiners that Persian and Indic words and emoji need). It is taken from the whole text
+ * when the text is used, not at each key pressed: a joiner is stray until the letter after it
+ * has been typed. The preview shows this text, and it is what is reviewed and saved.
+ */
+export const emailText = (raw: Raw): string => removeStrayInvisible(String(raw)).trim();
+
+/**
  * The value that what is in a text control stands for. Outer spaces go, and an empty control is
  * no value. An email's text is the exception both ways: the standard text is no value (it is
  * what "nothing stored" already sends), and an emptied control stays an empty text, which the
- * review refuses beside it, so that it never quietly means the standard text again.
+ * review refuses beside it, so that it never quietly means the standard text again. It is also
+ * cleaned of what cannot be seen (emailText).
  */
 export function typedText(s: Setting, raw: Raw): string | undefined {
+  if (s.standard !== undefined) {
+    const text = emailText(raw);
+    return text === s.standard ? undefined : text;
+  }
   const text = String(raw).trim();
-  if (s.standard !== undefined) return text === s.standard ? undefined : text;
   return text === "" ? undefined : text;
 }
 

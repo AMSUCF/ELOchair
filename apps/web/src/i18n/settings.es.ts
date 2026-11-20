@@ -116,6 +116,8 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsEmailRequired: "El texto debe contenerla.",
   settingsEmailBodyOnly: "No puede ir en el asunto.",
   settingsEmailRequiredBodyOnly: "El texto debe contenerla, y no puede ir en el asunto.",
+  settingsEmailNameRule:
+    "Tiene que ser una palabra aparte: solo pueden tocarla paréntesis, comillas y la puntuación que cierra una frase.",
   settingsLabel_message_subject: "Asunto",
   settingsLabel_message_body: "Texto",
   settingsEmailIsStandard: "Este es el texto estándar.",
@@ -226,5 +228,9 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Has cambiado lo que dice este acuerdo. Las personas aceptaron el texto anterior con esta versión, así que escribe una versión nueva.",
   issue_settings_agreement_needs_text_or_link: "Un acuerdo necesita un texto o un enlace.",
   issue_settings_too_long: "Es demasiado largo. Usa {max} caracteres o menos.",
+  issue_settings_message_name_touched:
+    "{names} representa un nombre que escribió una persona, así que tiene que ser una palabra aparte. Pon un espacio antes y después. Solo pueden tocarla paréntesis, comillas y la puntuación que cierra una frase: cualquier otra cosa podría convertir el nombre en parte de un enlace o de una dirección.",
+  issue_settings_message_invisible:
+    "Este texto tiene caracteres invisibles, que pueden ocultar o reordenar palabras. Escríbelo de nuevo, o pégalo como texto sin formato.",
   issue_settings_invalid: "Revisa este valor.",
 };

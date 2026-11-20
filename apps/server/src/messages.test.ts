@@ -562,6 +562,43 @@ describe("chairs change the wording, and people are sent it", () => {
         },
         { path: "messages.draft_deleted.body.en", code: "message_empty" },
       ],
+      // Three review concerns on this pull request, as they were filed (-001, -002, -003): a
+      // link built around the owner's name, and invisible characters in a subject and a body.
+      [
+        "a link built around the owner's name",
+        (c) => {
+          c.messages = {
+            ...OWN,
+            invitation: { body: { en: "https://{owner}.example\n\n{link}" } },
+          };
+        },
+        {
+          path: "messages.invitation.body.en",
+          code: "message_name_touched",
+          params: { names: "{owner}" },
+        },
+      ],
+      [
+        "a bidi override in a subject",
+        (c) => {
+          c.messages = { ...OWN, invitation: { subject: { en: "Hello\u202Eevil" } } };
+        },
+        { path: "messages.invitation.subject.en", code: "message_invisible" },
+      ],
+      [
+        "a bidi override and zero-width characters in a body",
+        (c) => {
+          c.messages = {
+            ...OWN,
+            invitation: {
+              body: {
+                en: "Please answer:\n\n{link}\n\nThank you\u202Edetucexe\u202C.\u200B\u200Bhidden\u200B",
+              },
+            },
+          };
+        },
+        { path: "messages.invitation.body.en", code: "message_invisible" },
+      ],
     ];
     for (const [what, change, issue] of cases) {
       // The review names the text and why, and offers no save.
@@ -587,6 +624,14 @@ describe("chairs change the wording, and people are sent it", () => {
       expect((await preview(change)).json.canSave).toBe(false);
       expect((await save(change)).status).toBe(400);
     }
+    // A joiner that Persian spelling needs is no such character: that text could be saved.
+    const joined = await preview((c) => {
+      c.messages = {
+        ...OWN,
+        draft_deleted: { subject: { en: "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645" } },
+      };
+    });
+    expect(joined.json).toMatchObject({ canSave: true, issues: [] });
     const after = await settings();
     expect(after.token).toBe(stored.token);
     expect(after.config).toEqual(stored.config);

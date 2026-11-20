@@ -1,9 +1,13 @@
 import {
+  ADDRESS,
   ANSWER_WORDS,
+  BARE_HOST,
   type ConferenceConfig,
   type ContributionRole,
   fillMessage,
+  HOST_WITH_PATH,
   type InvitationAnswer,
+  IPV4,
   LIMITS,
   type MailLang,
   type MailMessageKey,
@@ -12,6 +16,7 @@ import {
   messageText,
   ROLE_WORDS,
   removeStrayInvisible,
+  SCHEME_LINK,
   UNNAMED_OWNER,
 } from "@elochair/schema";
 import type { MailMessage } from "./mail";
@@ -38,7 +43,13 @@ import type { MailMessage } from "./mail";
  * - A subject is never given the link (fillMessage), so that an invitation's link is only ever
  *   in the body, where mail.ts removes it from the stored copy. The subject of an invitation
  *   is not given the owner's name either: that stays in the body, where it has always been.
- * Chairs' text is used as it is written, as plain text.
+ * - A name stays a word of its own. sanitizeName takes links out of an owner's name; the schema
+ *   refuses a text that puts the rest of a link around the name's placeholder
+ *   ("https://{owner}.example"); and the fill sets a name apart by a space wherever it and its
+ *   neighbours would still read as a link or an address. One definition of what that is serves
+ *   all three: packages/schema/src/links.ts.
+ * Chairs' text is used as it is written, as plain text, and the schema refuses one that holds
+ * invisible characters writing does not need, as owners' names are cleaned of them.
  */
 
 export type { MailLang };
@@ -58,62 +69,58 @@ export function mailLang(preferences: readonly string[], fallback: string): Mail
   return "en";
 }
 
-/** Dots that mail clients and IDNA treat as a domain separator. */
-const DOT = "[.\\u3002\\uFF0E\\uFF61]";
-/** A host label. Joiners count as part of it: a kept joiner must not split "evil.c<ZWJ>om". */
-const LABEL = "[\\p{L}\\p{M}\\p{N}_\\u200C\\u200D-]+";
+const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
+
 /**
- * Links with a scheme: "https://...", "ftp://...", "mailto:a@b", "tel:5550100". A scheme
- * without "//" needs a target right after its colon, so words such as "Data:" or "Tel: Aviv"
- * stay.
+ * A name on one line without anything a mail client might turn into a link, and without the
+ * invisible characters that could hide or reorder text.
  */
-const SCHEME_LINK =
-  /\b(?:[a-z][a-z0-9+.-]*:\/\/\S*|(?:mailto|tel|sms|callto|javascript|data):\S+)/giu;
-/**
- * Bare host names ("evil-phish.com", "www.x.org/path"): a dotted name whose last label has two
- * or more letters, like every top-level domain. Initials ("J.R.R.") and "e.g." do not match.
- */
-const BARE_HOST = new RegExp(
-  `${LABEL}(?:${DOT}${LABEL})*${DOT}[\\u200C\\u200D]*\\p{L}[\\p{L}\\p{M}\\u200C\\u200D-]+\\S*`,
-  "gu",
-);
-/** A dotted name followed by a path, whatever it ends in ("10.0.0.1/x"). */
-const HOST_WITH_PATH = new RegExp(`${LABEL}(?:${DOT}${LABEL})+[/?#]\\S*`, "gu");
-/** Four dotted numbers, marks after a digit included ("10<U+FE0F>.0.0.1"). */
-const IPV4 = /(?<!\p{N})(?:\d\p{M}*){1,3}(?:\.(?:\d\p{M}*){1,3}){3}(?!\p{N})/gu;
+function withoutLinks(name: string): string {
+  let text = name;
+  // Until nothing more goes. Taking one thing out can uncover another: "1.2.3.4tel:5550100" has
+  // no word break before "tel", so no link, until the numbers are gone. Every round that changes
+  // the text takes something out of it, so this ends.
+  for (;;) {
+    // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule.
+    // Each removal leaves a space, so what is left on either side cannot join into a new link
+    // ("evil.c1.2.3.4om" must not become "evil.com").
+    const next = removeStrayInvisible(text)
+      .replace(/\p{Co}/gu, "")
+      .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
+      .replace(ADDRESS, " ")
+      .replace(SCHEME_LINK, " ")
+      .replace(HOST_WITH_PATH, " ")
+      .replace(BARE_HOST, " ")
+      .replace(IPV4, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (next === text) return text;
+    text = next;
+  }
+}
 
 /**
  * Owner-written text for ELO-signed mail to people who have agreed to nothing (the owner's name
  * in an invitation): one line, at most 100 characters, without links. It removes anything a
- * mail client might turn into a link (URLs, bare domains, email addresses) and invisible
+ * mail client might turn into a link (URLs, bare domains, email addresses: the detectors of
+ * packages/schema/src/links.ts, which an email's text is held to as well) and invisible
  * characters other than those writing needs (removeStrayInvisible), which could otherwise hide
  * or reorder text. Ordinary names ("Ana María Pérez-Gómez", "J. R. R. Tolkien", "O'Neil",
  * Persian and Indic names spelled with joiners) pass.
  */
-const GRAPHEMES = new Intl.Segmenter("en", { granularity: "grapheme" });
-
 export function sanitizeName(name: string | null | undefined, fallback: string): string {
-  // Invisible characters go first, so "evil<U+200B>.com" cannot slip past the domain rule. Each
-  // removal leaves a space, so what is left on either side can never join into a new link
-  // ("evil.c1.2.3.4om" must not become "evil.com").
-  const clean = removeStrayInvisible(name ?? "")
-    .replace(/\p{Co}/gu, "")
-    .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")
-    .replace(/\S*[@＠]\S*/gu, " ")
-    .replace(SCHEME_LINK, " ")
-    .replace(HOST_WITH_PATH, " ")
-    .replace(BARE_HOST, " ")
-    .replace(IPV4, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const clean = withoutLinks(name ?? "");
   // At most 100 code points, cut between whole characters so no flag or joiner sequence is
-  // split, then cleaned again in case a removal left a joiner with nothing to join.
+  // split.
   let kept = "";
   for (const { segment } of GRAPHEMES.segment(clean)) {
     if (Array.from(kept + segment).length > 100) break;
     kept += segment;
   }
-  return removeStrayInvisible(kept).trim() || fallback;
+  // Cleaned again. The cut can leave a joiner with nothing to join, and it can end a run of
+  // digits early: "1.2.3.4567" is no address, and "1.2.3.4" is one. A name the cut did not
+  // change comes out of this as it went in.
+  return withoutLinks(kept) || fallback;
 }
 
 /**
