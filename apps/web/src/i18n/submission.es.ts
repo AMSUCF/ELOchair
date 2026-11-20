@@ -244,7 +244,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   phaseNoAccess: "Solo quienes presiden este congreso pueden cambiar su fase.",
   phaseUnconfirmed: "El servidor no confirmó el cambio. Inténtalo de nuevo.",
   phaseDoes_draft:
-    "El congreso queda oculto para todo el mundo salvo para quienes lo presiden, y nadie puede iniciar, editar, enviar ni retirar una propuesta; cada persona sigue viendo sus propias propuestas.",
+    "El congreso queda oculto para todo el mundo salvo para quienes lo presiden y los agentes que hayan configurado para él, y nadie puede iniciar, editar, enviar ni retirar una propuesta; cada persona sigue viendo sus propias propuestas.",
   phaseDoes_cfp_open:
     "El congreso es público, y se pueden iniciar, editar y enviar propuestas entre las fechas de apertura y de cierre que figuran en la configuración.",
   phaseDoes_reviewing:

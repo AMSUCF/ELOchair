@@ -245,7 +245,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   phaseNoAccess: "Só quem preside a este congresso pode alterar a sua fase.",
   phaseUnconfirmed: "O servidor não confirmou a alteração. Tente novamente.",
   phaseDoes_draft:
-    "O congresso fica oculto para toda a gente, exceto para quem o preside, e ninguém pode iniciar, editar, submeter ou retirar uma proposta; cada pessoa continua a ver as suas próprias propostas.",
+    "O congresso fica oculto para toda a gente, exceto para quem o preside e para os agentes que tenha configurado para ele, e ninguém pode iniciar, editar, submeter ou retirar uma proposta; cada pessoa continua a ver as suas próprias propostas.",
   phaseDoes_cfp_open:
     "O congresso é público, e podem ser iniciadas, editadas e submetidas propostas entre as datas de abertura e de encerramento indicadas na configuração.",
   phaseDoes_reviewing:
