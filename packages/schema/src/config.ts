@@ -80,6 +80,12 @@ export const ReviewPool = z.object({
   /** Default blind mode for every submission type reviewed by this pool. */
   blindMode: BlindMode,
   reviewsPerSubmission: z.int().min(1).max(10),
+  /**
+   * What the chairs want this pool's reviewers to read before they review. A reviewer is shown
+   * it above each proposal of the pool. Like every text of a configuration it is public, and
+   * like them it has no length limit of its own: the API limits a configuration as a whole.
+   */
+  guidelines: LocalizedText.optional(),
   criteria: z.array(Criterion).min(1),
 });
 export type ReviewPool = z.infer<typeof ReviewPool>;
@@ -210,6 +216,7 @@ type Shape = z.infer<typeof ConferenceConfigShape>;
 export type ConfigIssueCode =
   | "default_language_required"
   | "min_over_max"
+  | "min_not_below_max"
   | "no_whole_number"
   | "deadline_order"
   | "dates_order"
@@ -293,13 +300,20 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
 
   c.reviewPools.forEach((p, i) => {
     text(["reviewPools", i, "name"], p.name);
+    text(["reviewPools", i, "guidelines"], p.guidelines);
     unique(
       ["reviewPools", i, "criteria"],
       p.criteria.map((k) => k.key),
     );
     p.criteria.forEach((k, j) => {
       text(["reviewPools", i, "criteria", j, "label"], k.label);
-      if (k.min >= k.max) issue(["reviewPools", i, "criteria", j], "min must be less than max");
+      // A scale needs two ends that differ: the smallest score is below the largest.
+      if (k.min >= k.max) {
+        issue(["reviewPools", i, "criteria", j], "min must be less than max", {
+          code: "min_not_below_max",
+          leaf: "min",
+        });
+      }
     });
   });
 

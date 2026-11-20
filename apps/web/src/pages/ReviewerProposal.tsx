@@ -10,6 +10,9 @@ import { Localized, PageHeading } from "../ui";
  * A proposal as its reviewer is given it (the reviewer projection in packages/policy): the text
  * and the answers, with nothing to change. This page shows what arrives and decides nothing: in
  * anonymized review the server leaves out the authors and the answers that could name them.
+ *
+ * Above the proposal are the guidelines the chairs wrote for the pool that reviews its format,
+ * where they wrote any (conference settings, spec 02 §1.9).
  */
 export function ReviewerProposal({
   sub,
@@ -21,6 +24,7 @@ export function ReviewerProposal({
   const { lang, t } = useT();
   const fallback = config.defaultLanguage;
   const type = config.submissionTypes.find((x) => x.key === sub.typeKey);
+  const guidelines = config.reviewPools.find((x) => x.key === type?.reviewPool)?.guidelines;
   const track = config.tracks.find((x) => x.key === sub.trackKey);
   const topics = config.topics.filter((x) => sub.topicKeys.includes(x.key));
   const words = { lang, fallback, yes: t("editYes"), no: t("editNo") };
@@ -47,6 +51,15 @@ export function ReviewerProposal({
         {t("reviewIntro")}
         {sub.blindMode === "double" && ` ${t("reviewNamesHidden")}`}
       </p>
+      {guidelines && (
+        <section aria-labelledby="review-guidelines">
+          <h2 id="review-guidelines">{t("reviewGuidelines")}</h2>
+          {/* As the chairs wrote them: their line breaks are kept (.guidelines). */}
+          <p className="guidelines">
+            <Localized text={guidelines} fallback={fallback} />
+          </p>
+        </section>
+      )}
       <dl className="details">
         {track && (
           <div>

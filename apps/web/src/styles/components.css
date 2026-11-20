@@ -370,3 +370,10 @@ summary {
   font-size: 1.125rem;
   line-height: 1.5;
 }
+
+/* The chairs' guidelines for reviewers, as written: line breaks kept, a long address wrapped. */
+.guidelines {
+  margin-bottom: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -178,6 +178,11 @@ export const conferenceRoutes = new Hono<AppEnv>()
         now,
       });
       if (review.stale) throw new Refusal(409, "stale", { token: review.token });
+      // A proposal that has a reviewer and is reviewed anonymized stays so: the value that
+      // would show its authors is named, as in the review.
+      if (review.issues.length > 0) {
+        throw new Refusal(409, "reviewers_assigned", { issues: review.issues });
+      }
       if (review.blocked) {
         throw new Refusal(409, "submitted_work_invalid", { blocked: review.blocked });
       }

@@ -264,6 +264,20 @@ function apportion(total: number, weights: Record<string, number>): Record<strin
 const ascii = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/**
+ * Made-up guidelines for the sandbox's artistic pool, so that the text a chair writes for
+ * reviewers (spec 02, §1.9) can be seen in development and in the browser tests: in three
+ * languages, with line breaks. The other pool has none.
+ */
+const SANDBOX_GUIDELINES = {
+  pool: "artistic",
+  text: {
+    en: "These guidelines are made up for the sandbox.\n\nRead the whole proposal before you judge it. Judge the work that is described, not how well it is written about.\n\nIf you have a conflict of interest with a proposal, tell the chairs instead of reviewing it.",
+    es: "Estas pautas son inventadas para el entorno de pruebas.\n\nLee toda la propuesta antes de valorarla. Valora la obra que se describe, no lo bien que está redactada.\n\nSi tienes un conflicto de interés con una propuesta, avisa a la presidencia en lugar de revisarla.",
+    pt: "Estas orientações são inventadas para o ambiente de testes.\n\nLeia a proposta inteira antes de a avaliar. Avalie a obra que é descrita, e não a qualidade da redação.\n\nSe tiver um conflito de interesses com uma proposta, avise a presidência em vez de a rever.",
+  },
+} as const;
+
 export type SandboxSummary = {
   conferenceId: string;
   slug: string;
@@ -282,13 +296,19 @@ export async function seedSandbox(
 ): Promise<SandboxSummary> {
   const slug = opts.slug ?? "sandbox";
   const r = prng(opts.seed ?? 2026);
+  const base = structuredClone(conferences.elo2026);
   const conf = await saveConference(
     db,
     {
-      ...structuredClone(conferences.elo2026),
+      ...base,
       slug,
       title: { en: "Sandbox: synthetic ELO 2026-shaped data" },
       placeholder: true,
+      reviewPools: base.reviewPools.map((pool) =>
+        pool.key === SANDBOX_GUIDELINES.pool
+          ? { ...pool, guidelines: { ...SANDBOX_GUIDELINES.text } }
+          : pool,
+      ),
     },
     "reviewing",
   );

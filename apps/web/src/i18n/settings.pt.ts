@@ -6,18 +6,28 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsTitle: "Configuração do congresso",
   settingsNoAccess: "Só quem preside a este congresso pode alterar a sua configuração.",
   settingsIntro:
-    "Altere aqui os dados, as datas, os limites e os textos do congresso. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
+    "Altere aqui os dados, as datas, os limites e os textos do congresso, e a forma como as propostas são revistas. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
   settingsScopeNote:
-    "Os formatos, os campos e os idiomas são acrescentados ou retirados importando uma configuração no servidor, e não aqui.",
+    "Os formatos, os campos, os idiomas, os grupos de revisão e os critérios são acrescentados ou retirados importando uma configuração no servidor, e não aqui.",
   settingsBackToManage: "Voltar às submissões",
   settingsSectionConference: "O congresso",
   settingsSectionDeadlines: "Prazos",
   settingsSectionRules: "Regras",
   settingsSectionFormats: "Formatos",
+  settingsSectionReview: "Revisão",
   settingsSectionOther: "Formatos que não se submetem aqui",
   settingsSectionTracks: "Linhas temáticas",
   settingsSectionTopics: "Tópicos",
   settingsField: "Campo: {name}",
+  settingsPoolFormats: "Este grupo revê estes formatos: {formats}.",
+  settingsPoolNoFormats: "Este grupo não revê nenhum formato.",
+  settingsPoolOwnMode_double:
+    "A revisão de {format} é sempre anónima, seja qual for a escolha abaixo.",
+  settingsPoolOwnMode_single:
+    "Em {format}, quem revê vê sempre os nomes e as instituições das pessoas autoras, seja qual for a escolha abaixo.",
+  settingsPoolOwnMode_open:
+    "Em {format}, quem revê vê sempre os nomes, as instituições e as biografias das pessoas autoras, seja qual for a escolha abaixo.",
+  settingsCriterion: "Critério: {name}",
   settingsLabel_title: "Título",
   settingsLabel_theme: "Tema",
   settingsLabel_host: "Instituição anfitriã",
@@ -45,6 +55,21 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsLabel_field_min: "Número mais pequeno",
   settingsLabel_field_max: "Número maior",
   settingsLabel_field_integer: "Só números inteiros",
+  settingsLabel_pool_name: "Nome",
+  settingsLabel_pool_blindMode: "Como quem revê vê as pessoas autoras",
+  settingsLabel_pool_reviewsPerSubmission: "Revisões por proposta",
+  settingsLabel_pool_guidelines: "Orientações para quem revê",
+  settingsLabel_criterion_label: "Etiqueta",
+  settingsLabel_criterion_min: "Pontuação mais baixa",
+  settingsLabel_criterion_max: "Pontuação mais alta",
+  settingsBlind_double:
+    "Anónima: quem revê não vê quem são as pessoas autoras, nem as respostas marcadas como identificativas (por exemplo, uma ligação para a obra)",
+  settingsBlind_single: "Quem revê vê os nomes e as instituições das pessoas autoras",
+  settingsBlind_open: "Quem revê vê os nomes, as instituições e as biografias das pessoas autoras",
+  settingsBlindHint:
+    "Uma revisão anónima continua anónima depois de atribuídas as pessoas que reveem: a partir daí, já não pode ser alterada para mostrar as pessoas autoras.",
+  settingsGuidelinesHint:
+    "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
   settingsLabel_other_name: "Nome",
   settingsLabel_other_description: "Descrição",
   settingsLabel_track_name: "Nome",
@@ -103,6 +128,9 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_date: "Escreva uma data.",
   issue_settings_datetime: "Escreva uma data, uma hora e uma diferença como -05:00.",
   issue_settings_min_over_max: "Não pode ser maior do que o valor máximo ao lado.",
+  issue_settings_min_not_below_max: "Tem de ser menor do que a pontuação mais alta ao lado.",
+  issue_settings_reviewers_assigned:
+    "Já há pessoas atribuídas para rever propostas que aqui são revistas de forma anónima. A elas e às pessoas autoras foi dito que a revisão é anónima, por isso não é possível mostrar agora quem são as pessoas autoras.",
   issue_settings_no_whole_number:
     "Não há nenhum número inteiro entre este valor e o máximo ao lado, por isso ninguém poderia responder.",
   issue_settings_deadline_order: "Não pode ser anterior ao prazo acima.",

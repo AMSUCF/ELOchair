@@ -1,4 +1,4 @@
-import type { ConferenceConfig } from "@elochair/schema";
+import type { BlindMode, ConferenceConfig } from "@elochair/schema";
 import {
   type ConfigChange,
   configChanges,
@@ -22,7 +22,7 @@ import { type ApiResult, api, type Issue, type Me } from "../api";
 import { formatDateTime, viewerTimeZone } from "../format";
 import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { isMessageKey, LANG_NAMES, type MessageKey, useT } from "../i18n";
-import { deadlineKey, modalityKey } from "../labels";
+import { blindChoiceKey, deadlineKey, modalityKey, ownModeKey } from "../labels";
 import {
   DATETIME,
   type Edits,
@@ -37,11 +37,11 @@ import { useUnsaved } from "../useUnsaved";
 
 /*
  * Conference settings for chairs (spec 02, §1.9). The screen shows the stage-one values
- * (stageOneSettings): existing values only, the same for every chair. Formats, fields and
- * languages are added or removed by importing a configuration, and the page says so. It keeps
- * what was typed apart from the configuration, and saves nothing that has not been reviewed:
- * the server says what a save would change, what is wrong with it, what it would do to
- * submitted work, and only then offers "Save changes".
+ * (stageOneSettings): existing values only, the same for every chair. Formats, fields,
+ * languages, review pools and criteria are added or removed by importing a configuration, and
+ * the page says so. It keeps what was typed apart from the configuration, and saves nothing
+ * that has not been reviewed: the server says what a save would change, what is wrong with it,
+ * what it would do to submitted work, and only then offers "Save changes".
  *
  * What was typed and not saved is also kept in this browser (unsaved.ts), as in the proposal
  * editor, so that a reload or a closed tab does not lose a long round of changes.
@@ -100,11 +100,21 @@ const LABELS: Record<SettingId, MessageKey> = {
   "field.min": "settingsLabel_field_min",
   "field.max": "settingsLabel_field_max",
   "field.integer": "settingsLabel_field_integer",
+  "pool.name": "settingsLabel_pool_name",
+  "pool.blindMode": "settingsLabel_pool_blindMode",
+  "pool.reviewsPerSubmission": "settingsLabel_pool_reviewsPerSubmission",
+  "pool.guidelines": "settingsLabel_pool_guidelines",
+  "criterion.label": "settingsLabel_criterion_label",
+  "criterion.min": "settingsLabel_criterion_min",
+  "criterion.max": "settingsLabel_criterion_max",
   "other.name": "settingsLabel_other_name",
   "other.description": "settingsLabel_other_description",
   "track.name": "settingsLabel_track_name",
   "topic.label": "settingsLabel_topic_label",
 };
+
+/** How a pool's reviewers are shown the authors: the choices, most hidden first. */
+const BLIND_MODES = ["double", "single", "open"] as const satisfies readonly BlindMode[];
 
 /** The value a control stands for. Blank is absent; a blank number that is needed is null. */
 function typed(s: Setting, raw: Raw): unknown {
@@ -150,7 +160,9 @@ function build(config: ConferenceConfig, settings: Setting[], edits: Edits): Con
 /** The collapsible section a path belongs to ("submissionTypes.paper"), if it is in one. */
 const sectionOf = (path: string) => {
   const [list, key] = path.split(".");
-  return list === "submissionTypes" || list === "otherFormats" ? `${list}.${key}` : null;
+  return list === "submissionTypes" || list === "reviewPools" || list === "otherFormats"
+    ? `${list}.${key}`
+    : null;
 };
 
 export function SettingsPage() {
@@ -307,6 +319,29 @@ function SettingsForm({
 
   const based = { "If-Match": `"${data.token}"` };
 
+  /**
+   * Problems the server found are shown beside their values (the summary takes focus), in open
+   * sections. Says whether there were any.
+   */
+  function showIssues(found: Issue[]): boolean {
+    setIssues(
+      found.map((i) => ({
+        path: i.path,
+        code: `settings_${i.code}`,
+        ...(i.params ? { params: i.params } : {}),
+      })),
+    );
+    setOpen((current) => {
+      const next = new Set(current);
+      for (const i of found) {
+        const section = sectionOf(i.path);
+        if (section) next.add(section);
+      }
+      return next;
+    });
+    return found.length > 0;
+  }
+
   function reviewChanges(e: FormEvent) {
     e.preventDefault();
     if (!dirty) {
@@ -321,23 +356,9 @@ function SettingsForm({
         headers: based,
       });
       if (!res.ok) return say(t(res.status === 403 ? "settingsNoAccess" : "errorGeneric"));
-      const found = res.data.issues.map((i) => ({
-        path: i.path,
-        code: `settings_${i.code}`,
-        ...(i.params ? { params: i.params } : {}),
-      }));
       setStale(res.data.stale);
-      // Problems are shown beside their values (the summary takes focus), in open sections.
-      setIssues(found);
-      setOpen((current) => {
-        const next = new Set(current);
-        for (const i of found) {
-          const section = sectionOf(i.path);
-          if (section) next.add(section);
-        }
-        return next;
-      });
-      setReview(found.length ? null : { of: builtKey, result: res.data });
+      const found = showIssues(res.data.issues);
+      setReview(found ? null : { of: builtKey, result: res.data });
     });
   }
 
@@ -371,6 +392,13 @@ function SettingsForm({
       }
       if (res.status === 409 && res.error === "stale") {
         setStale(true);
+        setReview(null);
+        return;
+      }
+      // A reviewer was assigned between the review and the save, and a value would now show
+      // them the authors of an anonymized proposal: said beside that value, as a review would.
+      if (res.status === 409 && res.error === "reviewers_assigned") {
+        showIssues(res.issues);
         setReview(null);
         return;
       }
@@ -423,13 +451,19 @@ function SettingsForm({
   const nameOf = (path: string): string => {
     const s = settings.find((x) => x.path === path);
     if (!s) return path;
-    const [list, key, , fieldKey] = path.split(".");
+    const [list, key, , innerKey] = path.split(".");
     const context: string[] = [];
     if (list === "submissionTypes") {
       const type = config.submissionTypes.find((x) => x.key === key);
       if (type) context.push(text(type.name));
-      const field = s.id.startsWith("field.") && type?.fields.find((f) => f.key === fieldKey);
+      const field = s.id.startsWith("field.") && type?.fields.find((f) => f.key === innerKey);
       if (field) context.push(text(field.label));
+    } else if (list === "reviewPools") {
+      const pool = config.reviewPools.find((x) => x.key === key);
+      if (pool) context.push(text(pool.name));
+      const criterion =
+        s.id.startsWith("criterion.") && pool?.criteria.find((k) => k.key === innerKey);
+      if (criterion) context.push(text(criterion.label));
     } else if (list === "otherFormats") {
       const other = config.otherFormats.find((x) => x.key === key);
       if (other) context.push(text(other.name));
@@ -456,10 +490,14 @@ function SettingsForm({
     if (typeof value === "boolean") return t(value ? "settingsYes" : "settingsNo");
     if (path === "modality" && (value === "online" || value === "in_person" || value === "hybrid"))
       return t(modalityKey(value));
+    const mode = BLIND_MODES.find((m) => m === value);
+    if (mode && settings.some((s) => s.path === path && s.kind === "blindMode"))
+      return t(blindChoiceKey(mode));
     return typeof value === "object" ? JSON.stringify(value) : String(value);
   };
 
-  const controls = (list: Setting[]) =>
+  /** `sharedHint` is the id of a hint that these controls have in common (a text's languages). */
+  const controls = (list: Setting[], sharedHint?: string) =>
     list.map((s) =>
       s.kind === "datetime" ? (
         <Deadline key={s.path} s={s} config={config} edits={edits} set={set} issues={issues} />
@@ -471,14 +509,31 @@ function SettingsForm({
           raw={edits[s.path] ?? rawOf(s)}
           onChange={(raw) => set(s.path, raw, rawOf(s))}
           issues={issues}
+          sharedHint={sharedHint}
         />
       ),
     );
   const under = (prefix: string) => settings.filter((s) => s.path.startsWith(prefix));
   const profile = settings.filter(
-    (s) => !/^(deadlines|rules|submissionTypes|otherFormats|tracks|topics)\./.test(s.path),
+    (s) =>
+      !/^(deadlines|rules|submissionTypes|reviewPools|otherFormats|tracks|topics)\./.test(s.path),
   );
   const rules = under("rules.");
+
+  /**
+   * What a pool's settings apply to: the formats it reviews, and any of them that has a blind
+   * mode of its own, which the pool's choice does not change.
+   */
+  const reviewedBy = (poolKey: string): string => {
+    const types = config.submissionTypes.filter((type) => type.reviewPool === poolKey);
+    if (types.length === 0) return t("settingsPoolNoFormats");
+    return [
+      t("settingsPoolFormats", { formats: types.map((type) => text(type.name)).join(", ") }),
+      ...types.flatMap((type) =>
+        type.blindMode ? [t(ownModeKey(type.blindMode), { format: text(type.name) })] : [],
+      ),
+    ].join(" ");
+  };
 
   const section = (key: string, title: ReactNode, body: ReactNode) => (
     <details
@@ -561,6 +616,37 @@ function SettingsForm({
             </>,
           ),
         )}
+
+        <h2>{t("settingsSectionReview")}</h2>
+        {config.reviewPools.map((pool) => {
+          const at = `reviewPools.${pool.key}.`;
+          const own = under(at).filter((s) => s.id.startsWith("pool."));
+          const guidelinesHint = `${fieldId(`${at}guidelines`)}-hint`;
+          return section(
+            `reviewPools.${pool.key}`,
+            text(pool.name),
+            <>
+              <p className="meta">{reviewedBy(pool.key)}</p>
+              {controls(own.filter((s) => s.id !== "pool.guidelines"))}
+              <fieldset>
+                <legend>{t("settingsLabel_pool_guidelines")}</legend>
+                <p className="setting-hint" id={guidelinesHint}>
+                  {t("settingsGuidelinesHint")}
+                </p>
+                {controls(
+                  own.filter((s) => s.id === "pool.guidelines"),
+                  guidelinesHint,
+                )}
+              </fieldset>
+              {pool.criteria.map((criterion) => (
+                <fieldset key={criterion.key}>
+                  <legend>{t("settingsCriterion", { name: text(criterion.label) })}</legend>
+                  {controls(under(`${at}criteria.${criterion.key}.`))}
+                </fieldset>
+              ))}
+            </>,
+          );
+        })}
 
         {config.otherFormats.length > 0 && (
           <>
@@ -682,25 +768,35 @@ function Control({
   raw,
   onChange,
   issues,
+  sharedHint,
 }: {
   s: Setting;
   label: string;
   raw: Raw;
   onChange: (raw: Raw) => void;
   issues: Issue[];
+  /** The id of a hint shown once for this control and its neighbours. */
+  sharedHint?: string;
 }) {
   const { t } = useT();
   const id = fieldId(s.path);
   const hint =
     s.id === "type.abstract.minWords"
       ? t("settingsNoMinimumHint")
-      : s.optional && !s.lang
-        ? t("settingsOptionalHint")
-        : "";
+      : s.kind === "blindMode"
+        ? t("settingsBlindHint")
+        : s.optional && !s.lang
+          ? t("settingsOptionalHint")
+          : "";
   const common = {
     id,
     "aria-invalid": issues.some((i) => i.path === s.path) ? (true as const) : undefined,
-    "aria-describedby": describedBy(s.path, issues, ...(hint ? [`${id}-hint`] : [])),
+    "aria-describedby": describedBy(
+      s.path,
+      issues,
+      ...(sharedHint ? [sharedHint] : []),
+      ...(hint ? [`${id}-hint`] : []),
+    ),
   };
   const after = (
     <>
@@ -729,6 +825,29 @@ function Control({
       </div>
     );
   }
+  if (s.kind === "blindMode") {
+    // The choices are sentences: each is shown whole, which a closed list on a phone cannot do.
+    return (
+      <fieldset id={id} tabIndex={-1}>
+        <legend>{label}</legend>
+        {BLIND_MODES.map((mode) => (
+          <label key={mode} className="choice">
+            <input
+              type="radio"
+              name={id}
+              value={mode}
+              checked={raw === mode}
+              aria-invalid={common["aria-invalid"]}
+              aria-describedby={common["aria-describedby"]}
+              onChange={() => onChange(mode)}
+            />
+            <span>{t(blindChoiceKey(mode))}</span>
+          </label>
+        ))}
+        {after}
+      </fieldset>
+    );
+  }
   const value = String(raw);
   return (
     <div className="stack wide">
@@ -736,7 +855,8 @@ function Control({
       {s.kind === "longtext" ? (
         <textarea
           {...common}
-          rows={3}
+          // Guidelines run to paragraphs; the other long texts are a sentence or two.
+          rows={s.id === "pool.guidelines" ? 6 : 3}
           lang={s.lang}
           value={value}
           onChange={(e) => onChange(e.target.value)}

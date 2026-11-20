@@ -9,6 +9,8 @@ import {
   ConferenceConfig,
   type ConfigChange,
   configChanges,
+  effectiveBlindMode,
+  findType,
   isCallOpen,
   keyedPath,
   type SubmissionIssue,
@@ -51,7 +53,10 @@ export const configToken = (config: ConferenceConfig): string =>
     .digest("hex")
     .slice(0, 32);
 
-/** A problem with a submitted configuration, by keyed path, with a code a screen can explain. */
+/**
+ * A problem with a submitted configuration, by keyed path, with a code a screen can explain:
+ * what the schema refuses, and what the conference's proposals do not allow (namesRevealed).
+ */
 export type ConfigIssue = {
   path: string;
   code: string;
@@ -127,6 +132,7 @@ export type ConfigReview = {
   token: string;
   /** The configuration the caller started from is no longer the stored one. */
   stale: boolean;
+  /** Values that cannot be saved as they are. Any of them, and nothing is saved. */
   issues: ConfigIssue[];
   changes: ConfigChange[];
   blocked: Blocked | null;
@@ -153,6 +159,48 @@ function gained(record: SubmissionRecord, after: ConferenceConfig): SubmissionIs
   return submissionIssues(after, submission, contributions, people).filter(
     (i) => !had.has(issueKey(i)),
   );
+}
+
+/**
+ * An anonymized review that has begun stays anonymized. Reviewers were promised, and authors
+ * were told, that the authors are not shown: once a proposal has a reviewer assigned, a change
+ * that would show that reviewer who wrote it is refused, at the value that would do it. On the
+ * settings screen that is the pool's mode. Through the API it may also be a format's own mode,
+ * or the pool a format is reviewed by. Hiding names that were shown is always allowed, and so
+ * is every change while no reviewer is assigned.
+ *
+ * Any assignment counts, whatever became of the proposal since. The mode is the one in force
+ * for the format (effectiveBlindMode), so a format with a mode of its own is not touched by its
+ * pool's.
+ */
+function namesRevealed(
+  before: ConferenceConfig,
+  after: ConferenceConfig,
+  records: SubmissionRecord[],
+): ConfigIssue[] {
+  const assigned = new Set(
+    records.filter((r) => r.assignments.length > 0).map((r) => r.submission.typeKey),
+  );
+  const paths = new Set<string>();
+  for (const type of after.submissionTypes) {
+    if (!assigned.has(type.key)) continue;
+    if (effectiveBlindMode(before, type.key) !== "double") continue;
+    if (effectiveBlindMode(after, type.key) === "double") continue;
+    // The value that differs: the format's own mode, else its pool, else that pool's mode.
+    const was = findType(before, type.key);
+    paths.add(
+      was?.blindMode !== type.blindMode
+        ? `submissionTypes.${type.key}.blindMode`
+        : was?.reviewPool !== type.reviewPool
+          ? `submissionTypes.${type.key}.reviewPool`
+          : `reviewPools.${type.reviewPool}.blindMode`,
+    );
+  }
+  return [...paths].map((path) => ({
+    path,
+    code: "reviewers_assigned",
+    message: "reviewers are already assigned to proposals that are reviewed anonymized",
+  }));
 }
 
 /**
@@ -188,6 +236,7 @@ export function reviewConfig(args: {
   const next = parsed.data;
   const before = conference.config;
   review.changes = configChanges(before, next);
+  review.issues = namesRevealed(before, next, records);
 
   const byCode: Record<string, number> = {};
   const submissionIds: string[] = [];
@@ -219,6 +268,10 @@ export function reviewConfig(args: {
       Date.parse(next.deadlines[key]) < now.getTime(),
   );
 
-  review.canSave = !review.stale && review.blocked === null && review.changes.length > 0;
+  review.canSave =
+    !review.stale &&
+    review.issues.length === 0 &&
+    review.blocked === null &&
+    review.changes.length > 0;
   return { review, next };
 }

@@ -4,7 +4,10 @@ import { type APIRequestContext, expect, type Page, test } from "@playwright/tes
 /*
  * What a reviewer sees of a proposal assigned to them, on a phone. The seeded sandbox gives
  * reviewer-30 the artistic pool, whose formats are reviewed both ways: exhibition works with
- * the authors' names shown, performances anonymized.
+ * the authors' names shown, performances anonymized. The chairs' guidelines for that pool's
+ * reviewers are seeded too, and stand above every one of its proposals. (A reviewer sees no
+ * proposal of another pool: that a pool without guidelines shows none is checked where a
+ * reviewer of the other pool is signed in, in smoke.spec.ts.)
  */
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -14,9 +17,30 @@ type Assigned = {
   view: string;
   blindMode?: "double" | "single" | "open";
   id: string;
+  typeKey: string;
   title: string;
   abstract: string;
 };
+
+/** What the page reads of the conference to find a proposal's guidelines. */
+type Conference = {
+  config: {
+    reviewPools: { key: string; guidelines?: Record<string, string> }[];
+    submissionTypes: { key: string; reviewPool: string }[];
+  };
+};
+
+/**
+ * The guidelines above a proposal are the text the conference holds, whole, laid out with its
+ * line breaks.
+ */
+async function expectGuidelines(page: Page, heading: string, text: string | undefined) {
+  // They come first, before the proposal's own text.
+  await expect(page.locator("main h2").first()).toHaveText(heading);
+  const shown = page.getByRole("region", { name: heading }).locator("p");
+  expect(await shown.textContent()).toBe(text);
+  await expect(shown).toHaveCSS("white-space", "pre-wrap");
+}
 
 async function expectAccessible(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
@@ -62,6 +86,21 @@ test("a reviewer reads the proposals assigned to them: the text, and the authors
   expect(named, "a proposal reviewed with the authors' names shown").toBeTruthy();
   if (!anonymized || !named) return;
 
+  // The guidelines the chairs wrote for the pool that reviews both formats, as the conference
+  // holds them: in three languages, in paragraphs.
+  const { config } = (await (
+    await page.request.get("/api/conferences/sandbox")
+  ).json()) as Conference;
+  const guidelinesFor = (typeKey: string) => {
+    const pool = config.submissionTypes.find((x) => x.key === typeKey)?.reviewPool;
+    return config.reviewPools.find((x) => x.key === pool)?.guidelines;
+  };
+  const guidelines = guidelinesFor(anonymized.typeKey);
+  expect(guidelines?.en, "guidelines for the reviewer's pool").toContain("\n\n");
+  expect(guidelines?.es).toBeTruthy();
+  expect(guidelinesFor(named.typeKey)).toEqual(guidelines);
+  if (!guidelines) return;
+
   // Anonymized: the proposal's text, a line saying why nobody is named, and no list of people.
   await page.goto(`/en/s/${anonymized.id}`);
   await expect(page.getByRole("heading", { level: 1, name: anonymized.title })).toBeVisible();
@@ -69,6 +108,7 @@ test("a reviewer reads the proposals assigned to them: the text, and the authors
     page.getByText("You are reading this proposal as one of its reviewers."),
   ).toBeVisible();
   await expect(page.getByText("the authors' names are not shown")).toBeVisible();
+  await expectGuidelines(page, "Guidelines for reviewers", guidelines.en);
   await expect(page.getByText(anonymized.abstract.slice(0, 60))).toBeVisible();
   await expect(page.getByRole("heading", { name: "People" })).toHaveCount(0);
   // Nothing to edit, nothing to press, and nobody's address.
@@ -89,6 +129,8 @@ test("a reviewer reads the proposals assigned to them: the text, and the authors
     page.getByText("You are reading this proposal as one of its reviewers."),
   ).toBeVisible();
   await expect(page.getByText("the authors' names are not shown")).toHaveCount(0);
+  // The same guidelines: they are the pool's, however the format is reviewed.
+  await expectGuidelines(page, "Guidelines for reviewers", guidelines.en);
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(page.locator("main li").first()).toContainText("Lead author");
   await expect(page.locator("main")).not.toContainText("@example.org");
@@ -102,6 +144,8 @@ test("a reviewer reads the proposals assigned to them: the text, and the authors
     page.getByText("Estás leyendo esta propuesta como una de las personas que la revisan."),
   ).toBeVisible();
   await expect(page.getByText("La revisión es anónima")).toBeVisible();
+  // And the guidelines are the ones written in Spanish.
+  await expectGuidelines(page, "Pautas para quienes revisan", guidelines.es);
 
   // The page rendered every time: it never fell back to "Something went wrong".
   expect(failures).toEqual([]);

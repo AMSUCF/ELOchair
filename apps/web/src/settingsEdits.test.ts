@@ -12,6 +12,8 @@ const settings: Setting[] = [
   setting("deadlines.submissionsClose", "datetime"),
   setting("submissionTypes.paper.abstract.maxWords", "int"),
   setting("submissionTypes.workshop.fields.people.min", "number"),
+  setting("reviewPools.committee.blindMode", "blindMode"),
+  setting("reviewPools.committee.guidelines.en", "longtext"),
 ];
 
 describe("restoredEdits", () => {
@@ -23,6 +25,9 @@ describe("restoredEdits", () => {
       "submissionTypes.workshop.fields.people.min": "15.5",
       "deadlines.submissionsClose#date": "2027-02-15",
       "deadlines.submissionsClose#offset": "-12:00",
+      // A choice is kept as the value it stands for; a long text with its line breaks.
+      "reviewPools.committee.blindMode": "single",
+      "reviewPools.committee.guidelines.en": "Read it twice.\n\nThen score it.",
     };
     expect(restoredEdits(stored, settings)).toEqual(stored);
   });

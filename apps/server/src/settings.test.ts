@@ -10,7 +10,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { auditLog } from "./db/schema";
+import { assignments, auditLog } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { createApiToken, getConference, grantRole, saveConference } from "./repo";
 import { configIssues, configToken, reviewConfig } from "./services/settings";
@@ -19,8 +19,9 @@ import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 /*
  * Conference settings (spec 02, §1.9): a chair may save any valid configuration, as an admin
  * may (they are one group); nobody else and no agent. A save is reviewed first, never makes
- * submitted work invalid, is refused when it is based on an older configuration, and is audited
- * value by value. All on the made-up fixture call.
+ * submitted work invalid, never shows a reviewer who wrote a proposal they were assigned as
+ * anonymized, is refused when it is based on an older configuration, and is audited value by
+ * value. All on the made-up fixture call.
  */
 
 let t: TestApp;
@@ -96,6 +97,18 @@ const fieldOf = (config: Config, typeKey: string, key: string) => {
   return field;
 };
 
+const poolOf = (config: Config, key: string) => {
+  const pool = config.reviewPools.find((x) => x.key === key);
+  if (!pool) throw new Error(`no review pool ${key}`);
+  return pool;
+};
+
+const criterionOf = (config: Config, poolKey: string, key: string) => {
+  const criterion = poolOf(config, poolKey).criteria.find((x) => x.key === key);
+  if (!criterion) throw new Error(`no criterion ${poolKey}.${key}`);
+  return criterion;
+};
+
 /**
  * A proposal of `typeKey` whose abstract is `count` times `word`; submitted unless `asDraft`.
  * The word is short: an abstract may hold eight characters for each word its format allows.
@@ -107,9 +120,10 @@ async function proposal(
   title: string,
   word: string,
   asDraft = false,
+  slug = SLUG,
 ) {
   const cookie = cookies[who];
-  const created = await call(t.public, "POST", at(SLUG, "submissions"), {
+  const created = await call(t.public, "POST", at(slug, "submissions"), {
     cookie,
     body: { typeKey, language: "en", participationMode: "in_person" },
   });
@@ -131,16 +145,11 @@ async function proposal(
   return created.json.id as string;
 }
 
-const configAudit = () =>
+const configAudit = (of = conferenceId) =>
   t.db
     .select()
     .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.conferenceId, conferenceId),
-        eq(auditLog.action, "conference.config_updated"),
-      ),
-    );
+    .where(and(eq(auditLog.conferenceId, of), eq(auditLog.action, "conference.config_updated")));
 
 beforeAll(async () => {
   t = await makeTestApp();
@@ -281,6 +290,78 @@ describe("what a chair may change", () => {
         { path: "submissionTypes.workshop.fields.needs.required", before: false, after: true },
       ],
     });
+  });
+
+  it("saves the review values the screen offers, and audits each value that changed", async () => {
+    const before = await settings("chair");
+    const guidelines = {
+      en: "Read the artist statement first.\n\nThen the technical requirements.",
+      es: "Lee primero la declaración artística.",
+    };
+    const { config, token } = await edited("chair", (c) => {
+      const pool = poolOf(c, "artistic");
+      pool.name.es = "Jurado artístico";
+      // From names shown to anonymized: allowed at any time.
+      pool.blindMode = "double";
+      pool.reviewsPerSubmission = 4;
+      pool.guidelines = guidelines;
+      const merit = criterionOf(c, "artistic", "merit");
+      merit.label.en = "Artistic and literary merit";
+      merit.min = 0;
+      merit.max = 10;
+    });
+    const changes = [
+      {
+        path: "reviewPools.artistic.name.es",
+        before: "Comité artístico",
+        after: "Jurado artístico",
+      },
+      { path: "reviewPools.artistic.blindMode", before: "single", after: "double" },
+      { path: "reviewPools.artistic.reviewsPerSubmission", before: 2, after: 4 },
+      { path: "reviewPools.artistic.guidelines.en", after: guidelines.en },
+      { path: "reviewPools.artistic.guidelines.es", after: guidelines.es },
+      {
+        path: "reviewPools.artistic.criteria.merit.label.en",
+        before: "Artistic merit",
+        after: "Artistic and literary merit",
+      },
+      { path: "reviewPools.artistic.criteria.merit.min", before: 1, after: 0 },
+      { path: "reviewPools.artistic.criteria.merit.max", before: 5, after: 10 },
+    ];
+    expect((await preview("chair", config, token)).json).toMatchObject({
+      changes,
+      issues: [],
+      blocked: null,
+      canSave: true,
+    });
+    const res = await save("chair", config, token);
+    expect(res.status).toBe(200);
+
+    // Stored as written, line breaks and all: the reviewer's page reads them from here.
+    const open = await call(t.public, "GET", `/api/conferences/${SLUG}`);
+    expect(poolOf(open.json.config, "artistic")).toMatchObject({
+      blindMode: "double",
+      reviewsPerSubmission: 4,
+      guidelines,
+    });
+    expect(criterionOf(open.json.config, "artistic", "merit")).toMatchObject({ min: 0, max: 10 });
+    const entry = (await configAudit()).at(-1);
+    expect(entry?.actorKind).toBe("human");
+    expect(entry?.details).toEqual({ draftsAffected: 0, changes });
+
+    // Put back for the tests below. Guidelines that are cleared leave none, and that is audited.
+    const back = await save("chair", before.json.config, res.json.token);
+    expect(back.status).toBe(200);
+    expect(back.json.token).toBe(before.json.token);
+    expect(poolOf(back.json.config, "artistic")).not.toHaveProperty("guidelines");
+    const undone = (await configAudit()).at(-1)?.details as { changes: { path: string }[] };
+    expect(undone.changes).toEqual(
+      changes.map(({ path, before: was, after: now }) => ({
+        path,
+        before: now,
+        ...(was === undefined ? {} : { after: was }),
+      })),
+    );
   });
 
   it("saves every kind of change that used to be an admin's, and audits each one", async () => {
@@ -560,6 +641,45 @@ describe("reviewing before saving", () => {
     ]);
   });
 
+  it("names a review value that cannot be what was typed, beside it", async () => {
+    const { config, token } = await edited("chair", (c) => {
+      poolOf(c, "scientific").reviewsPerSubmission = 11;
+      poolOf(c, "artistic").reviewsPerSubmission = 0;
+      criterionOf(c, "scientific", "clarity").max = 4.5;
+    });
+    // A mode the conference cannot have, as a tampered form would send it.
+    const body = structuredClone(config) as unknown as Json;
+    ((body.reviewPools as Json[])[1] as Json).blindMode = "triple";
+    const res = await call(t.public, "POST", at(SLUG, "config/preview"), {
+      cookie: cookies.chair,
+      ifMatch: token,
+      body,
+    });
+    expect(res.json.canSave).toBe(false);
+    expect(found(res.json).sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: "reviewPools.artistic.blindMode", code: "invalid" },
+      { path: "reviewPools.artistic.reviewsPerSubmission", code: "too_small", params: { min: 1 } },
+      { path: "reviewPools.scientific.criteria.clarity.max", code: "whole_number" },
+      { path: "reviewPools.scientific.reviewsPerSubmission", code: "too_big", params: { max: 10 } },
+    ]);
+
+    // Values that do not fit: guidelines without the main language, a scale with one score.
+    const unfit = await edited("chair", (c) => {
+      poolOf(c, "scientific").guidelines = { es: "Solo en español." };
+      criterionOf(c, "scientific", "fit").min = 5;
+      criterionOf(c, "artistic", "merit").max = 0;
+    });
+    const refused = await preview("chair", unfit.config, unfit.token);
+    expect(refused.json.canSave).toBe(false);
+    expect(found(refused.json).sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: "reviewPools.artistic.criteria.merit.min", code: "min_not_below_max" },
+      { path: "reviewPools.scientific.criteria.fit.min", code: "min_not_below_max" },
+      { path: "reviewPools.scientific.guidelines.en", code: "default_language_required" },
+    ]);
+    expect((await save("chair", unfit.config, unfit.token)).status).toBe(400);
+    expect((await settings("chair")).json.token).toBe(token);
+  });
+
   it("names a whole-number field with no whole number between its ends, beside the smallest", () => {
     // The fixture call has no number field: the settings screen changes one where a call has it.
     const input = structuredClone(fixtureCall);
@@ -740,6 +860,212 @@ describe("submitted work stays valid", () => {
   });
 });
 
+describe("an anonymized review that has begun stays anonymized", () => {
+  const GUARD = "settings-anonymized";
+  const POOL = "reviewPools.scientific.blindMode";
+  let guardId: string;
+  let talk: string;
+  let workshop: string;
+  let performance: string;
+
+  /** No route assigns reviewers yet: the row is written as the assignment step will write it. */
+  const assign = async (submissionId: string) => {
+    await t.db.insert(assignments).values({
+      conferenceId: guardId,
+      reviewerId: await personId(t, "settings-reviewer@example.org"),
+      submissionId,
+    });
+  };
+  const refusal = (...paths: string[]) =>
+    paths.map((path) => ({ path, code: "reviewers_assigned" }));
+  const found = (json: { issues: { path: string; code: string }[] }) =>
+    json.issues.map(({ path, code }) => ({ path, code }));
+  const changed = (change: (c: Config) => void) => edited("chair", change, GUARD);
+
+  beforeAll(async () => {
+    ({ conferenceId: guardId } = await seedTestCall(t.db, { slug: GUARD, now: NOW }));
+    await grantRole(t.db, {
+      conferenceId: guardId,
+      personId: await personId(t, "settings-chair@example.org"),
+      role: "chair",
+    });
+    // The fixture call reviews talks and workshops anonymized, performances with names shown.
+    talk = await proposal("owner", "talk", 260, "Ibis Talk Title", "zzra", false, GUARD);
+    workshop = await proposal("owner", "workshop", 265, "Heron Shop Title", "zzrb", false, GUARD);
+    performance = await proposal(
+      "owner",
+      "performance",
+      400,
+      "Egret Act Title",
+      "zzrc",
+      false,
+      GUARD,
+    );
+  });
+
+  it("allows names to be shown while no proposal has a reviewer", async () => {
+    for (const mode of ["single", "open"] as const) {
+      const { config, token } = await changed((c) => {
+        poolOf(c, "scientific").blindMode = mode;
+      });
+      const reviewed = await preview("chair", config, token);
+      expect(reviewed.json, mode).toMatchObject({
+        changes: [{ path: POOL, before: "double", after: mode }],
+        issues: [],
+        canSave: true,
+      });
+      const res = await save("chair", config, token);
+      expect(res.status, mode).toBe(200);
+      // And back to anonymized, which is allowed at any time.
+      const back = await changed((c) => {
+        poolOf(c, "scientific").blindMode = "double";
+      });
+      expect((await save("chair", back.config, back.token)).status, mode).toBe(200);
+    }
+  });
+
+  it("leaves a format with a mode of its own out of its pool's", async () => {
+    // Workshops are given their own mode, anonymized, and a workshop gets a reviewer.
+    const own = await changed((c) => {
+      typeOf(c, "workshop").blindMode = "double";
+    });
+    expect((await save("chair", own.config, own.token)).status).toBe(200);
+    await assign(workshop);
+    // The pool's mode does not reach workshops, and no other proposal of the pool has a reviewer.
+    const { config, token } = await changed((c) => {
+      poolOf(c, "scientific").blindMode = "open";
+    });
+    expect((await preview("chair", config, token)).json).toMatchObject({
+      changes: [{ path: POOL, before: "double", after: "open" }],
+      issues: [],
+      canSave: true,
+    });
+    // The workshops' own mode is what would show their authors: that is refused, at that value.
+    for (const change of [
+      (c: Config) => {
+        typeOf(c, "workshop").blindMode = "single";
+      },
+      (c: Config) => {
+        delete typeOf(c, "workshop").blindMode;
+        poolOf(c, "scientific").blindMode = "open";
+      },
+    ]) {
+      const bared = await changed(change);
+      const reviewed = await preview("chair", bared.config, bared.token);
+      expect(found(reviewed.json)).toEqual(refusal("submissionTypes.workshop.blindMode"));
+      expect(reviewed.json.canSave).toBe(false);
+      expect((await save("chair", bared.config, bared.token)).status).toBe(409);
+    }
+  });
+
+  it("refuses to show names once a proposal of the pool has a reviewer, in the review and in the save", async () => {
+    await assign(talk);
+    const rowsBefore = (await configAudit(guardId)).length;
+    for (const mode of ["single", "open"] as const) {
+      const { config, token } = await changed((c) => {
+        poolOf(c, "scientific").blindMode = mode;
+        c.host = "Universidad Inventada del Centro";
+      });
+      // The review says what would change, and names the value that cannot.
+      const reviewed = await preview("chair", config, token);
+      expect(reviewed.status, mode).toBe(200);
+      expect(reviewed.json, mode).toMatchObject({
+        changes: [{ path: "host" }, { path: POOL, before: "double", after: mode }],
+        blocked: null,
+        canSave: false,
+      });
+      expect(found(reviewed.json), mode).toEqual(refusal(POOL));
+      const res = await save("chair", config, token);
+      expect(res.status, mode).toBe(409);
+      expect(res.json.error, mode).toBe("reviewers_assigned");
+      expect(found(res.json), mode).toEqual(refusal(POOL));
+      // Nothing was saved, the harmless half of the change included.
+      expect((await settings("chair", GUARD)).json.token, mode).toBe(token);
+      expect(findLeaks([reviewed.json, res.json], markers), mode).toEqual([]);
+    }
+    expect((await configAudit(guardId)).length).toBe(rowsBefore);
+    // Everything else about the pool can still be changed.
+    const other = await changed((c) => {
+      poolOf(c, "scientific").reviewsPerSubmission = 2;
+      poolOf(c, "scientific").guidelines = { en: "Judge the proposal, not its author." };
+    });
+    expect((await preview("chair", other.config, other.token)).json).toMatchObject({
+      issues: [],
+      canSave: true,
+    });
+  });
+
+  it("refuses the same through a format: a mode of its own, or another pool", async () => {
+    const cases: [string, (c: Config) => void, string][] = [
+      [
+        "its own mode",
+        (c) => {
+          typeOf(c, "talk").blindMode = "open";
+        },
+        "submissionTypes.talk.blindMode",
+      ],
+      [
+        "a pool that shows names",
+        (c) => {
+          typeOf(c, "talk").reviewPool = "artistic";
+        },
+        "submissionTypes.talk.reviewPool",
+      ],
+    ];
+    for (const [what, change, path] of cases) {
+      const { config, token } = await changed(change);
+      const reviewed = await preview("chair", config, token);
+      expect(found(reviewed.json), what).toEqual(refusal(path));
+      expect(reviewed.json.canSave, what).toBe(false);
+      const res = await save("chair", config, token);
+      expect(res.status, what).toBe(409);
+      expect(found(res.json), what).toEqual(refusal(path));
+    }
+    // A talk that keeps its anonymity may move: its own mode says so, whatever the pool's.
+    const kept = await changed((c) => {
+      typeOf(c, "talk").reviewPool = "artistic";
+      typeOf(c, "talk").blindMode = "double";
+    });
+    expect((await preview("chair", kept.config, kept.token)).json).toMatchObject({
+      issues: [],
+      canSave: true,
+    });
+  });
+
+  it("allows the other way with reviewers assigned, and bios where names are shown already", async () => {
+    await assign(performance);
+    // The rule protects anonymity and nothing more: here the authors are named already.
+    const more = await changed((c) => {
+      poolOf(c, "artistic").blindMode = "open";
+    });
+    expect((await preview("chair", more.config, more.token)).json).toMatchObject({
+      issues: [],
+      canSave: true,
+    });
+    // From names shown to anonymized.
+    const { config, token } = await changed((c) => {
+      poolOf(c, "artistic").blindMode = "double";
+    });
+    expect((await preview("chair", config, token)).json).toMatchObject({
+      changes: [{ path: "reviewPools.artistic.blindMode", before: "single", after: "double" }],
+      issues: [],
+      canSave: true,
+    });
+    const res = await save("chair", config, token);
+    expect(res.status).toBe(200);
+    expect((await configAudit(guardId)).at(-1)?.details).toMatchObject({
+      changes: [{ path: "reviewPools.artistic.blindMode", before: "single", after: "double" }],
+    });
+    // It is anonymized now, with a reviewer assigned: it stays so.
+    const again = await changed((c) => {
+      poolOf(c, "artistic").blindMode = "single";
+    });
+    expect(found((await preview("chair", again.config, again.token)).json)).toEqual(
+      refusal("reviewPools.artistic.blindMode"),
+    );
+  });
+});
+
 describe("a review never carries anyone's words (house rule 2)", () => {
   const config = ConferenceConfig.parse({ ...fixtureCall, slug: "leak-call" });
   const conference = {
@@ -756,8 +1082,17 @@ describe("a review never carries anyone's words (house rule 2)", () => {
   };
   const STATUSES: SubmissionStatus[] = ["draft", "submitted", "accepted", "withdrawn", "rejected"];
 
-  /** A proposal whose every name, address, title and text carries a marker of its own. */
-  function record(i: number, status: SubmissionStatus, typeKey: string, mine: boolean) {
+  /**
+   * A proposal whose every name, address, title and text carries a marker of its own; with a
+   * reviewer assigned, when `assigned`.
+   */
+  function record(
+    i: number,
+    status: SubmissionStatus,
+    typeKey: string,
+    mine: boolean,
+    assigned: boolean,
+  ) {
     const mark = (what: string) => `MARK${what}${i}X`;
     const ownerId = mine
       ? chair.personId
@@ -807,7 +1142,18 @@ describe("a review never carries anyone's words (house rule 2)", () => {
       config,
       submission,
       contributions,
-      assignments: [],
+      assignments: assigned
+        ? [
+            {
+              id: `20000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+              conferenceId: conference.id,
+              reviewerId: `30000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+              submissionId: submission.id,
+              createdAt: NOW.toISOString(),
+              dueAt: null,
+            },
+          ]
+        : [],
       conflicts: [],
       people: new Map([[ownerId, owner]]),
     };
@@ -833,14 +1179,22 @@ describe("a review never carries anyone's words (house rule 2)", () => {
             status: fc.constantFrom(...STATUSES),
             typeKey: fc.constantFrom(...config.submissionTypes.map((x) => x.key), "gone"),
             mine: fc.boolean(),
+            assigned: fc.boolean(),
           }),
           { minLength: 1, maxLength: 12 },
         ),
         fc.integer({ min: 1, max: 400 }),
         fc.boolean(),
-        (specs, maxWords, dropFields) => {
-          const built = specs.map((s, i) => record(i + 1, s.status, s.typeKey, s.mine));
+        fc.array(fc.constantFrom("double", "single", "open"), {
+          minLength: config.reviewPools.length,
+          maxLength: config.reviewPools.length,
+        }),
+        (specs, maxWords, dropFields, modes) => {
+          const built = specs.map((s, i) => record(i + 1, s.status, s.typeKey, s.mine, s.assigned));
           const next = structuredClone(config);
+          next.reviewPools.forEach((pool, i) => {
+            pool.blindMode = modes[i] ?? pool.blindMode;
+          });
           for (const type of next.submissionTypes) {
             type.abstract.maxWords = maxWords;
             type.abstract.minWords = Math.min(type.abstract.minWords ?? 0, maxWords);
@@ -884,6 +1238,27 @@ describe("a review never carries anyone's words (house rule 2)", () => {
               .filter((b) => b.rec.submission.ownerPersonId !== chair.personId)
               .map((b) => b.rec.submission.id),
           );
+          // A pool that was anonymized and would show names is named exactly when one of its
+          // proposals has a reviewer (no format of the fixture call has a mode of its own).
+          const reviewedBy = (typeKey: string) =>
+            config.submissionTypes.find((x) => x.key === typeKey)?.reviewPool;
+          const promised = config.reviewPools
+            .filter(
+              (pool, i) =>
+                pool.blindMode === "double" &&
+                modes[i] !== "double" &&
+                built.some(
+                  (b) =>
+                    b.rec.assignments.length > 0 &&
+                    reviewedBy(b.rec.submission.typeKey) === pool.key,
+                ),
+            )
+            .map((pool) => ({
+              path: `reviewPools.${pool.key}.blindMode`,
+              code: "reviewers_assigned",
+            }));
+          expect(review.issues.map(({ path, code }) => ({ path, code }))).toEqual(promised);
+          if (promised.length > 0) expect(review.canSave).toBe(false);
         },
       ),
       { numRuns: 200 },

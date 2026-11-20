@@ -23,7 +23,7 @@ The goal is to lay down the parts every later phase builds on, so the Submission
 ### F2. `packages/schema`, the single source of truth
 
 - Zod schemas for:
-  - the conference configuration: languages, time zone, deadlines, tracks, topics, review pools (blind mode, reviews per submission, criteria), submission types (word limits, duration, team size, pool, custom fields with an `identifying` flag), and the presenter-cap rule
+  - the conference configuration: languages, time zone, deadlines, tracks, topics, review pools (blind mode, reviews per submission, guidelines for reviewers, criteria), submission types (word limits, duration, team size, pool, custom fields with an `identifying` flag), and the presenter-cap rule
   - the domain records: person, submission, contribution, reviewer profile, conflict, assignment
 - Cross-field validation:
   - a type's pool must exist

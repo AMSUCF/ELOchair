@@ -27,6 +27,10 @@ export const contribStatusKey = (s: ContributionStatus): MessageKey => `contrib_
 export const modeKey = (m: ParticipationMode): MessageKey => `mode_${m}`;
 export const modalityKey = (m: ConferenceConfig["modality"]): MessageKey => `modality_${m}`;
 export const reviewKey = (b: BlindMode): MessageKey => `review_${b}`;
+/** A blind mode as a chair chooses it for a review pool (reviewKey is the sentence for authors). */
+export const blindChoiceKey = (b: BlindMode): MessageKey => `settingsBlind_${b}`;
+/** The sentence that says a format has a blind mode of its own, whatever its pool's is. */
+export const ownModeKey = (b: BlindMode): MessageKey => `settingsPoolOwnMode_${b}`;
 export const selfIdKey = (k: SelfIdKind): MessageKey => `selfId_${k}`;
 export const conferenceRoleKey = (r: ConferenceRole): MessageKey => `role_${r}`;
 export const deadlineKey = (d: keyof ConferenceConfig["deadlines"]): MessageKey => `deadline_${d}`;

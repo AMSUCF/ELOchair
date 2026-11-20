@@ -4,18 +4,27 @@ export const settingsEn = {
   settingsTitle: "Conference settings",
   settingsNoAccess: "Only the chairs of this conference can change its settings.",
   settingsIntro:
-    "Change the conference's details, dates, limits and texts here. You review every change before it is saved, and each save is recorded.",
+    "Change the conference's details, dates, limits and texts here, and how proposals are reviewed. You review every change before it is saved, and each save is recorded.",
   settingsScopeNote:
-    "Formats, fields and languages are added or removed by importing a configuration on the server, not here.",
+    "Formats, fields, languages, review pools and criteria are added or removed by importing a configuration on the server, not here.",
   settingsBackToManage: "Back to the submissions",
   settingsSectionConference: "The conference",
   settingsSectionDeadlines: "Deadlines",
   settingsSectionRules: "Rules",
   settingsSectionFormats: "Formats",
+  settingsSectionReview: "Review",
   settingsSectionOther: "Formats not submitted here",
   settingsSectionTracks: "Tracks",
   settingsSectionTopics: "Topics",
   settingsField: "Field: {name}",
+  settingsPoolFormats: "This pool reviews these formats: {formats}.",
+  settingsPoolNoFormats: "No format is reviewed by this pool.",
+  settingsPoolOwnMode_double: "{format} is always anonymized, whatever is chosen below.",
+  settingsPoolOwnMode_single:
+    "For {format}, reviewers always see the authors' names and affiliations, whatever is chosen below.",
+  settingsPoolOwnMode_open:
+    "For {format}, reviewers always see the authors' names, affiliations and bios, whatever is chosen below.",
+  settingsCriterion: "Criterion: {name}",
   settingsLabel_title: "Title",
   settingsLabel_theme: "Theme",
   settingsLabel_host: "Host institution",
@@ -43,6 +52,21 @@ export const settingsEn = {
   settingsLabel_field_min: "Smallest number",
   settingsLabel_field_max: "Largest number",
   settingsLabel_field_integer: "Whole numbers only",
+  settingsLabel_pool_name: "Name",
+  settingsLabel_pool_blindMode: "How authors appear to reviewers",
+  settingsLabel_pool_reviewsPerSubmission: "Reviews per proposal",
+  settingsLabel_pool_guidelines: "Guidelines for reviewers",
+  settingsLabel_criterion_label: "Label",
+  settingsLabel_criterion_min: "Smallest score",
+  settingsLabel_criterion_max: "Largest score",
+  settingsBlind_double:
+    "Anonymized: reviewers do not see who the authors are, or the answers marked as identifying (such as a link to the work)",
+  settingsBlind_single: "Reviewers see the authors' names and affiliations",
+  settingsBlind_open: "Reviewers see the authors' names, affiliations and bios",
+  settingsBlindHint:
+    "An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors.",
+  settingsGuidelinesHint:
+    "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
   settingsLabel_other_name: "Name",
   settingsLabel_other_description: "Description",
   settingsLabel_track_name: "Name",
@@ -101,6 +125,9 @@ export const settingsEn = {
   issue_settings_date: "Enter a date.",
   issue_settings_datetime: "Enter a date, a time and an offset such as -05:00.",
   issue_settings_min_over_max: "This must not be more than the largest value beside it.",
+  issue_settings_min_not_below_max: "This must be less than the largest score beside it.",
+  issue_settings_reviewers_assigned:
+    "Reviewers are already assigned to proposals that are reviewed anonymized here. They and the authors were told that the review is anonymized, so the authors cannot be shown now.",
   issue_settings_no_whole_number:
     "There is no whole number between this and the largest value beside it, so nobody could answer.",
   issue_settings_deadline_order: "This must not be before the deadline above it.",
