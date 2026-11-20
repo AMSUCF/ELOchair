@@ -169,6 +169,28 @@ legend {
   }
 }
 
+/* The chairs' phase control: where the conference is, and the one step forward or back. */
+.phase {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.phase h2,
+.phase h3,
+.phase p {
+  margin: 0;
+}
+
+/* The line that says what happened keeps no room while it has nothing to say. */
+.phase .status-line:empty {
+  min-height: 0;
+}
+
 /* The chair's overview: one tile per figure, the number set large inside its sentence. */
 .overview {
   list-style: none;

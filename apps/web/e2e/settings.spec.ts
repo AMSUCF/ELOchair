@@ -135,6 +135,12 @@ test.describe("conference settings", () => {
   test("a chair changes a word limit and a deadline, reviews them and saves", async () => {
     test.slow();
     await openSettings(chair);
+    // Every chair is told the same thing about what this screen does not offer.
+    await expect(
+      chair.getByText(
+        "Formats, fields and languages are added or removed by importing a configuration on the server, not here.",
+      ),
+    ).toBeVisible();
     await expectAccessibleInBothThemes(chair);
     await expectNoHorizontalScroll(chair);
 

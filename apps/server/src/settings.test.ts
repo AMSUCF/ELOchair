@@ -17,10 +17,10 @@ import { configIssues, configToken, reviewConfig } from "./services/settings";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
 /*
- * Conference settings (spec 02, §1.9): chairs change the stage-one values of a configuration,
- * admins anything, nobody else and no agent. A save is reviewed first, never makes submitted
- * work invalid, is refused when it is based on an older configuration, and is audited value by
- * value. All on the made-up fixture call.
+ * Conference settings (spec 02, §1.9): a chair may save any valid configuration, as an admin
+ * may (they are one group); nobody else and no agent. A save is reviewed first, never makes
+ * submitted work invalid, is refused when it is based on an older configuration, and is audited
+ * value by value. All on the made-up fixture call.
  */
 
 let t: TestApp;
@@ -172,13 +172,22 @@ beforeAll(async () => {
 afterAll(() => t.close());
 
 describe("who may open and change the settings", () => {
-  it("gives chairs the configuration, its token and the stage-one scope; admins, everything", async () => {
+  it("gives a chair and an admin the same thing: the configuration and its token", async () => {
     const chair = await settings("chair");
     expect(chair.status).toBe(200);
     expect(chair.json).toMatchObject({ slug: SLUG, phase: "cfp_open", callOpen: true });
-    expect(chair.json.scope).toBe("stage_one");
     expect(chair.json.token).toBe(configToken(ConferenceConfig.parse(chair.json.config)));
-    expect((await settings("admin")).json.scope).toBe("all");
+    // Nothing says what this person may change: every chair may change all of it.
+    expect(Object.keys(chair.json).sort()).toEqual([
+      "callOpen",
+      "config",
+      "phase",
+      "slug",
+      "token",
+    ]);
+    const admin = await settings("admin");
+    expect(admin.status).toBe(200);
+    expect(admin.json).toEqual(chair.json);
   });
 
   it("refuses a track chair, a reviewer, a submitter, the public and every agent", async () => {
@@ -225,7 +234,7 @@ describe("who may open and change the settings", () => {
 });
 
 describe("what a chair may change", () => {
-  it("saves stage-one values, and audits each value that changed", async () => {
+  it("saves the values the screen offers, and audits each value that changed", async () => {
     const { config, token } = await edited("chair", (c) => {
       c.title.es = "Convocatoria de prueba, segunda edición";
       c.deadlines.notification = "2027-04-10T23:59:00-05:00";
@@ -274,7 +283,7 @@ describe("what a chair may change", () => {
     });
   });
 
-  it("refuses every kind of change that is an admin's, with the paths, and saves nothing", async () => {
+  it("saves every kind of change that used to be an admin's, and audits each one", async () => {
     const cases: [string, (c: Config) => void, string[]][] = [
       [
         "a blind mode",
@@ -341,64 +350,85 @@ describe("what a chair may change", () => {
         ],
       ],
     ];
-    const rowsBefore = (await configAudit()).length;
     for (const [what, change, paths] of cases) {
+      const before = await settings("chair");
+      const rowsBefore = (await configAudit()).length;
       const { config, token } = await edited("chair", change);
       const reviewed = await preview("chair", config, token);
-      expect(reviewed.json.forbidden, what).toEqual(paths);
-      expect(reviewed.json.canSave, what).toBe(false);
+      expect(
+        reviewed.json.changes.map((c: { path: string }) => c.path),
+        what,
+      ).toEqual(paths);
+      expect(reviewed.json.canSave, what).toBe(true);
+      // A review no longer says what a chair may not change: there is no such thing.
+      expect(reviewed.json, what).not.toHaveProperty("forbidden");
+      expect(reviewed.json, what).not.toHaveProperty("scope");
       const res = await save("chair", config, token);
-      expect(res.status, what).toBe(403);
-      expect(res.json, what).toEqual({ error: "forbidden", paths });
-      expect((await settings("chair")).json.token, what).toBe(token);
+      expect(res.status, what).toBe(200);
+      expect(res.json.config, what).toEqual(ConferenceConfig.parse(config));
+      const stored = await settings("chair");
+      expect(stored.json.token, what).toBe(res.json.token);
+      expect(stored.json.token, what).not.toBe(token);
+      const rows = await configAudit();
+      expect(rows.length, what).toBe(rowsBefore + 1);
+      const entry = rows.at(-1);
+      expect(entry?.actorKind, what).toBe("human");
+      const audited = entry?.details as { changes: { path: string }[] } | undefined;
+      expect(
+        audited?.changes.map((c) => c.path),
+        what,
+      ).toEqual(paths);
+      // Put back, by the chair again (which adds back the format, the field, the language and
+      // the rule that were taken away), so that the tests below find the call as it was.
+      const back = await save("chair", before.json.config, res.json.token);
+      expect(back.status, what).toBe(200);
+      expect(back.json.token, what).toBe(before.json.token);
     }
-    expect((await configAudit()).length).toBe(rowsBefore);
   });
 
-  it("does not refuse an admin", async () => {
+  it("gives a chair and an admin the same review of the same change, and saves it for either", async () => {
     const { config, token } = await edited("admin", (c) => {
       typeOf(c, "exhibition").blindMode = "open";
     });
-    expect((await preview("admin", config, token)).json).toMatchObject({
-      scope: "all",
-      forbidden: [],
+    const asAdmin = await preview("admin", config, token);
+    expect(asAdmin.json).toMatchObject({
+      changes: [{ path: "submissionTypes.exhibition.blindMode", after: "open" }],
       canSave: true,
     });
+    expect(asAdmin.json).not.toHaveProperty("scope");
+    expect(asAdmin.json).not.toHaveProperty("forbidden");
+    expect((await preview("chair", config, token)).json).toEqual(asAdmin.json);
+    // The admin role still works, and means what the chair role means.
     expect((await save("admin", config, token)).status).toBe(200);
   });
 
-  it("lets an admin, not a chair, write a text in a language the conference does not have", async () => {
-    const { config, token } = await edited("admin", (c) => {
+  it("lets a chair write a text in a language the conference does not have", async () => {
+    // Through the API: the screen has no control for it (packages/schema settings.test.ts).
+    const { config, token } = await edited("chair", (c) => {
       c.title.fr = "Rencontre inventée";
     });
-    expect((await preview("admin", config, token)).json).toMatchObject({
-      scope: "all",
+    const reviewed = await preview("chair", config, token);
+    expect(reviewed.json).toMatchObject({
       changes: [{ path: "title.fr", after: "Rencontre inventée" }],
-      forbidden: [],
       canSave: true,
     });
+    expect((await preview("admin", config, token)).json).toEqual(reviewed.json);
   });
 
-  it("lets an admin, not a chair, give a field a value its kind does not have", async () => {
+  it("lets a chair give a field a value its kind does not have, as the schema allows", async () => {
     const path = "submissionTypes.performance.fields.work_url.maxWords";
-    const { config, token } = await edited("admin", (c) => {
+    const { config, token } = await edited("chair", (c) => {
       fieldOf(c, "performance", "work_url").maxWords = 12;
     });
-    expect((await preview("admin", config, token)).json).toMatchObject({
-      scope: "all",
-      changes: [{ path, after: 12 }],
-      forbidden: [],
-      canSave: true,
-    });
-    // The same request from a chair, and a text field's word limit, which is a chair's.
     const reviewed = await preview("chair", config, token);
-    expect(reviewed.json).toMatchObject({ scope: "stage_one", forbidden: [path], canSave: false });
+    expect(reviewed.json).toMatchObject({ changes: [{ path, after: 12 }], canSave: true });
+    expect((await preview("admin", config, token)).json).toEqual(reviewed.json);
+    // And a text field's word limit, which the screen does offer.
     const own = await edited("chair", (c) => {
       fieldOf(c, "workshop", "needs").maxWords = 150;
     });
     expect((await preview("chair", own.config, own.token)).json).toMatchObject({
       changes: [{ path: "submissionTypes.workshop.fields.needs.maxWords", after: 150 }],
-      forbidden: [],
       canSave: true,
     });
   });
@@ -409,7 +439,6 @@ describe("what a chair may change", () => {
     });
     expect((await preview("chair", cleared.config, cleared.token)).json).toMatchObject({
       changes: [{ path: "location.pt" }],
-      forbidden: [],
       canSave: true,
     });
     const written = await edited("chair", (c) => {
@@ -419,7 +448,7 @@ describe("what a chair may change", () => {
       };
     });
     const reviewed = await preview("chair", written.config, written.token);
-    expect(reviewed.json).toMatchObject({ forbidden: [], canSave: true });
+    expect(reviewed.json).toMatchObject({ canSave: true });
     expect(reviewed.json.changes.map((c: { path: string }) => c.path)).toEqual([
       "submissionTypes.workshop.fields.needs.help.en",
       "submissionTypes.workshop.fields.needs.help.es",
@@ -439,12 +468,20 @@ describe("reviewing before saving", () => {
     expect(res.json).toMatchObject({
       token,
       stale: false,
-      scope: "stage_one",
       issues: [],
-      forbidden: [],
       blocked: null,
       canSave: true,
     });
+    // All that a review holds: nothing about who may change what.
+    expect(Object.keys(res.json).sort()).toEqual([
+      "blocked",
+      "canSave",
+      "changes",
+      "issues",
+      "stale",
+      "token",
+      "warnings",
+    ]);
     expect(res.json.changes).toEqual([
       { path: "contactEmail", before: "call@example.org", after: "elsewhere@example.org" },
       { path: "submissionTypes.panel.team.max", before: 6, after: 8 },
@@ -606,7 +643,7 @@ describe("submitted work stays valid", () => {
     });
     const blocked = { count: 2, byCode: { too_many_words: 2 }, submissionIds: [theirs] };
     const reviewed = await preview("chair", config, token);
-    expect(reviewed.json).toMatchObject({ blocked, canSave: false, forbidden: [], issues: [] });
+    expect(reviewed.json).toMatchObject({ blocked, canSave: false, issues: [] });
     const res = await save("chair", config, token);
     expect(res.status).toBe(409);
     expect(res.json).toEqual({ error: "submitted_work_invalid", blocked });
@@ -634,6 +671,28 @@ describe("submitted work stays valid", () => {
       byCode: { too_many_words: 1, team_size: 2 },
       submissionIds: [theirs],
     });
+  });
+
+  it("holds a chair to it beyond what the screen offers: a format in use cannot be removed", async () => {
+    const rowsBefore = (await configAudit()).length;
+    const { config, token } = await edited("chair", (c) => {
+      c.submissionTypes = c.submissionTypes.filter((type) => type.key !== "talk");
+    });
+    // Both submitted talks would be of a format the conference no longer has.
+    const blocked = { count: 2, byCode: { unknown_type: 2 }, submissionIds: [theirs] };
+    const reviewed = await preview("chair", config, token);
+    expect(reviewed.json).toMatchObject({
+      changes: [{ path: "submissionTypes" }],
+      blocked,
+      canSave: false,
+      issues: [],
+    });
+    const res = await save("chair", config, token);
+    expect(res.status).toBe(409);
+    expect(res.json).toEqual({ error: "submitted_work_invalid", blocked });
+    expect((await settings("chair")).json.token).toBe(token);
+    expect((await configAudit()).length).toBe(rowsBefore);
+    expect(findLeaks([reviewed.json, res.json], markers)).toEqual([]);
   });
 
   it("saves a change that leaves submitted work valid", async () => {

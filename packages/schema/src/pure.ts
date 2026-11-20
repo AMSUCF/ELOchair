@@ -8,6 +8,7 @@ export { dressedAs } from "./dressing";
 export { hasStrayInvisible, removeStrayInvisible } from "./invisible";
 export { LIMITS } from "./limits";
 export { effectiveBlindMode, findType } from "./lookup";
+export { CONFERENCE_PHASES, nextPhase, previousPhase } from "./phases";
 export {
   type IdentityHint,
   normalizeWords,
@@ -17,7 +18,6 @@ export {
 } from "./selfid";
 export {
   type ConfigChange,
-  chairMayChange,
   configChanges,
   keyedPath,
   type Setting,

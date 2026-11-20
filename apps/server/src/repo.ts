@@ -165,7 +165,10 @@ export type PhaseMoveResult =
   | { ok: false; code: "not_found" }
   /** The move is not forward and was not forced with a reason. */
   | { ok: false; code: "phase_backwards"; from: string }
-  /** The phase changed between the check and the update (only possible outside a transaction). */
+  /**
+   * The conference is not in the phase the caller said it was moving from (`move.from`), or the
+   * phase changed between the check and the update (only possible outside a transaction).
+   */
   | { ok: false; code: "stale"; from: string };
 
 /**
@@ -173,11 +176,15 @@ export type PhaseMoveResult =
  * checks the move against the phase the row holds now (not one read before the lock), and
  * updates it only while it still holds that phase. The caller audits the move in the same
  * transaction. Every phase change (API and CLI) goes through here.
+ *
+ * `move.from` is the phase the caller believes the conference is in. When it is given and is no
+ * longer true, nothing moves: a step confirmed on a page that is out of date must not become a
+ * jump of several phases, forced or not.
  */
 export async function movePhase(
   tx: Db,
   conferenceId: string,
-  move: { to: string; force?: boolean; reason?: string | null; now: Date },
+  move: { to: string; from?: string; force?: boolean; reason?: string | null; now: Date },
 ): Promise<PhaseMoveResult> {
   const [row] = await tx
     .select({ phase: conferences.phase })
@@ -186,6 +193,7 @@ export async function movePhase(
     .for("update");
   if (!row) return { ok: false, code: "not_found" };
   const from = row.phase;
+  if (move.from !== undefined && move.from !== from) return { ok: false, code: "stale", from };
   if (!phaseMoveAllowed(from, move.to, move.force, move.reason)) {
     return { ok: false, code: "phase_backwards", from };
   }

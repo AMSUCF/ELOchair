@@ -227,6 +227,38 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   manageOverCap: "{n} personas por encima del límite de presentaciones",
   manageNoChair: "{n} que ninguna persona coordinadora puede gestionar",
   manageIssues: "Problemas",
+  phaseTitle: "Fase del congreso",
+  phaseNow: "El congreso está en la fase «{phase}».",
+  phaseNext: "Pasar a «{phase}»",
+  phaseBack: "Volver a «{phase}»",
+  phaseAskNext: "¿Pasar el congreso a «{phase}»?",
+  phaseAskBack: "¿Devolver el congreso a «{phase}»?",
+  phaseDoNext: "Sí, pasarlo",
+  phaseDoBack: "Sí, devolverlo",
+  phaseCancel: "Cancelar",
+  phaseReason: "Motivo para volver atrás",
+  phaseReasonHint: "Una línea. Queda registrado con el cambio.",
+  phaseReasonNeeded: "Escribe el motivo en una línea, con al menos una letra o un número.",
+  phaseMoved: "El congreso está ahora en la fase «{phase}».",
+  phaseOutdated: "La fase no se cambió: ya había cambiado. Aquí se muestra como está ahora.",
+  phaseNoAccess: "Solo quienes presiden este congreso pueden cambiar su fase.",
+  phaseUnconfirmed: "El servidor no confirmó el cambio. Inténtalo de nuevo.",
+  phaseDoes_draft:
+    "El congreso queda oculto para todo el mundo salvo para quienes lo presiden y los agentes que hayan configurado para él, y nadie puede iniciar, editar, enviar ni retirar una propuesta; cada persona sigue viendo sus propias propuestas.",
+  phaseDoes_cfp_open:
+    "El congreso es público, y se pueden iniciar, editar y enviar propuestas entre las fechas de apertura y de cierre que figuran en la configuración.",
+  phaseDoes_reviewing:
+    "La convocatoria está cerrada digan lo que digan las fechas: nadie puede iniciar, editar ni enviar una propuesta, ni confirmar una invitación, pero una propuesta enviada todavía se puede retirar.",
+  phaseDoes_deciding:
+    "Lo que cada persona puede hacer es lo mismo que en «{reviewing}»: la convocatoria está cerrada y una propuesta enviada todavía se puede retirar; la lista de congresos muestra la nueva fase.",
+  phaseDoes_confirming:
+    "La convocatoria está cerrada y una propuesta enviada ya no se puede retirar.",
+  phaseDoes_scheduling:
+    "Lo que cada persona puede hacer es lo mismo que en «{confirming}»: la convocatoria está cerrada y una propuesta enviada no se puede retirar; la lista de congresos muestra la nueva fase.",
+  phaseDoes_published:
+    "Esto todavía no publica nada: lo que cada persona puede hacer es lo mismo que en «{confirming}», y la lista de congresos muestra la nueva fase.",
+  phaseDoes_archived:
+    "Esto todavía no oculta ni elimina nada: lo que cada persona puede hacer es lo mismo que en «{confirming}», y la lista de congresos muestra la nueva fase.",
   issueLabel_unknown_type: "Formato desconocido",
   issueLabel_unknown_track: "Eje desconocido",
   issueLabel_unknown_topic: "Tema desconocido",

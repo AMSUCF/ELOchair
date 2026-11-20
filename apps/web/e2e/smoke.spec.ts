@@ -147,6 +147,22 @@ test("retrying after a network error keeps the link working", async ({ page, req
   await page.unroute("**/api/auth/verify");
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
+
+  // Checked here because this test has a track chair signed in, and the suite is close to the
+  // server's limit on sign-in links: a track chair manages submissions, and is offered neither
+  // the conference's settings nor its phase (those are the chairs'; see submission.spec.ts).
+  await expect(page.getByText(/^sandbox: Track chair/)).toBeVisible();
+  const me = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/me");
+  await page.goto("/en/c/sandbox/manage");
+  await expect(page.getByRole("heading", { level: 1, name: "Manage submissions" })).toBeVisible();
+  await expect(page.getByText(/^Showing \d+ of \d+/)).toBeVisible();
+  // Once the page knows who is looking, and has nothing more to load.
+  await me;
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("link", { name: "Download proposals (CSV)" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Conference settings" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Conference phase" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^(Move to|Go back to) / })).toHaveCount(0);
 });
 
 test("a code from an earlier email still works after reloading the sign-in page", async ({

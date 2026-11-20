@@ -220,6 +220,45 @@ export const submissionEn = {
   manageOverCap: "{n} people over the presenter cap",
   manageNoChair: "{n} that no chair can manage",
   manageIssues: "Problems",
+  /*
+   * The phase control on "Manage submissions", for chairs. Each phaseDoes_ sentence says what
+   * its phase does in the code as it is (visible() in the server's routes/conferences.ts,
+   * isCallOpen, WITHDRAW_PHASES, the phase badge on the home page), and reads true whether the
+   * conference arrives from the phase before or from the one after. Check a sentence against
+   * the code before changing it, and change it when the code changes. {reviewing} and
+   * {confirming} are the names of those phases (phase_reviewing, phase_confirming).
+   */
+  phaseTitle: "Conference phase",
+  phaseNow: "The conference is in the phase “{phase}”.",
+  phaseNext: "Move to “{phase}”",
+  phaseBack: "Go back to “{phase}”",
+  phaseAskNext: "Move the conference to “{phase}”?",
+  phaseAskBack: "Take the conference back to “{phase}”?",
+  phaseDoNext: "Yes, move it",
+  phaseDoBack: "Yes, take it back",
+  phaseCancel: "Cancel",
+  phaseReason: "Reason for going back",
+  phaseReasonHint: "One line. It is recorded with the change.",
+  phaseReasonNeeded: "Write the reason in one line, with at least one letter or digit.",
+  phaseMoved: "The conference is now in the phase “{phase}”.",
+  phaseOutdated: "The phase was not moved: it had already changed. It is shown here as it is now.",
+  phaseNoAccess: "Only the chairs of this conference can move its phase.",
+  phaseUnconfirmed: "The server did not confirm the move. Please try again.",
+  phaseDoes_draft:
+    "The conference is hidden from everyone but its chairs and any agents they have set up for it, and nobody can start, edit, submit or withdraw a proposal; people still see their own proposals.",
+  phaseDoes_cfp_open:
+    "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings.",
+  phaseDoes_reviewing:
+    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn.",
+  phaseDoes_deciding:
+    "What people can do is the same as in “{reviewing}”: the call is closed and a submitted proposal can still be withdrawn; the list of conferences shows the new phase.",
+  phaseDoes_confirming: "The call is closed and a submitted proposal can no longer be withdrawn.",
+  phaseDoes_scheduling:
+    "What people can do is the same as in “{confirming}”: the call is closed and a submitted proposal cannot be withdrawn; the list of conferences shows the new phase.",
+  phaseDoes_published:
+    "This does not publish anything yet: what people can do is the same as in “{confirming}”, and the list of conferences shows the new phase.",
+  phaseDoes_archived:
+    "This does not hide or remove anything yet: what people can do is the same as in “{confirming}”, and the list of conferences shows the new phase.",
   /* Short labels for issue codes on the Manage cards (labels.ts issueLabelKey). */
   issueLabel_unknown_type: "Unknown format",
   issueLabel_unknown_track: "Unknown track",

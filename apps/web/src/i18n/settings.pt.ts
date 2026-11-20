@@ -8,7 +8,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsIntro:
     "Altere aqui os dados, as datas, os limites e os textos do congresso. Revê cada alteração antes de a guardar, e cada gravação fica registada.",
   settingsScopeNote:
-    "Uma pessoa administradora do congresso acrescenta ou retira formatos e campos, e altera os idiomas, o fuso horário, a configuração da revisão e os acordos.",
+    "Os formatos, os campos e os idiomas são acrescentados ou retirados importando uma configuração no servidor, e não aqui.",
   settingsBackToManage: "Voltar às submissões",
   settingsSectionConference: "O congresso",
   settingsSectionDeadlines: "Prazos",
@@ -88,7 +88,6 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "Isto fecha a chamada assim que guardar: ninguém poderá iniciar, editar ou submeter uma proposta, nem confirmar um convite para uma.",
   settingsWarnOpens: "Isto abre a chamada assim que guardar.",
   settingsWarnPast: "«{deadline}» ficaria no passado.",
-  settingsForbidden: "Só uma pessoa administradora do congresso pode alterar: {paths}.",
   settingsStale:
     "Outra pessoa alterou esta configuração desde que a abriu. Volte a carregá-la para continuar; o que escreveu continua no formulário.",
   settingsReload: "Voltar a carregar a configuração",

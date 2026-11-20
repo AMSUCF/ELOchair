@@ -1,15 +1,16 @@
 import type {
   ConferenceConfig,
+  ConferencePhase,
   ContributionStatus,
   SubmissionIssue,
   SubmissionStatus,
 } from "@elochair/schema";
-import { localize } from "@elochair/schema/pure";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { localize, nextPhase, previousPhase, removeStrayInvisible } from "@elochair/schema/pure";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { api, type ConferenceDetail, type Me } from "../api";
+import { type ApiResult, api, type ConferenceDetail, type Me } from "../api";
 import { type MessageKey, useT } from "../i18n";
-import { type IssueCode, issueLabelKey, statusKey } from "../labels";
+import { type IssueCode, issueLabelKey, phaseDoesKey, phaseKey, statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -148,6 +149,44 @@ function useListing(slug: string, query: string) {
 }
 
 /**
+ * The conference, which a phase move reads again. Unlike useApi, what is on the page stays there
+ * until the new answer arrives, so that the phase control keeps its place and the focus it has.
+ */
+function useConference(slug: string) {
+  const url = `/api/conferences/${slug}`;
+  const [conf, setConf] = useState<ApiResult<ConferenceDetail> | null>(null);
+  /** The conference this page is on now: an answer about another one is dropped. */
+  const shown = useRef(url);
+
+  useEffect(() => {
+    shown.current = url;
+    setConf(null);
+    api<ConferenceDetail>(url).then((r) => {
+      if (shown.current === url) setConf(r);
+    });
+  }, [url]);
+
+  /**
+   * After a phase move. `moved` is the phase the server answered with, shown at once; then the
+   * conference is read again, so that all the page has of it is current. A reading that fails
+   * leaves the page as it is.
+   */
+  const reread = useCallback(
+    async (moved?: ConferencePhase) => {
+      if (shown.current !== url) return;
+      if (moved) {
+        setConf((now) => (now?.ok ? { ...now, data: { ...now.data, phase: moved } } : now));
+      }
+      const r = await api<ConferenceDetail>(url);
+      if (r.ok && shown.current === url) setConf(r);
+    },
+    [url],
+  );
+
+  return { conf, reread };
+}
+
+/**
  * One overview figure: the catalog's sentence ("{n} drafts in progress") with its number set
  * large. The sentence stays whole, in the order each language wants.
  */
@@ -167,7 +206,7 @@ function Figure({ k, n }: { k: MessageKey; n: number }) {
 export function ManagePage() {
   const { slug = "" } = useParams();
   const { lang, t } = useT();
-  const conf = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
+  const { conf, reread } = useConference(slug);
   const overview = useApi<Overview>(`/api/conferences/${slug}/overview`);
   const cap = useApi<{ over: { personId: string }[] }>(
     `/api/conferences/${slug}/cap-report?statuses=submitted,accepted,confirmed,published`,
@@ -175,7 +214,8 @@ export function ManagePage() {
   const me = useApi<Me>("/api/me");
   const [query, setQuery] = useState("status=submitted");
   const { listing, failed, loadingMore, moreFailed, more } = useListing(slug, query);
-  // The conference's settings are for its chairs and admins; track chairs manage submissions only.
+  // The conference's settings and its phase are for its chairs: the chair and admin roles and
+  // site admins, who are one group. Track chairs manage submissions only.
   const mayConfigure =
     me?.ok &&
     me.data.kind === "person" &&
@@ -235,6 +275,7 @@ export function ManagePage() {
           </Link>
         )}
       </p>
+      {mayConfigure && <PhaseControl slug={slug} phase={conf.data.phase} onMoved={reread} />}
       <Filters config={config} onApply={setQuery} />
       {failed ? (
         <p role="alert">{t("errorGeneric")}</p>
@@ -301,6 +342,212 @@ export function ManagePage() {
         </>
       )}
     </>
+  );
+}
+
+type PhaseStep = "next" | "back";
+
+/**
+ * Where the conference is, and the one step forward or back, for its chairs (spec 02, §1.3).
+ * A button moves nothing: it opens a confirmation in its place, which says in a sentence what
+ * the phase does. Going back needs a reason, which the server keeps with the move.
+ */
+function PhaseControl({
+  slug,
+  phase,
+  onMoved,
+}: {
+  slug: string;
+  phase: ConferencePhase;
+  /** The phase is not what this page shows any more; `moved` when the server said what it is. */
+  onMoved: (moved?: ConferencePhase) => void;
+}) {
+  const { t } = useT();
+  /**
+   * The confirmation that is open, if one is, and the phase it asks about. That phase is kept
+   * as it was asked: what is confirmed is what the question said, whatever the page learns since.
+   */
+  const [asking, setAsking] = useState<{
+    step: PhaseStep;
+    to: ConferencePhase;
+    /** The phase the page showed when the question was asked: the server moves only from it. */
+    from: ConferencePhase;
+  } | null>(null);
+  const [reason, setReason] = useState("");
+  const [reasonRefused, setReasonRefused] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  /** What takes focus once the confirmation has opened or closed. */
+  const focusAfter = useRef<"question" | "status" | PhaseStep | null>(null);
+  const questionRef = useRef<HTMLHeadingElement>(null);
+  const reasonRef = useRef<HTMLInputElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+
+  // After every render: what was asked to take focus exists only once it has been rendered.
+  useEffect(() => {
+    const to = focusAfter.current;
+    if (!to) return;
+    focusAfter.current = null;
+    const target = { question: questionRef, status: statusRef, next: nextRef, back: backRef }[to];
+    target.current?.focus();
+  });
+
+  // One step either way, in the order of the phases; nothing after the last or before the first.
+  const next = nextPhase(phase);
+  const back = previousPhase(phase);
+  const name = (p: ConferencePhase) => t(phaseKey(p));
+  // The sentences name other phases as this language's catalog does.
+  const does = (p: ConferencePhase) =>
+    t(phaseDoesKey(p), { reviewing: name("reviewing"), confirming: name("confirming") });
+
+  function ask(step: PhaseStep, to: ConferencePhase) {
+    setMessage("");
+    setReason("");
+    setReasonRefused(false);
+    focusAfter.current = "question";
+    setAsking({ step, to, from: phase });
+  }
+
+  /** Close the confirmation and say why at the status line, which takes focus. */
+  function close(text: string) {
+    focusAfter.current = "status";
+    setAsking(null);
+    setMessage(text);
+  }
+
+  function cancel() {
+    if (inFlight.current) return;
+    // Back to the button that opened the confirmation, with nothing left to say.
+    focusAfter.current = asking?.step ?? null;
+    setAsking(null);
+    setMessage("");
+  }
+
+  function refuseReason() {
+    setReasonRefused(true);
+    reasonRef.current?.focus();
+  }
+
+  async function confirm(e: FormEvent) {
+    e.preventDefault();
+    if (!asking || inFlight.current) return;
+    const { step, to, from } = asking;
+    // As for a name: what cannot be seen is taken out before the server refuses it.
+    const why = removeStrayInvisible(reason).trim();
+    if (step === "back" && !why) return refuseReason();
+    inFlight.current = true;
+    setBusy(true);
+    setMessage("");
+    const res = await api<{ phase: ConferencePhase }>(`/api/conferences/${slug}/phase`, {
+      method: "PUT",
+      body: step === "back" ? { phase: to, from, force: true, reason: why } : { phase: to, from },
+    });
+    inFlight.current = false;
+    setBusy(false);
+    if (res.ok) {
+      close(t("phaseMoved", { phase: name(res.data.phase) }));
+      return onMoved(res.data.phase);
+    }
+    // A reason the server does not take (nothing in it but punctuation, say).
+    if (res.status === 400 && step === "back") return refuseReason();
+    if (res.status === 409) {
+      // The phase is no longer the one this page showed (another chair moved it, or an earlier
+      // try whose answer was lost did): what was asked no longer applies. Show it as it is.
+      close(t("phaseOutdated"));
+      return onMoved();
+    }
+    if (res.status === 403) return close(t("phaseNoAccess"));
+    // No answer, or not one that says what happened: the confirmation stays, to be tried again.
+    setMessage(t("phaseUnconfirmed"));
+  }
+
+  return (
+    <section className="phase" aria-labelledby="phase-title">
+      <h2 id="phase-title">{t("phaseTitle")}</h2>
+      <p>{t("phaseNow", { phase: name(phase) })}</p>
+      {asking ? (
+        <form className="stack wide" onSubmit={confirm} noValidate>
+          <h3 tabIndex={-1} ref={questionRef}>
+            {t(asking.step === "next" ? "phaseAskNext" : "phaseAskBack", {
+              phase: name(asking.to),
+            })}
+          </h3>
+          <p id="phase-does">{does(asking.to)}</p>
+          {asking.step === "back" && (
+            <div className="stack wide">
+              <label htmlFor="phase-reason">{t("phaseReason")}</label>
+              <input
+                id="phase-reason"
+                ref={reasonRef}
+                type="text"
+                maxLength={500}
+                required
+                autoComplete="off"
+                value={reason}
+                aria-invalid={reasonRefused ? "true" : undefined}
+                aria-describedby={
+                  reasonRefused ? "phase-reason-hint phase-reason-error" : "phase-reason-hint"
+                }
+                onChange={(e) => {
+                  setReason(e.target.value);
+                  setReasonRefused(false);
+                }}
+              />
+              <p className="setting-hint" id="phase-reason-hint">
+                {t("phaseReasonHint")}
+              </p>
+              {reasonRefused && (
+                <p className="field-error" id="phase-reason-error">
+                  {t("phaseReasonNeeded")}
+                </p>
+              )}
+            </div>
+          )}
+          <p className="actions">
+            {/* aria-disabled while the move is on its way, so focus stays on the button. */}
+            <button
+              type="submit"
+              aria-describedby="phase-does"
+              aria-disabled={busy ? "true" : undefined}
+            >
+              {t(asking.step === "next" ? "phaseDoNext" : "phaseDoBack")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              aria-disabled={busy ? "true" : undefined}
+              onClick={cancel}
+            >
+              {t("phaseCancel")}
+            </button>
+          </p>
+        </form>
+      ) : (
+        <p className="actions">
+          {next && (
+            <button type="button" ref={nextRef} onClick={() => ask("next", next)}>
+              {t("phaseNext", { phase: name(next) })}
+            </button>
+          )}
+          {back && (
+            <button
+              type="button"
+              className="secondary"
+              ref={backRef}
+              onClick={() => ask("back", back)}
+            >
+              {t("phaseBack", { phase: name(back) })}
+            </button>
+          )}
+        </p>
+      )}
+      <p className="status-line" role="status" tabIndex={-1} ref={statusRef}>
+        {message}
+      </p>
+    </section>
   );
 }
 
