@@ -70,6 +70,11 @@ export const submissionEn = {
   editUnsubmit: "Return to draft",
   editWithdraw: "Withdraw",
   editWithdrawConfirm: "Withdraw this proposal? This cannot be undone.",
+  editWithdrawOver:
+    "This proposal can no longer be withdrawn here. To withdraw it, write to {email}.",
+  chairTakingPart: "Taking part",
+  chairSubmittedAt: "Submitted",
+  chairUpdatedAt: "Last changed",
   editDelete: "Delete draft",
   editDeleteConfirm: "Delete this draft? Pending invitations will be cancelled.",
   editStale:
@@ -246,7 +251,7 @@ export const submissionEn = {
   phaseNoAccess: "Only the chairs of this conference can move its phase.",
   phaseUnconfirmed: "The server did not confirm the move. Please try again.",
   phaseDoes_draft:
-    "The conference is hidden from everyone but its chairs, and nobody can start, edit, submit or withdraw a proposal; people still see their own proposals.",
+    "The conference is hidden from everyone but its chairs and any agents they have set up for it, and nobody can start, edit, submit or withdraw a proposal; people still see their own proposals.",
   phaseDoes_cfp_open:
     "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings.",
   phaseDoes_reviewing:

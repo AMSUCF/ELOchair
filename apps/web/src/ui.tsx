@@ -1,3 +1,4 @@
+import type { SubmissionStatus } from "@elochair/schema";
 import { localizeWithLang } from "@elochair/schema/pure";
 import {
   createContext,
@@ -8,6 +9,7 @@ import {
   useRef,
 } from "react";
 import { type Lang, type MessageKey, translate, useT } from "./i18n";
+import { statusKey } from "./labels";
 
 /**
  * Set by the shell whenever the route changes; the next page heading to render takes focus.
@@ -130,4 +132,10 @@ export function Stat({ value, label }: { value: ReactNode; label: string }) {
       <span className="stat-value">{value}</span> <span className="stat-label">{label}</span>
     </li>
   );
+}
+
+/** A submission's status, as a coloured badge. */
+export function StatusBadge({ status }: { status: SubmissionStatus }) {
+  const { t } = useT();
+  return <span className={`badge status-${status}`}>{t(statusKey(status))}</span>;
 }

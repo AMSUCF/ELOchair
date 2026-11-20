@@ -5,6 +5,7 @@ import type {
   ContributionStatus,
   LocalizedText,
   SelfIdKind,
+  SubmissionIssue,
   SubmissionStatus,
 } from "@elochair/schema";
 
@@ -100,7 +101,7 @@ export type Contributor = {
 
 /** The submitter or invitee view of a submission (see packages/policy projections). */
 export type MySubmission = {
-  view: "submitter" | "invitee" | "chair";
+  view: "submitter" | "invitee";
   id: string;
   conferenceId: string;
   ownerPersonId: string;
@@ -118,6 +119,22 @@ export type MySubmission = {
   updatedAt: string;
   submittedAt: string | null;
   contributors: Contributor[];
+};
+
+/**
+ * The chair view of a submission (the chair projection in packages/policy): what the owner
+ * sees, with each person's contact details and the problems the list flags.
+ */
+export type ChairSubmission = Omit<MySubmission, "view" | "contributors"> & {
+  view: "chair";
+  contributors: (Contributor & {
+    country: string | null;
+    /** What the owner typed for someone who has not confirmed. */
+    invitedEmail: string | null;
+    invitedName: string | null;
+  })[];
+  issueCodes: SubmissionIssue["code"][];
+  selfIdWarningCount: number;
 };
 
 /**

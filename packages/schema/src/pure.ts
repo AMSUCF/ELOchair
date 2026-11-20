@@ -35,7 +35,7 @@ export {
   ROLE_WORDS,
   UNNAMED_OWNER,
 } from "./messages";
-export { CONFERENCE_PHASES, nextPhase, previousPhase } from "./phases";
+export { CONFERENCE_PHASES, canWithdrawIn, nextPhase, previousPhase } from "./phases";
 export {
   type IdentityHint,
   normalizeWords,
