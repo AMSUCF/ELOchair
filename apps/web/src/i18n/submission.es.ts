@@ -73,6 +73,11 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   editUnsubmit: "Volver a borrador",
   editWithdraw: "Retirar",
   editWithdrawConfirm: "¿Retirar esta propuesta? No se puede deshacer.",
+  editWithdrawOver:
+    "Esta propuesta ya no se puede retirar aquí. Para retirarla, escribe a {email}.",
+  chairTakingPart: "Participación",
+  chairSubmittedAt: "Enviada",
+  chairUpdatedAt: "Último cambio",
   editDelete: "Eliminar borrador",
   editDeleteConfirm: "¿Eliminar este borrador? Se cancelarán las invitaciones pendientes.",
   editStale:

@@ -1,5 +1,6 @@
 import type { ConferenceConfig, CustomField, SelfIdKind, SubmissionType } from "@elochair/schema";
 import {
+  canWithdrawIn,
   countWords,
   dressedAs,
   effectiveBlindMode,
@@ -12,6 +13,7 @@ import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import {
   type ApiResult,
   api,
+  type ChairSubmission,
   type Check,
   type Contributor,
   type Issue,
@@ -32,11 +34,12 @@ import {
   RestoredNotice,
 } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
-import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey, statusKey } from "../labels";
-import { Localized, PageHeading } from "../ui";
+import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey } from "../labels";
+import { Localized, PageHeading, StatusBadge } from "../ui";
 import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
 import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsavedProposal";
 import { useUnsaved } from "../useUnsaved";
+import { ChairProposal } from "./ChairProposal";
 import { ReviewerProposal } from "./ReviewerProposal";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
@@ -117,14 +120,14 @@ const withoutLang = (pathname: string) => pathname.replace(/^\/[a-z]{2}(?=\/|$)/
 export function SubmissionPage() {
   const { id = "" } = useParams();
   const { t } = useT();
-  const [sub, setSub] = useState<MySubmission | ReviewerSubmission | null>(null);
+  const [sub, setSub] = useState<MySubmission | ChairSubmission | ReviewerSubmission | null>(null);
   const [conf, setConf] = useState<ConfInfo | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async () => {
     const [s, k, m] = await Promise.all([
-      api<MySubmission | ReviewerSubmission>(`/api/submissions/${id}`),
+      api<MySubmission | ChairSubmission | ReviewerSubmission>(`/api/submissions/${id}`),
       api<ConfInfo>(`/api/submissions/${id}/conference`),
       api<Me>("/api/me"),
     ]);
@@ -153,6 +156,10 @@ export function SubmissionPage() {
   // A reviewer is given less than everyone else (no people, in anonymized review): its own view.
   if (sub.view === "reviewer") {
     return <ReviewerProposal key={sub.id} sub={sub} config={conf.config} />;
+  }
+  // A chair reads the whole proposal: what the exports hold, on one page.
+  if (sub.view === "chair") {
+    return <ChairProposal key={sub.id} sub={sub} slug={conf.slug} config={conf.config} />;
   }
   const isOwner = me !== null && sub.ownerPersonId === me.id;
   // A new copy from the server (another proposal, or a reload) starts a fresh editor.
@@ -185,11 +192,6 @@ function Deadline({ config, open }: { config: ConferenceConfig; open: boolean })
       {t("editDeadline", { date: `${at}${mine}` })}
     </p>
   );
-}
-
-function StatusBadge({ status }: { status: MySubmission["status"] }) {
-  const { t } = useT();
-  return <span className={`badge status-${status}`}>{t(statusKey(status))}</span>;
 }
 
 /** Live self-identification hints, computed in the browser from what the owner already sees. */
@@ -974,18 +976,22 @@ function Editor({
           </button>
         </div>
       )}
-      {sub.status === "submitted" && (
-        <div className="actions">
-          <button
-            type="button"
-            className="danger"
-            disabled={locked}
-            onClick={() => simple("/withdraw", t("status_withdrawn"), t("editWithdrawConfirm"))}
-          >
-            {t("editWithdraw")}
-          </button>
-        </div>
-      )}
+      {sub.status === "submitted" &&
+        // Withdrawing follows the phase alone (spec 02, §1.3): past it, a button would only fail.
+        (canWithdrawIn(conf.phase) ? (
+          <div className="actions">
+            <button
+              type="button"
+              className="danger"
+              disabled={locked}
+              onClick={() => simple("/withdraw", t("status_withdrawn"), t("editWithdrawConfirm"))}
+            >
+              {t("editWithdraw")}
+            </button>
+          </div>
+        ) : (
+          <p className="meta">{t("editWithdrawOver", { email: config.contactEmail })}</p>
+        ))}
       <p>
         <Link className="block-link" to={`/${lang}/my`}>
           {t("navMySubmissions")}
