@@ -1,8 +1,17 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Key } from "./config";
+import { roleInvitationState } from "./domain";
 import { LocalizedText } from "./i18n";
-import { AnswerInvitationInput, OneLine, ProfileInput, UpdateSubmissionInput } from "./inputs";
+import {
+  AnswerInvitationInput,
+  OneLine,
+  ProfileInput,
+  RoleInvitationAnswerInput,
+  RoleInvitationInput,
+  RoleRemovalInput,
+  UpdateSubmissionInput,
+} from "./inputs";
 import { removeStrayInvisible } from "./invisible";
 
 const name = OneLine(200);
@@ -217,5 +226,139 @@ describe("what the browser sends, the server accepts", () => {
       }),
       { numRuns: 30_000 },
     );
+  });
+});
+
+describe("invitations to a role (spec 03, §1.2)", () => {
+  const ok = (schema: { safeParse: (v: unknown) => { success: boolean } }, v: unknown) =>
+    schema.safeParse(v).success;
+  const reviewer = {
+    email: "ana@example.org",
+    role: "reviewer",
+    pools: ["scientific"],
+    lang: "es",
+  };
+  const chair = { email: "ana@example.org", role: "chair", lang: "pt" };
+
+  it("an invitation is an address, a role, a reviewer's pools and a language, and nothing else", () => {
+    expect(RoleInvitationInput.parse(reviewer)).toEqual(reviewer);
+    // A chair has no pools: none sent is none.
+    expect(RoleInvitationInput.parse(chair)).toEqual({ ...chair, pools: [] });
+    expect(ok(RoleInvitationInput, { ...chair, name: "Ana María Pérez-Gómez" })).toBe(true);
+    for (const more of [
+      { personId: "00000000-0000-4000-8000-000000000001" },
+      { scope: [] },
+      { expiresAt: "2099-01-01T00:00:00Z" },
+      { token: "x".repeat(40) },
+      { affiliation: "Somewhere" },
+    ]) {
+      expect(ok(RoleInvitationInput, { ...chair, ...more }), JSON.stringify(more)).toBe(false);
+    }
+  });
+
+  it("offers a reviewer's and a chair's role only, a reviewer with pools and a chair without", () => {
+    for (const role of ["track_chair", "admin", "site_admin", "owner", ""]) {
+      expect(ok(RoleInvitationInput, { ...chair, role }), role).toBe(false);
+    }
+    expect(ok(RoleInvitationInput, { ...reviewer, pools: [] })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...reviewer, pools: undefined })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...reviewer, pools: ["a", "a"] })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...reviewer, pools: ["Not A Key"] })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...chair, pools: ["scientific"] })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...chair, lang: "fr" })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...chair, email: "two@example.org, three@example.org" })).toBe(
+      false,
+    );
+    // The name is one line of ordinary text, like every name.
+    expect(ok(RoleInvitationInput, { ...chair, name: "Two\nlines" })).toBe(false);
+    expect(ok(RoleInvitationInput, { ...chair, name: "Hid\u202Eden" })).toBe(false);
+  });
+
+  it("an answer is a token and a choice, with what the invitee says of themselves", () => {
+    const token = "role_".padEnd(48, "x");
+    expect(ok(RoleInvitationAnswerInput, { token, answer: "decline" })).toBe(true);
+    expect(
+      ok(RoleInvitationAnswerInput, {
+        token,
+        answer: "accept",
+        displayName: "Ana Pérez",
+        languages: ["pt", "en"],
+        maxLoad: 30,
+      }),
+    ).toBe(true);
+    // Nothing in it says who answers, or what is given: unknown keys are refused.
+    for (const more of [
+      { email: "someone@example.org" },
+      { personId: "00000000-0000-4000-8000-000000000001" },
+      { role: "chair" },
+      { pools: ["scientific"] },
+      { conferenceId: "00000000-0000-4000-8000-000000000002" },
+    ]) {
+      expect(
+        ok(RoleInvitationAnswerInput, { token, answer: "accept", ...more }),
+        JSON.stringify(more),
+      ).toBe(false);
+    }
+    for (const bad of [
+      { answer: "confirm" },
+      { token: "short" },
+      { maxLoad: 0 },
+      { maxLoad: 31 },
+      { maxLoad: 2.5 },
+      { maxLoad: "8" },
+      { languages: [] },
+      { languages: ["fr"] },
+      { languages: ["en", "en"] },
+      { displayName: " " },
+    ]) {
+      expect(
+        ok(RoleInvitationAnswerInput, { token, answer: "accept", ...bad }),
+        JSON.stringify(bad),
+      ).toBe(false);
+    }
+  });
+
+  it("a removal sends the number of proposals the confirmation showed, or nothing", () => {
+    expect(RoleRemovalInput.parse({})).toEqual({});
+    expect(RoleRemovalInput.parse({ assignments: 0 })).toEqual({ assignments: 0 });
+    for (const bad of [
+      { assignments: -1 },
+      { assignments: 1.5 },
+      { assignments: "3" },
+      { force: true },
+    ]) {
+      expect(ok(RoleRemovalInput, bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("an invitation waits until it expires, unless it was answered or cancelled", () => {
+    const now = new Date("2031-03-01T12:00:00Z");
+    const at = (ms: number) => new Date(now.getTime() + ms).toISOString();
+    const state = (v: {
+      answer?: "accepted" | "declined";
+      cancelled?: boolean;
+      expires?: number;
+    }) =>
+      roleInvitationState(
+        {
+          answer: v.answer ?? null,
+          cancelledAt: v.cancelled ? at(-1000) : null,
+          expiresAt: at(v.expires ?? 1000),
+        },
+        now,
+      );
+    expect(state({})).toBe("waiting");
+    expect(state({ expires: 1 })).toBe("waiting");
+    // The moment it expires, it has expired.
+    expect(state({ expires: 0 })).toBe("expired");
+    expect(state({ expires: -1000 })).toBe("expired");
+    expect(state({ answer: "declined" })).toBe("declined");
+    expect(state({ answer: "accepted", expires: -1000 })).toBe("accepted");
+    expect(state({ cancelled: true })).toBe("cancelled");
+    // A declined or expired one that a chair took off the list is cancelled; an accepted one
+    // stays accepted, because the role it gave is what is removed.
+    expect(state({ answer: "declined", cancelled: true })).toBe("cancelled");
+    expect(state({ expires: -1000, cancelled: true })).toBe("cancelled");
+    expect(state({ answer: "accepted", cancelled: true })).toBe("accepted");
   });
 });

@@ -15,10 +15,12 @@ import { grantRole } from "./repo";
 import {
   type Answer,
   answeredMessage,
+  chairInvitationMessage,
   draftDeletedMessage,
   invitationMessage,
   invitationWithdrawnMessage,
   receivedMessage,
+  reviewerInvitationMessage,
   type Wording,
   withdrawnMessage,
 } from "./templates";
@@ -33,7 +35,7 @@ import { call, makeTestApp, ORIGIN, personId, signIn, type TestApp } from "./tes
 
 const TO = "reader@example.org";
 
-/** One of the six functions, called with a captured case's input. */
+/** One of the eight functions, called with a captured case's input. */
 function send(wording: Wording, c: MessageBefore): MailMessage {
   const v = (name: string) => c.input[name] ?? "";
   const calls: Record<MailMessageKey, () => MailMessage> = {
@@ -70,6 +72,18 @@ function send(wording: Wording, c: MessageBefore): MailMessage {
         link: v("link"),
       }),
     draft_deleted: () => draftDeletedMessage(wording, c.lang, TO, { conference: v("conference") }),
+    reviewer_invitation: () =>
+      reviewerInvitationMessage(wording, c.lang, TO, {
+        conference: v("conference"),
+        // The names it was called with, " | " between them (messages.before.ts).
+        committees: v("committees").split(" | "),
+        link: v("link"),
+      }),
+    chair_invitation: () =>
+      chairInvitationMessage(wording, c.lang, TO, {
+        conference: v("conference"),
+        link: v("link"),
+      }),
   };
   return calls[c.key]();
 }
@@ -827,6 +841,61 @@ describe("chairs change the wording, and people are sent it", () => {
       "[draft_deleted] conference: Test call",
     );
 
+    // The chair invites a reviewer and a chair (spec 03, §1.2): the two invitations to a role.
+    // Neither carries a person: not the chair's name, and not the name the chair typed.
+    const roleToken = (mail: MailMessage) => /#token=(role_[A-Za-z0-9_-]+)/.exec(mail.text)?.[1];
+    const invited = await call(t.public, "POST", at("people/invitations"), {
+      cookie: cookies.chair,
+      body: {
+        email: "wording-reviewer@example.org",
+        name: "Typed Reviewer",
+        role: "reviewer",
+        pools: ["scientific", "artistic"],
+        lang: "en",
+      },
+    });
+    expect(invited.status).toBe(201);
+    const toReviewer = await latest("wording-reviewer@example.org");
+    expect(toReviewer.text).toBe(
+      `[reviewer_invitation] committees: Scientific committee, Artistic committee | conference: Test call | link: ${ORIGIN}/en/role-invitation#token=${roleToken(toReviewer)}`,
+    );
+    expect(toReviewer.subject).toBe("Test call: invitation to review proposals");
+    // Sent again an hour later: the same message, by another route, with another link.
+    try {
+      t.setNow(new Date(NOW.getTime() + 61 * 60 * 1000));
+      const again = await call(
+        t.public,
+        "POST",
+        at(`people/invitations/${invited.json.id}/resend`),
+        { cookie: cookies.chair, body: {} },
+      );
+      expect(again.status).toBe(204);
+    } finally {
+      t.setNow(NOW);
+    }
+    expect(await kinds("wording-reviewer@example.org")).toEqual([
+      "reviewer_invitation",
+      "reviewer_invitation",
+    ]);
+    expect(roleToken(await latest("wording-reviewer@example.org"))).not.toBe(roleToken(toReviewer));
+    const cochair = await call(t.public, "POST", at("people/invitations"), {
+      cookie: cookies.chair,
+      body: {
+        email: "wording-cochair@example.org",
+        name: "Typed Chair",
+        role: "chair",
+        lang: "en",
+      },
+    });
+    expect(cochair.status).toBe(201);
+    const toChair = await latest("wording-cochair@example.org");
+    expect(toChair.text).toBe(
+      `[chair_invitation] conference: Test call | link: ${ORIGIN}/en/role-invitation#token=${roleToken(toChair)}`,
+    );
+    for (const mail of [toReviewer, toChair]) {
+      expect(`${mail.subject}\n${mail.text}`).not.toMatch(/Typed|Zed|Wordingchair/);
+    }
+
     // Every message was sent at least once, and none of them in the standard words.
     const everyone = [
       writer,
@@ -835,6 +904,8 @@ describe("chairs change the wording, and people are sent it", () => {
       "wording-declines@example.org",
       "wording-joins@example.org",
       "wording-dropped@example.org",
+      "wording-reviewer@example.org",
+      "wording-cochair@example.org",
     ];
     const sent = (await Promise.all(everyone.map(kinds))).flat();
     expect([...new Set(sent)].sort()).toEqual(Object.keys(MESSAGES).sort());

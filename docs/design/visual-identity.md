@@ -36,6 +36,7 @@ apps/web/src/styles/
   components.css   eyebrow, echo, section head, card, chip, tag, stats, buttons
   forms.css        fields, field sets, errors, filters, the chair's overview
   conference.css   hero, facts strip, formats, timeline, the invitation (home and conference pages)
+  people.css       the chairs' People page: a roster of people or invitations, a question asked in place
 apps/web/src/assets/contours.svg       generated: do not edit by hand
 apps/web/scripts/make-contours.mjs     generates it
 apps/web/src/ui.tsx                    Echo, LocalizedEcho, Pair, SectionHeading, Eyebrow, Sheet, Stat, FooterLink

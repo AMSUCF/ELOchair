@@ -14,6 +14,10 @@ import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
  * submission or its contributions shares that row before it reads or writes them. So the two
  * wait for each other, and a save never checks work that is changing under it.
  *
+ * Since chairs can be removed (spec 03, §1.2), a change made as a chair also takes the
+ * conference's roles lock and reads the chair again, before the conference's row: the one lock
+ * order is written in services/roles.ts and in spec 02, §1.9, and checked here route by route.
+ *
  * The in-memory database runs one transaction at a time, so nothing can be made to wait there.
  * The first part checks what can be seen without waiting: what a save decides after a write has
  * committed, and that each write path takes its locks, in order, before anything else. The
@@ -147,6 +151,20 @@ const LOCKS_CONFERENCE = /from "conferences" .* for update$/;
 const READS_TEAM = /from "contributions"/;
 const WRITES_WORK = /^(insert into|update|delete from) "(submissions|contributions)"/;
 const first = (sent: string[], re: RegExp) => sent.findIndex((q) => re.test(q));
+// The conference's roles lock (services/roles.ts), shared to act as a chair or exclusive to
+// change who holds a role; and the locks that count a day's invitations, which have no name.
+const SHARES_ROLES = /pg_advisory_xact_lock_shared\(.*\) as roles_lock$/;
+const LOCKS_ROLES = /pg_advisory_xact_lock\(.*\) as roles_lock$/;
+const COUNTS_INVITATIONS = /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)$/;
+const LOCKS_INVITATION = /from "role_invitations" .* for update$/;
+const READS_ROLES = /from "conference_roles"/;
+/**
+ * What a chair's change, or an answer to an invitation, writes. Not a session's last use, and
+ * not the delivery of mail (an update of the outbox), which runs after a request and may still
+ * be running when the next one begins.
+ */
+const WRITES_AS_CHAIR =
+  /^(insert into|update|delete from) "(conferences|people|role_invitations|role_invitation_sends|conference_roles|reviewer_profiles|assignments|audit_log)"|^insert into "outbox"/;
 
 describe("a settings save and writes to submitted work", () => {
   let w: World;
@@ -378,7 +396,7 @@ describe("a settings save and writes to submitted work", () => {
     expect(first(sent, WRITES_WORK)).toBeGreaterThan(first(sent, SHARES_CONFERENCE));
   });
 
-  it("a save locks only the conference's row, so the two orders cannot cross", async () => {
+  it("a save locks no row but the conference's, after the roles lock, so the orders cannot cross", async () => {
     const got = await call(w.t.public, "GET", at(w.slug, "settings"), { cookie: w.chair });
     const config = structuredClone(got.json.config) as ConferenceConfig;
     config.host = "Universidad Inventada del Sur";
@@ -387,6 +405,10 @@ describe("a settings save and writes to submitted work", () => {
     });
     expect(first(sent, LOCKS_CONFERENCE)).toBeGreaterThanOrEqual(0);
     expect(sent.filter((q) => / for (update|share)$/.test(q))).toHaveLength(1);
+    // The roles lock, shared, comes first: it is no row's, and a write to a proposal never takes it.
+    expect(first(sent, SHARES_ROLES)).toBeGreaterThanOrEqual(0);
+    expect(first(sent, SHARES_ROLES)).toBeLessThan(first(sent, LOCKS_CONFERENCE));
+    expect(sent.filter((q) => /pg_advisory/.test(q))).toHaveLength(1);
   });
 
   it("a new proposal is checked against the configuration in force, under the shared row", async () => {
@@ -402,6 +424,184 @@ describe("a settings save and writes to submitted work", () => {
     });
     expect(first(sent, SHARES_CONFERENCE)).toBeGreaterThanOrEqual(0);
     expect(first(sent, WRITES_WORK)).toBe(-1);
+  });
+});
+
+describe("what is done as a chair, and the locks it takes", () => {
+  let w: World;
+  const PEOPLE = (rest = "") => `/api/conferences/${w.slug}/people${rest}`;
+  const pool = fixtureCall.reviewPools[0]?.key ?? "";
+  const asChair = (method: string, path: string, body: unknown = {}) =>
+    call(w.t.public, method, path, { cookie: w.chair, body });
+  const tokenFor = async (email: string) => {
+    const mail = await call(
+      w.t.public,
+      "GET",
+      `/api/_test/outbox/latest?to=${encodeURIComponent(email)}`,
+    );
+    const token = /#token=(role_[A-Za-z0-9_-]+)/.exec(mail.json.text)?.[1];
+    if (!token) throw new Error(`no role invitation token for ${email}`);
+    return token;
+  };
+  beforeAll(async () => {
+    w = await world("locks-chairs");
+    w.t.deps.limits.invitationLinksPerIp = new RateLimiter(100_000, 60_000);
+  }, 120_000);
+  afterAll(() => w.t.close());
+
+  /**
+   * The one order (services/roles.ts): an invitation's row, the roles lock, the conference's
+   * row, the locks that count the day's invitations. Each lock a request takes comes after
+   * every earlier kind it takes, and nothing is written before the last of them.
+   */
+  function expectOrder(what: string, sent: string[], roles: RegExp | null) {
+    const at = (re: RegExp) => first(sent, re);
+    const invitation = at(LOCKS_INVITATION);
+    const role = roles ? at(roles) : -1;
+    const conference = Math.max(at(SHARES_CONFERENCE), at(LOCKS_CONFERENCE));
+    const counting = at(COUNTS_INVITATIONS);
+    const write = at(WRITES_AS_CHAIR);
+    if (roles) expect(role, `${what}: the roles lock`).toBeGreaterThanOrEqual(0);
+    else
+      expect(
+        sent.filter((q) => /roles_lock/.test(q)),
+        what,
+      ).toEqual([]);
+    // One roles lock, in one mode: nothing takes it shared and then exclusive.
+    expect(sent.filter((q) => /roles_lock/.test(q)).length, what).toBeLessThanOrEqual(1);
+    const order = [invitation, role, conference, counting].filter((i) => i >= 0);
+    expect(order, `${what}: the order of its locks`).toEqual([...order].sort((a, b) => a - b));
+    expect(write, `${what}: writes`).toBeGreaterThanOrEqual(0);
+    expect(write, `${what}: nothing written before its locks`).toBeGreaterThan(Math.max(...order));
+    return { invitation, role, conference, counting, write };
+  }
+
+  it("every change made as a chair takes the roles lock, reads the chair again, and then goes on", async () => {
+    const email = "locks-chairs-invitee@example.org";
+    let invitationId = "";
+    const colleague = "locks-chairs-colleague@example.org";
+    await w.person(colleague, "Cleo Colleague");
+    await grantRole(w.t.db, {
+      conferenceId: w.conferenceId,
+      personId: await personId(w.t, colleague),
+      role: "chair",
+    });
+    const host = async () => {
+      const got = await call(w.t.public, "GET", at(w.slug, "settings"), { cookie: w.chair });
+      const config = structuredClone(got.json.config) as ConferenceConfig;
+      config.host = "Universidad Inventada del Centro";
+      return saveConfig(w, config, got.json.token);
+    };
+    /** Each change in turn: what it is, how it is asked for, its answer, and its roles lock. */
+    const steps: [
+      string,
+      () => Promise<{ status: number; json: { id?: string } }>,
+      number,
+      RegExp,
+    ][] = [
+      ["save the configuration", host, 200, SHARES_ROLES],
+      [
+        "move the phase",
+        () => asChair("PUT", at(w.slug, "phase"), { phase: "draft", from: "cfp_open" }),
+        200,
+        SHARES_ROLES,
+      ],
+      [
+        "move the phase back",
+        () => asChair("PUT", at(w.slug, "phase"), { phase: "cfp_open", from: "draft" }),
+        200,
+        SHARES_ROLES,
+      ],
+      [
+        "invite",
+        () =>
+          asChair("POST", PEOPLE("/invitations"), {
+            email,
+            role: "reviewer",
+            pools: [pool],
+            lang: "en",
+          }),
+        201,
+        SHARES_ROLES,
+      ],
+      [
+        "send again",
+        () => asChair("POST", PEOPLE(`/invitations/${invitationId}/resend`)),
+        204,
+        SHARES_ROLES,
+      ],
+      [
+        "cancel",
+        () => asChair("POST", PEOPLE(`/invitations/${invitationId}/cancel`)),
+        204,
+        SHARES_ROLES,
+      ],
+      [
+        "remove a chair",
+        async () => asChair("DELETE", PEOPLE(`/${await personId(w.t, colleague)}/roles/chair`)),
+        204,
+        LOCKS_ROLES,
+      ],
+    ];
+    for (const [what, run, status, roles] of steps) {
+      // An invitation is sent again an hour after it was sent, at the earliest.
+      if (what === "send again") w.t.setNow(new Date(NOW.getTime() + 61 * 60 * 1000));
+      let answered = { status: 0, json: {} as { id?: string } };
+      const sent = await w.t.statements(async () => {
+        answered = await run();
+      });
+      expect(answered.status, what).toBe(status);
+      if (what === "invite") invitationId = answered.json.id ?? "";
+      const order = expectOrder(what, sent, roles);
+      // The chair's roles are read again after the lock and before anything is written: the
+      // reading the route did for its own check, before the transaction, does not count.
+      const reread = sent.findIndex((q, i) => i > order.role && READS_ROLES.test(q));
+      expect(reread, `${what}: reads the chair again`).toBeGreaterThan(order.role);
+      expect(reread, `${what}: before it writes`).toBeLessThan(order.write);
+      // The conference's row, where it is taken, is taken after the chair was read again.
+      if (order.conference >= 0) expect(order.conference, what).toBeGreaterThan(reread);
+    }
+    w.t.setNow(NOW);
+  });
+
+  it("an answer to an invitation: its row, then the roles lock only to accept, then the conference's row", async () => {
+    for (const [email, body, roles] of [
+      [
+        "locks-chairs-accepts@example.org",
+        { answer: "accept", displayName: "Ada Accepts", languages: ["en"] },
+        LOCKS_ROLES,
+      ],
+      // Declining gives nobody a role: it has no business with the roles lock.
+      ["locks-chairs-declines@example.org", { answer: "decline" }, null],
+    ] as const) {
+      const invited = await asChair("POST", PEOPLE("/invitations"), {
+        email,
+        role: "reviewer",
+        pools: [pool],
+        lang: "en",
+      });
+      expect(invited.status, email).toBe(201);
+      const token = await tokenFor(email);
+      const sent = await w.t.statements(async () => {
+        const res = await call(w.t.public, "POST", "/api/role-invitations/answer", {
+          body: { token, ...body },
+        });
+        expect(res.status, email).toBe(200);
+      });
+      const order = expectOrder(email, sent, roles);
+      expect(order.invitation, email).toBeGreaterThanOrEqual(0);
+      expect(first(sent, SHARES_CONFERENCE), email).toBeGreaterThan(order.invitation);
+      if (roles) expect(order.role, email).toBeGreaterThan(order.invitation);
+    }
+  });
+
+  it("a write to a proposal takes no roles lock: its order is the proposal's row, then the conference's", async () => {
+    const owner = await w.person("locks-chairs-owner@example.org", "Olga Ownerperson");
+    const sent = await w.t.statements(async () => {
+      await talk(w, owner, "A talk that asks no chair");
+    });
+    expect(first(sent, WRITES_WORK)).toBeGreaterThanOrEqual(0);
+    expect(sent.filter((q) => /roles_lock/.test(q))).toEqual([]);
   });
 });
 

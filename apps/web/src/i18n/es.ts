@@ -1,4 +1,5 @@
 import type { Messages } from "./en";
+import { peopleEs } from "./people.es";
 import { settingsEs } from "./settings.es";
 import { submissionEs } from "./submission.es";
 
@@ -6,6 +7,7 @@ import { submissionEs } from "./submission.es";
 export const es: Messages = {
   ...submissionEs,
   ...settingsEs,
+  ...peopleEs,
   appName: "ELOchair",
   tagline: "Envíos y revisión por pares para el congreso de la Electronic Literature Organization.",
   skipToContent: "Saltar al contenido",

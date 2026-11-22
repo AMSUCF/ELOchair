@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { api } from "../api";
 import { useT } from "../i18n";
 import { PageHeading } from "../ui";
@@ -10,7 +10,13 @@ type CodeState = "idle" | "checking" | "invalid" | "rate_limited" | "error";
 export function SignInPage() {
   const { lang, t } = useT();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  // A page that knows which address to sign in with (an accepted invitation to a role) hands
+  // it over with the link: the field starts with it, and the person can still change it.
+  const handed: unknown = useLocation().state;
+  const [email, setEmail] = useState(() => {
+    const from = (handed as { email?: unknown } | null)?.email;
+    return typeof from === "string" ? from : "";
+  });
   const [state, setState] = useState<State>("idle");
   const [code, setCode] = useState("");
   const [codeState, setCodeState] = useState<CodeState>("idle");

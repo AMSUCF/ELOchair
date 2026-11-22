@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ConferenceConfig, type ConferenceConfigInput, ContributionRole } from "./config";
-import { LIMITS } from "./limits";
+import { LIMITS, ROLE_INVITATIONS } from "./limits";
 import {
   ANSWER_WORDS,
   type ConferenceMessages,
+  committeeList,
   fillMessage,
   fillPlaceholders,
   formatDeadline,
@@ -50,6 +51,8 @@ function valuesOf(c: MessageBefore): Record<string, string> {
     conference: input("conference"),
     deadline: input("deadline"),
     link: input("link"),
+    // The names a reviewer's invitation was called with, " | " between them.
+    committees: c.cleaned?.committees ?? committeeList(input("committees").split(" | ")),
   };
 }
 
@@ -112,7 +115,7 @@ describe("the standard texts", () => {
 });
 
 describe("the messages", () => {
-  it("are these six, by keys that are stored and never renamed", () => {
+  it("are these eight, by keys that are stored and never renamed", () => {
     expect(MESSAGE_KEYS).toEqual([
       "invitation",
       "submission_received",
@@ -120,6 +123,8 @@ describe("the messages", () => {
       "invitation_withdrawn",
       "invitation_answered",
       "draft_deleted",
+      "reviewer_invitation",
+      "chair_invitation",
     ]);
     for (const key of MESSAGE_KEYS) expect(key).toMatch(/^[a-z]+(_[a-z]+)*$/);
     expect(Object.keys(MESSAGES)).toEqual([...MESSAGE_KEYS]);
@@ -164,6 +169,18 @@ describe("the messages", () => {
         names: ["person"],
       },
       draft_deleted: { placeholders: ["conference"], required: [], bodyOnly: [], names: [] },
+      reviewer_invitation: {
+        placeholders: ["committees", "conference", "link"],
+        required: ["link"],
+        bodyOnly: ["link"],
+        names: [],
+      },
+      chair_invitation: {
+        placeholders: ["conference", "link"],
+        required: ["link"],
+        bodyOnly: ["link"],
+        names: [],
+      },
     });
     for (const key of MESSAGE_KEYS) {
       for (const name of [...MESSAGES[key].bodyOnly, ...MESSAGES[key].names]) {
@@ -181,6 +198,26 @@ describe("the messages", () => {
     }
     expect(MESSAGES.invitation_withdrawn.placeholders).not.toContain("owner");
     expect(MESSAGES.draft_deleted.placeholders).not.toContain("owner");
+  });
+
+  it("give people invited to a role nothing a person typed: no name at all, of anyone", () => {
+    // Not the chair who invites, not the name that chair typed for the invitee, no title: only
+    // what the conference's configuration says, and the link.
+    const typed = ["owner", "person", "title", "name", "chair", "inviter", "invitee", "email"];
+    for (const key of ["reviewer_invitation", "chair_invitation"] as const) {
+      const { placeholders, names, required, bodyOnly } = MESSAGES[key];
+      for (const name of typed) expect(placeholders, `${key} ${name}`).not.toContain(name);
+      expect([...names], key).toEqual([]);
+      // The link is the only way to answer, and stays out of the subject.
+      expect([...required], key).toEqual(["link"]);
+      expect([...bodyOnly], key).toEqual(["link"]);
+    }
+    expect([...MESSAGES.reviewer_invitation.placeholders].sort()).toEqual([
+      "committees",
+      "conference",
+      "link",
+    ]);
+    expect([...MESSAGES.chair_invitation.placeholders].sort()).toEqual(["conference", "link"]);
   });
 
   it("are offered in all three languages at every conference, its main language first", () => {
@@ -419,6 +456,8 @@ describe("what is wrong with a text", () => {
       "submission_received",
       "submission_withdrawn",
       "invitation_answered",
+      "reviewer_invitation",
+      "chair_invitation",
     ] as const) {
       expect(messageProblems(key, "subject", "Open {link}"), key).toEqual([
         { code: "message_not_in_subject", values: { names: "{link}" } },
@@ -687,6 +726,132 @@ describe("a name in a text", () => {
     );
     // What the text would add to a plain name is still kept off it.
     expect(answered("{person}@example.org", "Bruno")).toBe("Bruno @example.org");
+  });
+});
+
+describe("the invitations to a role", () => {
+  const ROLE_KEYS = ["reviewer_invitation", "chair_invitation"] as const;
+
+  it("take a text that names the conference, a reviewer's committees and the link", () => {
+    expect(
+      messageProblems(
+        "reviewer_invitation",
+        "body",
+        "Would you review for {conference}? ({committees})\n\n{link}",
+      ),
+    ).toEqual([]);
+    expect(messageProblems("reviewer_invitation", "subject", "{conference}: {committees}")).toEqual(
+      [],
+    );
+    expect(messageProblems("chair_invitation", "body", "Join us at {conference}:\n{link}")).toEqual(
+      [],
+    );
+    // No placeholder but the link is required: a conference may name itself in its own words.
+    for (const key of ROLE_KEYS) expect(messageProblems(key, "body", "{link}")).toEqual([]);
+  });
+
+  it("refuse a text without the link, or with something touching it", () => {
+    for (const key of ROLE_KEYS) {
+      expect(messageProblems(key, "body", "You are invited to {conference}."), key).toEqual([
+        { code: "message_missing_placeholder", values: { names: "{link}" } },
+      ]);
+      for (const text of ["Answer here: {link}.", "<{link}>", "{conference}{link}"]) {
+        expect(messageProblems(key, "body", text), `${key} ${text}`).toEqual([
+          { code: "message_link_touched", values: { names: "{link}" } },
+        ]);
+      }
+    }
+  });
+
+  it("refuse a text that names a person: there is no such value to put in", () => {
+    for (const key of ROLE_KEYS) {
+      for (const name of ["owner", "person", "name", "chair", "title", "role", "format"]) {
+        expect(messageProblems(key, "body", `{${name}} invites you:\n\n{link}`), name).toEqual([
+          { code: "message_unknown_placeholder", values: { names: `{${name}}` } },
+        ]);
+        expect(messageProblems(key, "subject", `From {${name}}`), name).toEqual([
+          { code: "message_unknown_placeholder", values: { names: `{${name}}` } },
+        ]);
+      }
+    }
+    // The committees are a reviewer's: an invitation to be a chair has none to name.
+    expect(messageProblems("chair_invitation", "body", "{committees}\n\n{link}")).toEqual([
+      { code: "message_unknown_placeholder", values: { names: "{committees}" } },
+    ]);
+  });
+
+  it("refuse invisible characters, and a subject on two lines, like every other text", () => {
+    for (const key of ROLE_KEYS) {
+      expect(messageProblems(key, "subject", "Hello\u202Eevil"), key).toEqual([
+        { code: "message_invisible" },
+      ]);
+      expect(messageProblems(key, "body", "Answer:\n\n{link}\n\n\u200Bhidden\u200B"), key).toEqual([
+        { code: "message_invisible" },
+      ]);
+      expect(messageProblems(key, "subject", "Two\nlines"), key).toEqual([
+        { code: "message_not_one_line" },
+      ]);
+      expect(messageProblems(key, "body", " \n "), key).toEqual([{ code: "message_empty" }]);
+    }
+  });
+
+  it("are never given a value that is not theirs, and no link in a subject", () => {
+    const values = {
+      committees: "Committee",
+      conference: "Made-up Meeting",
+      link: "https://chair.example.org/en/role-invitation#token=made-up-token",
+      // Not values of these messages: never put in, even if they are handed over.
+      owner: "Ana",
+      person: "Bruno",
+      title: "A title",
+    };
+    const text = "{conference} {committees} {owner} {person} {title} {link}";
+    expect(fillMessage("reviewer_invitation", "body", text, values)).toBe(
+      `Made-up Meeting Committee {owner} {person} {title} ${values.link}`,
+    );
+    expect(fillMessage("reviewer_invitation", "subject", text, values)).toBe(
+      "Made-up Meeting Committee {owner} {person} {title} {link}",
+    );
+    expect(fillMessage("chair_invitation", "body", text, values)).toBe(
+      `Made-up Meeting {committees} {owner} {person} {title} ${values.link}`,
+    );
+    expect(fillMessage("chair_invitation", "subject", text, values)).toBe(
+      "Made-up Meeting {committees} {owner} {person} {title} {link}",
+    );
+  });
+
+  it("say how long the link works, which is how long it does", () => {
+    expect(ROLE_INVITATIONS.days).toBe(30);
+    for (const key of ROLE_KEYS) {
+      for (const lang of MAIL_LANGUAGES) {
+        expect(MESSAGES[key].standard[lang].body, `${key} ${lang}`).toMatch(
+          /\b30 (days|días|dias)\b/,
+        );
+      }
+    }
+  });
+
+  it("list a reviewer's committees in one line, in the order given", () => {
+    expect(committeeList(["Scientific committee"])).toBe("Scientific committee");
+    expect(committeeList(["Scientific committee", "Artistic committee"])).toBe(
+      "Scientific committee, Artistic committee",
+    );
+    expect(committeeList([])).toBe("");
+  });
+
+  it("were captured with one committee, with two, and with names the server cleans", () => {
+    for (const lang of MAIL_LANGUAGES) {
+      const reviewer = MESSAGES_BEFORE.filter(
+        (c) => c.key === "reviewer_invitation" && c.lang === lang,
+      );
+      expect(reviewer.map((c) => (c.input.committees ?? "").split(" | ").length)).toEqual([
+        1, 2, 2,
+      ]);
+      expect(reviewer.filter((c) => c.cleaned?.committees !== undefined)).toHaveLength(1);
+      expect(
+        MESSAGES_BEFORE.filter((c) => c.key === "chair_invitation" && c.lang === lang),
+      ).toHaveLength(1);
+    }
   });
 });
 

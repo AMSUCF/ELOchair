@@ -7,11 +7,12 @@ export { presenterCapReport } from "./cap";
 export { type DeadlineClock, type StatedDeadline, statedDeadline } from "./deadline";
 export { dressedAs } from "./dressing";
 export { hasStrayInvisible, removeStrayInvisible } from "./invisible";
-export { LIMITS } from "./limits";
+export { LIMITS, ROLE_INVITATIONS } from "./limits";
 export { effectiveBlindMode, findType } from "./lookup";
 export {
   ANSWER_WORDS,
   type ConferenceMessages,
+  committeeList,
   filledMessage,
   fillMessage,
   fillPlaceholders,

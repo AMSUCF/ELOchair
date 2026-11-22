@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { ContributionRole, Key } from "./config";
-import { FieldValue, ParticipationMode, SubmissionStatus } from "./domain";
+import { FieldValue, InvitableRole, ParticipationMode, SubmissionStatus } from "./domain";
 import { LanguageCode } from "./i18n";
 import { hasStrayInvisible } from "./invisible";
-import { LIMITS } from "./limits";
+import { LIMITS, ROLE_INVITATIONS } from "./limits";
+import { MAIL_LANGUAGES } from "./messages";
 
 /*
  * What clients may send. Every write input is .strict(): unknown keys (such as "email" on a
@@ -55,7 +56,7 @@ const Text = (max: number) =>
     .refine((s) => !hasStrayControl(s), NO_CONTROL)
     .refine(isWellFormed, WELL_FORMED);
 
-export { LIMITS };
+export { LIMITS, ROLE_INVITATIONS };
 
 const Version = z.int().min(1);
 
@@ -145,6 +146,63 @@ export const AnswerByTokenInput = AnswerInvitationInput.extend({
 }).strict();
 
 export const InvitationTokenInput = z.object({ token: z.string().min(20).max(200) }).strict();
+
+const distinct = (list: readonly string[]) => new Set(list).size === list.length;
+
+/**
+ * A chair invites one address to a role (spec 03, §1.2). A reviewer is invited to one or more of
+ * the conference's review pools; a chair to none. `name` is for the chairs' own list: it is
+ * never mailed and never written to anyone's profile.
+ */
+export const RoleInvitationInput = z
+  .object({
+    email: z.email().max(254),
+    name: OneLine(LIMITS.name).optional(),
+    role: InvitableRole,
+    pools: z.array(Key).max(50).refine(distinct, "each pool once").default([]),
+    /** Language of the invitation email. */
+    lang: z.enum(MAIL_LANGUAGES),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.role === "reviewer" && v.pools.length === 0) {
+      ctx.addIssue({ code: "custom", path: ["pools"], message: "a reviewer needs a review pool" });
+    }
+    if (v.role === "chair" && v.pools.length > 0) {
+      ctx.addIssue({ code: "custom", path: ["pools"], message: "a chair has no review pools" });
+    }
+  });
+export type RoleInvitationInput = z.infer<typeof RoleInvitationInput>;
+
+/**
+ * An answer to a role invitation, by its link. Nothing here says who answers or what role is
+ * given: the invitation the token belongs to decides both, and unknown keys are refused.
+ * - `displayName`: the invitee's own name, needed to accept while their profile has none.
+ * - `languages` and `maxLoad`: what a reviewer says on accepting (the languages they can review
+ *   in, and the most proposals they will take). A chair's answer does not use them.
+ */
+export const RoleInvitationAnswerInput = z
+  .object({
+    token: z.string().min(20).max(200),
+    answer: z.enum(["accept", "decline"]),
+    displayName: OneLine(LIMITS.name).optional(),
+    languages: z
+      .array(z.enum(MAIL_LANGUAGES))
+      .min(1)
+      .max(MAIL_LANGUAGES.length)
+      .refine(distinct, "each language once")
+      .optional(),
+    maxLoad: z.int().min(ROLE_INVITATIONS.minLoad).max(ROLE_INVITATIONS.maxLoad).optional(),
+  })
+  .strict();
+export type RoleInvitationAnswerInput = z.infer<typeof RoleInvitationAnswerInput>;
+
+/**
+ * Removing a reviewer's role names the number of assigned proposals the confirmation showed:
+ * the removal is refused (409 `stale`) if that is no longer the number, so that what is confirmed
+ * is what the question said. Removing a chair or a track chair sends nothing.
+ */
+export const RoleRemovalInput = z.object({ assignments: z.int().min(0).optional() }).strict();
 
 /** Your own profile. Email and id are not editable here; sending them is an error. */
 export const ProfileInput = z

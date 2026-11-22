@@ -83,7 +83,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
   settingsEmailsIntro:
-    "A aplicação envia estes emails às pessoas de uma proposta. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
+    "A aplicação envia estes emails às pessoas de uma proposta, e às pessoas que a presidência convida para rever ou para presidir. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
   settingsEmailsNote:
     "Estão cá os três idiomas, sejam quais forem os do congresso, porque cada pessoa recebe o email no seu idioma: alguém pode ser convidado em português para um congresso que decorre em inglês e espanhol. Um idioma que não tenha alterado mantém o texto padrão. Estes textos não são privados: tal como o resto desta configuração, podem ser lidos por qualquer pessoa que possa ver o congresso. O email para entrar é igual para toda a gente e não pode ser alterado aqui.",
   settingsEmail_invitation: "Convite para uma proposta",
@@ -92,6 +92,8 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmail_invitation_withdrawn: "Aviso a quem tinha um convite para uma proposta retirada",
   settingsEmail_invitation_answered: "Resposta a um convite, para quem criou a proposta",
   settingsEmail_draft_deleted: "Aviso a quem tinha um convite para um rascunho eliminado",
+  settingsEmail_reviewer_invitation: "Convite para rever",
+  settingsEmail_chair_invitation: "Convite para presidir",
   settingsEmailWhen_invitation:
     "É enviado a uma pessoa quando quem criou uma proposta a inclui nela, e outra vez se lhe voltar a enviar o convite. Essa pessoa ainda não aceitou nada.",
   settingsEmailWhen_submission_received:
@@ -104,6 +106,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "É enviado a quem criou uma proposta quando uma pessoa convidada confirma ou recusa, ou quando alguém que participava sai.",
   settingsEmailWhen_draft_deleted:
     "É enviado a quem tinha um convite para um rascunho e não tinha respondido, quando quem o criou o elimina. Não pode nomear a proposta: essas pessoas não aceitaram nada.",
+  settingsEmailWhen_reviewer_invitation:
+    "É enviado a uma pessoa quando alguém da presidência a convida, na página Pessoas, para rever, e outra vez se o convite lhe for enviado de novo. Essa pessoa ainda não aceitou nada, por isso o email não nomeia ninguém: nem quem convida, nem o nome que essa pessoa escreveu para ela.",
+  settingsEmailWhen_chair_invitation:
+    "É enviado a uma pessoa quando alguém da presidência a convida, na página Pessoas, para presidir, e outra vez se o convite lhe for enviado de novo. Essa pessoa ainda não aceitou nada, por isso o email não nomeia ninguém: nem quem convida, nem o nome que essa pessoa escreveu para ela.",
   settingsEmailPlaceholders:
     "Pode pôr estas palavras, com as suas chavetas, no assunto e no texto. Cada uma é substituída quando o email é enviado:",
   settingsEmailPlaceholder_conference: "o título do congresso",
@@ -114,6 +120,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmailPlaceholder_link: "a ligação para a proposta",
   settingsEmailPlaceholder_invitationLink:
     "a ligação onde a pessoa vê a proposta e confirma ou recusa",
+  settingsEmailPlaceholder_roleInvitationLink:
+    "o link onde a pessoa lê o convite e o aceita ou recusa",
+  settingsEmailPlaceholder_committees:
+    "os nomes dos grupos de revisão para os quais a pessoa é convidada, separados por vírgulas",
   settingsEmailPlaceholder_owner: "o nome de quem criou a proposta",
   settingsEmailPlaceholder_role: "o papel da pessoa na proposta",
   settingsEmailPlaceholder_person:
