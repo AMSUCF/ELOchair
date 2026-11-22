@@ -1,0 +1,1427 @@
+#!/usr/bin/env python3
+"""cilia-gh-shim — intercept `gh pr review`, read-PROXY read-class verbs,
+pass through everything else.
+
+Installed via the existing track_files mechanism at reviewer track launch
+(services/cilia/src/routes/dispatch.rs). PATH-prepended so this wins over
+/usr/bin/gh inside the reviewer pane.
+
+Pure stdlib so no `pip install` step is needed on workers.
+
+Layers, applied in order:
+
+  1. `gh pr review`  → translated into cilia review-store MCP calls
+     (register_review_concern / approve_pr). Unchanged from the original.
+
+  1.2. `gh issue create` → ROUTED TO THE CILIA-NATIVE FORGE (#3460 forge
+     independence, slice 1), NOT github.com. Cilia mints its own issue
+     number (the native store is authoritative) after running a mechanical
+     dedup search and REQUIRING an explicit not-duplicate attestation — see
+     `POST /api/issues` in `services/cilia/src/routes/issues.rs`. The shim
+     accepts a shim-only `--not-duplicate "reason"` flag (gh itself has no
+     such flag) that becomes the attestation; omit it and the create is
+     rejected with the surfaced candidate issues printed to stderr so the
+     caller can retry with one.
+
+     UNLIKE Layer 1.5 below, this is FAIL-CLOSED like Layer 1 (`pr review`):
+     if the native forge is unreachable, or rejects the create (missing/blank
+     attestation, malformed repo, empty title), the shim surfaces the error
+     LOUDLY and exits non-zero — it never falls through to a raw `gh issue
+     create`, because that would create the issue straight on GitHub and
+     bypass dedup entirely. Interactive forms (`--web`/`-w`, or no `--title`
+     at all — gh would prompt) pass through to real gh since the shim can't
+     safely drive a TTY prompt.
+
+     `gh issue new` — gh's own documented alias for `create` — is intercepted
+     identically; falling through on that spelling would let a caller bypass
+     dedup+attestation. Every other `gh issue` subcommand (`edit`, `close`,
+     `comment`, `list`, …) is untouched passthrough in this slice.
+
+     Flags the native forge doesn't implement yet (`--assignee`,
+     `--milestone`, `--project`, `--template`, `--recover`) are rejected
+     fail-closed with a clear error rather than silently dropped — dropping
+     them would report success for an issue materially different from what
+     was asked for.
+
+  1.5. `gh issue view N` → SERVED BY CILIA (#1537) under a STRICT ALLOWLIST.
+     Routed to the cilia issue store REST endpoint (GET /api/issues/<n>) which
+     mirrors-on-read: cilia shells `gh` ONCE on a store miss, then serves its own
+     copy — so the fleet stops hitting github.com for single-issue reads. This is
+     the first step of cilia becoming the GitHub intermediary for issues, the
+     issue analogue of Layer 1's `gh pr review` translation.
+
+     The allowlist (#2418) is the load-bearing safety property: cilia serves the
+     view ONLY when it can answer FAITHFULLY — `--json` is present AND every
+     requested field is one cilia actually mirrors AND there is no `-c/--comments`
+     or `--jq`/`--template` render form. ANY other form FAILS OPEN to real gh.
+     A wrong answer with exit 0 (a silently-dropped `--json comments`, a
+     human-rendered view replaced by raw JSON) is worse than a passthrough.
+
+     UNLIKE Layer 1 it also fails OPEN on cilia trouble: creds unset, transport
+     error, or non-2xx all fall through to real gh, because a read mirror must
+     never block an agent on a hub hiccup.
+
+     `gh issue list` is DELIBERATELY NOT served in slice-1 (#2418): it passes
+     straight through to real gh. A permanent list mirror would freeze the fleet's
+     "list issues → pick work" loop — new issues never appear, closed ones never
+     drop — and the shim can't faithfully translate gh's many list filters
+     (`--label`/`--author`/`--search`/…). List write-through/invalidation is a
+     #1537 follow-up; until then live passthrough is the safe choice.
+
+  2. READ-CLASS verbs (`pr view`, `pr checks`, `run view`, `run list`, and
+     read-only GET `gh api`) → host-local READ PROXY (#2415). The fleet
+     shares ONE gh token; uncordinated read bursts (agent CI-wait poll loops)
+     trip GitHub's SECONDARY/abuse limit even while primary quota is healthy.
+     The proxy:
+       (a) CACHES the result keyed on the full normalized arg vector with a
+           short TTL (~15s) — a fresh hit replays stdout, stderr AND exit code
+           without calling real gh. CI/PR state does not change faster than the
+           TTL, and exit code matters (`gh pr checks` returns nonzero on
+           failing checks; callers branch on it).
+       (b) SERIALIZES + PACES misses behind a host-local flock with a minimum
+           inter-call delay, so concurrent agents can't fan out N simultaneous
+           gh calls.
+       (c) BACKS OFF on a 403 / secondary-limit, honoring Retry-After when
+           present (else exponential, capped), retrying a bounded number of
+           times before returning the error — instead of returning the 403
+           straight into the agent's loop, which re-fires and amplifies the
+           storm.
+
+  3. Everything else (writes — pr merge/create, api POST/PATCH/DELETE, issue
+     create/edit — and any unrecognized subcommand) → raw passthrough to real
+     gh, UNCACHED. Correctness over cache-hit-rate: when in doubt, passthrough.
+
+Env (set by dispatch.rs at track launch):
+  CILIA_URL          — full /mcp endpoint URL (e.g. http://127.0.0.1:8093/mcp)
+  CILIA_AUTH_TOKEN   — Bearer token (cilia state.auth_token)
+
+Optional:
+  CILIA_GH_SHIM_REAL_GH — override the real gh binary path
+                          (default: /usr/bin/gh, falls back to PATH search)
+  CILIA_GH_SHIM_DEBUG_LOG — append every dispatch decision here. Doubles as the
+                          read-proxy TALLY: one line per invocation
+                          (timestamp, subcommand, hit/miss/passthrough) so
+                          calls/min can be measured. Default off = no logging.
+  CILIA_GH_SHIM_CACHE_DIR  — read-cache dir (default
+                          ${XDG_RUNTIME_DIR:-/tmp}/cilia-gh-shim-cache)
+  CILIA_GH_SHIM_CACHE_TTL  — cache TTL seconds (default 15)
+  CILIA_GH_SHIM_PACE_MS    — min inter-call delay on misses (default 300)
+  CILIA_GH_SHIM_MAX_RETRIES   — 403-backoff bounded retries (default 4)
+  CILIA_GH_SHIM_BACKOFF_BASE_MS / CILIA_GH_SHIM_BACKOFF_CAP_MS — backoff curve
+                          for the EXPONENTIAL fallback (defaults 200 / 3000).
+                          An explicit Retry-After is honored in FULL, not
+                          capped by BACKOFF_CAP_MS.
+  CILIA_GH_SHIM_MAX_SLEEP_MS — max single honored Retry-After (default 120000);
+                          a longer Retry-After surfaces the 403 immediately
+                          instead of blocking the agent.
+
+Exit codes:
+  0   — review translated to cilia and posted, OR passthrough succeeded
+        (os.execv replaces the process, so the real gh's exit code is
+        returned directly to the caller in that branch).
+  1   — cilia MCP returned an error (transport failure, HTTP non-2xx,
+        JSON-RPC error envelope, or result.isError in a 2xx body).
+        Concerns may have been PARTIALLY filed before the failing call;
+        do NOT re-run with the real gh, that would post to GitHub a
+        second time.
+  2   — required env var missing (CILIA_URL or CILIA_AUTH_TOKEN). The
+        shim refuses to fall through to real gh in this state because
+        bypassing cilia review is exactly the failure mode this layer
+        defends against (RC-002 / fail-closed).
+  >2  — uncaught Python exception. Indicates a bug in the shim itself;
+        capture stderr and report to the operator.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import contextlib
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib import error, request
+from urllib.parse import quote
+
+try:
+    import fcntl  # POSIX only (Linux/macOS workers); absent on Windows.
+except ImportError:  # pragma: no cover - workers are POSIX
+    fcntl = None
+
+# Allow `from parser import parse_review_body` regardless of cwd.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+
+def _locate_real_gh() -> str:
+    """Find the real gh binary, avoiding ourselves on PATH."""
+    explicit = os.environ.get("CILIA_GH_SHIM_REAL_GH")
+    if explicit:
+        return explicit
+    if os.path.exists("/usr/bin/gh"):
+        return "/usr/bin/gh"
+    # Last-ditch: walk PATH skipping the dir that contains this shim, so we
+    # don't recursively exec ourselves.
+    self_dir = os.path.dirname(os.path.realpath(__file__))
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        if os.path.realpath(entry) == self_dir:
+            continue
+        candidate = os.path.join(entry, "gh")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    # Surrender — let the OS surface ENOENT for clarity.
+    return shutil.which("gh") or "/usr/bin/gh"
+
+
+def _passthrough(real_gh: str, argv_tail: list[str]) -> int:
+    """Exec the real gh with the original args. Replaces this process."""
+    os.execv(real_gh, [real_gh] + argv_tail)
+
+
+def handle_passthrough(args: list[str], real_gh: str) -> int:
+    return _passthrough(real_gh, args)
+
+def _get_mcp_result(url: str, token: str, name: str, arguments: dict) -> dict:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    }
+    req = request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    try:
+        with request.urlopen(req, timeout=15) as resp:
+            status = resp.status
+            body = resp.read()
+    except error.HTTPError as e:
+        status = e.code
+        body = e.read() or b""
+    except Exception as e:
+        raise RuntimeError(f"transport failure calling {name}: {e}") from e
+
+    if not (200 <= status < 300):
+        raise RuntimeError(
+            f"HTTP {status} from cilia for {name}: {body.decode(errors='replace')[:200]}"
+        )
+
+    try:
+        parsed = json.loads(body.decode("utf-8") or "{}")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"non-JSON response from cilia for {name}: {e}") from e
+
+    if "error" in parsed:
+        err = parsed["error"]
+        msg = err.get("message", "unknown JSON-RPC error") if isinstance(err, dict) else str(err)
+        raise RuntimeError(f"JSON-RPC error from cilia for {name}: {msg}")
+
+    result = parsed.get("result")
+    if isinstance(result, dict) and result.get("isError"):
+        content = result.get("content") or []
+        msg = "unknown MCP error"
+        if content and isinstance(content[0], dict):
+            msg = content[0].get("text", msg)
+        raise RuntimeError(f"cilia MCP tool {name} returned isError: {msg}")
+
+    return result
+
+# NOTE: T7's original per-verb stub handlers (handle_pr_view/checks/list,
+# handle_issue_view/list, handle_run_list/view, handle_pr_create/merge/close)
+# were dropped on the #2418 rebase: they only `handle_passthrough`d, and S2's
+# landed layered dispatch already serves those same verbs for real — pr/run
+# reads via the #2415 cached read-proxy (_READ_VERBS) and issue reads via the
+# #2418 cilia issue-serve (_is_issue_serve). Re-routing them to cilia
+# primitives (create_dispatch/dispatch_merge/archive_dispatch) is tracked for a
+# later, behavior-bearing slice rather than shipped as no-op scaffold here.
+def handle_api(args: list[str], real_gh: str) -> int | None:
+    """Serve `gh api .../pulls/N/reviews` GETs from cilia MCP; return None when
+    the path isn't MCP-serviceable so the caller falls through to the read
+    proxy / passthrough (never bypasses S2's api-read caching)."""
+    if not args:
+        return None
+    
+    path = args[0]
+    parts = path.strip("/").split("/")
+    
+    is_get = True
+    for a in args:
+        if a in ("-X", "--method", "-F", "-f", "--field", "--raw-field"):
+            if a in ("-X", "--method"):
+                try:
+                    idx = args.index(a)
+                    if idx + 1 < len(args) and args[idx + 1].upper() != "GET":
+                        is_get = False
+                except ValueError:
+                    pass
+            else:
+                is_get = False
+
+    if is_get and len(parts) >= 5 and parts[0] == "repos" and parts[3] == "pulls" and parts[-1] == "reviews":
+        owner, repo, number = parts[1], parts[2], parts[4]
+        pr_ref = f"github://{owner}/{repo}/{number}"
+        
+        cilia_url = os.environ.get("CILIA_URL")
+        cilia_token = os.environ.get("CILIA_AUTH_TOKEN")
+        
+        if cilia_url and cilia_token:
+            try:
+                res = _get_mcp_result(cilia_url, cilia_token, "get_review_summary", {"pr_ref": pr_ref})
+                content = res.get("content", [])
+                if content and isinstance(content[0], dict):
+                    try:
+                        cilia_data = json.loads(content[0].get("text", "{}"))
+                    except json.JSONDecodeError:
+                        cilia_data = {}
+                    
+                    verdict = cilia_data.get("verdict", "pending")
+                    gh_state = "PENDING"
+                    if verdict == "approve":
+                        gh_state = "APPROVED"
+                    elif verdict == "request_changes":
+                        gh_state = "CHANGES_REQUESTED"
+                    elif verdict == "comment":
+                        gh_state = "COMMENTED"
+                    
+                    gh_reviews = []
+                    if verdict != "pending":
+                        gh_reviews.append({
+                            "id": 1,
+                            "user": {"login": "cilia-agent"},
+                            "body": "Synthetic review from Cilia MCP",
+                            "state": gh_state
+                        })
+                    
+                    print(json.dumps(gh_reviews))
+                    return 0
+            except RuntimeError as e:
+                _debug_log(f"API intercept failed: {e}")
+                pass
+
+    # Not MCP-serviceable (non-reviews path, write, or cilia unreachable):
+    # signal the caller to fall through to the read proxy / passthrough.
+    return None
+
+def main(argv: list[str]) -> int:
+    real_gh = _locate_real_gh()
+    tail = argv[1:]
+
+    # Layer 1: `gh pr review` interception (unchanged).
+    if len(argv) >= 3 and argv[1] == "pr" and argv[2] == "review":
+        return handle_pr_review(argv[3:], real_gh)
+
+    # Layer 1.2 (#3460 slice 1): `gh issue create` ROUTED TO THE CILIA-NATIVE
+    # FORGE instead of github.com. FAIL-CLOSED like Layer 1 (never falls
+    # through to real gh on a native-forge error) — see module docstring.
+    if _is_issue_create(tail):
+        return handle_issue_create(tail[2:], real_gh)
+
+    # Layer 1.5: `gh issue view N` SERVED BY CILIA, not github.com (#1537), under
+    # the #2418 allowlist. `gh issue list` is NOT served (it passes through to
+    # real gh below). `handle_issue` fails OPEN to real gh for any view form
+    # cilia can't answer faithfully, and on any cilia trouble.
+    if _is_issue_serve(tail):
+        return handle_issue(tail, real_gh)
+
+    # Layer 1.7 (T7 #2396): `gh api repos/{o}/{r}/pulls/{n}/reviews` GET SERVED
+    # BY CILIA MCP (forge-native review summary). handle_api returns None when
+    # the path isn't MCP-serviceable (non-reviews api, write, or cilia
+    # unreachable), so we fall through to the read proxy below — preserving
+    # S2's (#2415) caching for every other api read instead of bypassing it.
+    if tail and tail[0] == "api":
+        served = handle_api(tail[1:], real_gh)
+        if served is not None:
+            return served
+
+    # Layer 2: read-class verbs go through the host-local read proxy (#2415).
+    if _is_cacheable_read(tail):
+        return handle_read(tail, real_gh)
+
+    # Layer 3: writes + anything unrecognized → raw passthrough, never cached.
+    _tally(_subcommand_label(tail), "passthrough")
+    return _passthrough(real_gh, tail)
+
+
+def _debug_log(msg: str) -> None:
+    path = os.environ.get("CILIA_GH_SHIM_DEBUG_LOG")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(msg.rstrip() + "\n")
+    except OSError:
+        pass
+
+
+def _subcommand_label(tail: list[str]) -> str:
+    """A short 'verb subverb' label for the tally, ignoring flags/operands."""
+    words = [a for a in tail[:3] if not a.startswith("-")]
+    return " ".join(words[:2]) if words else "gh"
+
+
+def _tally(subcommand: str, outcome: str) -> None:
+    """Opt-in per-invocation tally line: '<unix-ts>\\t<subcommand>\\t<outcome>'.
+
+    Reuses CILIA_GH_SHIM_DEBUG_LOG. Default off (no env) → zero behavior change.
+    Lets us measure calls/min and cache hit-rate after the fact.
+    """
+    path = os.environ.get("CILIA_GH_SHIM_DEBUG_LOG")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(f"{time.time():.3f}\t{subcommand}\t{outcome}\n")
+    except OSError:
+        pass
+
+
+# --- read-class classification ---------------------------------------------
+# Subcommands whose output is a snapshot of remote state safe to cache briefly.
+#
+# Slice-1 scope is deliberately the CI-poll hot path that trips the secondary
+# limit (`pr view` / `pr checks` / `run view` / `run list` + read-only
+# `gh api`). `gh issue view` is NOT in this #2415 read-proxy set — it is handled
+# one layer up by the cilia issue-serve path (#1537/#2418, `_is_issue_serve` /
+# `handle_issue`), which mirrors it in cilia rather than caching+pacing a github
+# passthrough. `gh issue list` is served by NEITHER layer in slice-1 (#2418): it
+# is a raw Layer-3 passthrough so the fleet always sees live repo activity. Other
+# reads — e.g. `gh pr diff` — remain INTENTIONALLY out of scope and pass through
+# uncached/unpaced (RC-009).
+_READ_VERBS = {
+    ("pr", "view"),
+    ("pr", "checks"),
+    ("run", "view"),
+    ("run", "list"),
+}
+# Flags that make a read interactive/streaming/side-effecting — never cache
+# these; fall through to real gh so the live behavior is preserved.
+_NONCACHEABLE_READ_FLAGS = {"--watch", "--web", "-w"}
+
+
+def _is_read_only_api(api_args: list[str]) -> bool:
+    """True for a GET `gh api` with no write fields.
+
+    Mutating tells: an explicit non-GET `--method/-X`, any field flag
+    (`-f/--field/-F/--raw-field`), or `--input` (request body). Anything we
+    can't confidently classify as a pure GET → False (passthrough uncached).
+
+    Field flags appear in BOTH detached (`-f key=value`) and ATTACHED
+    (`-fkey=value` / `-Fkey=value`) short forms — gh accepts both. The
+    attached form would otherwise slip past the bare-flag check below and a
+    mutating POST (`gh api repos/... -ftitle=x`) would be misclassified as a
+    cacheable GET (RC-002).
+    """
+    method = "GET"
+    i = 0
+    while i < len(api_args):
+        a = api_args[i]
+        if a in ("-X", "--method"):
+            if i + 1 < len(api_args):
+                method = api_args[i + 1].upper()
+            i += 2
+            continue
+        if a.startswith("--method="):
+            method = a.split("=", 1)[1].upper()
+        elif a.startswith("-X") and len(a) > 2:  # attached: -XPOST
+            method = a[2:].upper()
+        elif a in ("-f", "--field", "-F", "--raw-field", "--input"):
+            return False
+        elif a.startswith(("--field=", "--raw-field=", "--input=")):
+            return False
+        # Attached short field flags: `-fkey=value` / `-Fkey=value`. Length
+        # check excludes the bare `-f`/`-F` already handled above.
+        elif len(a) > 2 and (a.startswith("-f") or a.startswith("-F")):
+            return False
+        i += 1
+    return method == "GET"
+
+
+def _is_cacheable_read(tail: list[str]) -> bool:
+    """Is this invocation a read-class verb the proxy should cache/pace?"""
+    if not tail:
+        return False
+    if any(f in _NONCACHEABLE_READ_FLAGS for f in tail):
+        return False
+    if (tail[0], tail[1] if len(tail) > 1 else "") in _READ_VERBS:
+        return True
+    if tail[0] == "api":
+        return _is_read_only_api(tail[1:])
+    return False
+
+
+# --- cache + pacing + backoff ----------------------------------------------
+def _cache_dir() -> str:
+    base = os.environ.get("CILIA_GH_SHIM_CACHE_DIR")
+    if not base:
+        runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"  # noqa: S108
+        base = os.path.join(runtime, "cilia-gh-shim-cache")
+    return base
+
+
+def _ensure_cache_dir() -> str:
+    """Create the cache dir owner-only (0o700) and return its path.
+
+    The dir holds cached PRIVATE gh responses. On the /tmp fallback a
+    umask-created dir is world-readable (observed 0o775 dir / 0o664 files),
+    leaking another user's PR data on a shared host (RC-008 / RC-013). We set
+    the mode explicitly rather than trusting the process umask, and chmod an
+    already-existing dir so a previously-loose dir is tightened too. makedirs'
+    `mode` is itself masked by umask, so the follow-up chmod is load-bearing.
+    """
+    cdir = _cache_dir()
+    os.makedirs(cdir, mode=0o700, exist_ok=True)
+    with contextlib.suppress(OSError):
+        os.chmod(cdir, 0o700)
+    return cdir
+
+
+def _cache_ttl() -> float:
+    try:
+        return float(os.environ.get("CILIA_GH_SHIM_CACHE_TTL", "15"))
+    except ValueError:
+        return 15.0
+
+
+def _command_has_explicit_repo(tail: list[str]) -> bool:
+    """True if the invocation names its repo explicitly via `-R`/`--repo`.
+
+    When the repo is explicit the result is independent of which worktree the
+    call runs from, so the cache key must NOT fold cwd (else identical explicit
+    reads from different worktrees all miss the shared cache — RC-012).
+    """
+    for a in tail:
+        if a in ("-R", "--repo"):
+            return True
+        if a.startswith("--repo=") or (a.startswith("-R") and len(a) > 2):
+            return True
+    return False
+
+
+def _cache_key(tail: list[str]) -> str:
+    """sha256 over the arg vector + the inputs that actually determine the
+    repo a read resolves against.
+
+    cwd is folded in ONLY when the read depends on local repo context — i.e.
+    no `-R/--repo` flag AND no `GH_REPO`/`GITHUB_REPOSITORY` env (RC-012). A
+    repo-relative read (`gh pr checks` with no --repo) resolves against the
+    current worktree, so the same argv in two worktrees is two distinct
+    results; but an explicit-repo read is worktree-independent and SHOULD share
+    one cache entry across worktrees (cross-agent dedup is the point of the
+    proxy). `GH_REPO`/`GITHUB_REPOSITORY` is folded in whenever set so that
+    `GH_REPO=r1 gh pr view 1` and `GH_REPO=r2 gh pr view 1` in the same dir
+    don't collide (RC-003).
+    """
+    gh_repo = os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY")
+    repo_determined = _command_has_explicit_repo(tail) or bool(gh_repo)
+    parts: list = [tail]
+    parts.append({"GH_REPO": gh_repo} if gh_repo else None)
+    parts.append(None if repo_determined else {"cwd": os.getcwd()})
+    payload = json.dumps(parts, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _cache_read(key: str) -> tuple[int, bytes, bytes] | None:
+    """Return (rc, stdout, stderr) if a fresh entry exists, else None."""
+    path = os.path.join(_cache_dir(), key)
+    try:
+        age = time.time() - os.path.getmtime(path)
+        if age > _cache_ttl():
+            return None
+        with open(path, "rb") as fh:
+            rec = json.loads(fh.read().decode("utf-8"))
+        return (
+            int(rec["rc"]),
+            base64.b64decode(rec["out"]),
+            base64.b64decode(rec["err"]),
+        )
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def _cache_write(key: str, rc: int, out: bytes, err: bytes) -> None:
+    try:
+        cdir = _ensure_cache_dir()
+        rec = {
+            "rc": rc,
+            "out": base64.b64encode(out).decode("ascii"),
+            "err": base64.b64encode(err).decode("ascii"),
+        }
+        tmp = os.path.join(cdir, f".{key}.{os.getpid()}.tmp")
+        # Create owner-only (0o600); the cache record contains private gh
+        # response bodies (RC-008 / RC-013). os.open with an explicit mode is
+        # not subject to the default-664 umask the way open() is.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(json.dumps(rec).encode("utf-8"))
+        finally:
+            with contextlib.suppress(OSError):
+                os.chmod(tmp, 0o600)  # tighten if umask/O_CREAT left it looser
+        os.replace(tmp, os.path.join(cdir, key))
+    except OSError:
+        pass  # fail open — a cache write failure must never break the call
+
+
+@contextlib.contextmanager
+def _proxy_lock():
+    """Host-local flock serializing read-class gh calls. Fails OPEN (yields a
+    no-op) where flock is unavailable or the lock file can't be opened — same
+    flock idiom as tools/cilia-build-shim/build-shim.sh.
+    """
+    if fcntl is None:
+        yield
+        return
+    fh = None
+    try:
+        cdir = _ensure_cache_dir()
+        fh = open(os.path.join(cdir, ".lock"), "a+")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        if fh is not None:
+            fh.close()
+        yield
+        return
+    try:
+        yield
+    finally:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+def _pace() -> None:
+    """Enforce a minimum delay since the last real gh call (host-local).
+
+    Called while holding the proxy lock, so all read-class misses across
+    concurrent agents are serialized AND spaced by at least CILIA_GH_SHIM_PACE_MS.
+    """
+    try:
+        pace_s = float(os.environ.get("CILIA_GH_SHIM_PACE_MS", "300")) / 1000.0
+    except ValueError:
+        pace_s = 0.3
+    stamp = os.path.join(_cache_dir(), ".last-call")
+    now = time.time()
+    try:
+        wait = pace_s - (now - os.path.getmtime(stamp))
+        if wait > 0:
+            time.sleep(wait)
+    except OSError:
+        pass  # no prior call recorded — no need to wait
+    try:
+        with open(stamp, "a"):
+            os.utime(stamp, None)
+    except OSError:
+        pass
+
+
+def _sweep_expired() -> None:
+    """Opportunistic GC of cache entries older than the TTL (RC-007).
+
+    Cheap: a single directory scan, called while the proxy lock is already
+    held. Only removes cache-key files (hex sha256 names); skips the control
+    files (`.lock`, `.last-call`) and in-flight `.<key>.<pid>.tmp` writes — all
+    of which start with a dot. A stale entry surviving past TTL is only a
+    disk-space concern (#1223), so any failure here is swallowed.
+    """
+    cdir = _cache_dir()
+    ttl = _cache_ttl()
+    now = time.time()
+    try:
+        names = os.listdir(cdir)
+    except OSError:
+        return
+    for name in names:
+        if name.startswith("."):
+            continue
+        path = os.path.join(cdir, name)
+        try:
+            if now - os.path.getmtime(path) > ttl:
+                os.remove(path)
+        except OSError:
+            pass
+
+
+# --- rate-limit / 403 classification ---------------------------------------
+# Phrases that unambiguously denote GitHub's SECONDARY/abuse throttle — these
+# are the only failures worth retrying under backoff.
+_RATE_LIMIT_RE = re.compile(
+    r"secondary rate limit"
+    r"|api rate limit (?:already )?exceeded"
+    r"|you have triggered an abuse",
+    re.IGNORECASE,
+)
+# A bare 'HTTP 403' is NOT on its own a rate-limit: a missing-PR `gh pr view`,
+# a SAML/SSO-enforcement 403, or a token-scope 403 are all permanent failures
+# that must NOT be retried 4x under the lock (RC-005 / RC-006). Treat an
+# 'HTTP 403' as rate-limited ONLY when a throttle co-token also appears.
+# Mirrors the Rust side's tighter 'http 403' intent.
+_HTTP_403_RE = re.compile(r"\bhttp[ /]?403\b|\b403 forbidden\b", re.IGNORECASE)
+_RATE_COTOKEN_RE = re.compile(
+    r"rate limit|abuse|retry[- ]after|too many requests", re.IGNORECASE
+)
+_RETRY_AFTER_RE = re.compile(r"retry[- ]after[:= ]\s*(\d+)", re.IGNORECASE)
+
+
+def _is_rate_limited(rc: int, stderr: bytes) -> bool:
+    if rc == 0:
+        return False
+    s = stderr.decode("utf-8", "replace")
+    if _RATE_LIMIT_RE.search(s):
+        return True
+    return bool(_HTTP_403_RE.search(s) and _RATE_COTOKEN_RE.search(s))
+
+
+def _backoff_params() -> tuple[int, float, float, float]:
+    """(retries, base_s, cap_s, max_sleep_s) from env, with safe fallbacks."""
+    try:
+        retries = int(os.environ.get("CILIA_GH_SHIM_MAX_RETRIES", "4"))
+        base_s = float(os.environ.get("CILIA_GH_SHIM_BACKOFF_BASE_MS", "200")) / 1000.0
+        cap_s = float(os.environ.get("CILIA_GH_SHIM_BACKOFF_CAP_MS", "3000")) / 1000.0
+        # Upper bound on a single honored Retry-After. Beyond this we'd rather
+        # surface the 403 immediately than block the agent for minutes.
+        max_sleep_s = float(os.environ.get("CILIA_GH_SHIM_MAX_SLEEP_MS", "120000")) / 1000.0
+    except ValueError:
+        retries, base_s, cap_s, max_sleep_s = 4, 0.2, 3.0, 120.0
+    return retries, base_s, cap_s, max_sleep_s
+
+
+def _run_real_gh(real_gh: str, tail: list[str]) -> tuple[int, bytes, bytes]:
+    # NOTE: read-class verbs run via subprocess with captured (piped, non-TTY)
+    # stdout/stderr — UNLIKE the os.execv passthrough path which preserves the
+    # caller's TTY. Read-class verbs are therefore always non-interactive
+    # (RC-010); interactive/streaming forms (--watch/--web) are excluded from
+    # the read set in `_is_cacheable_read` and fall through to execv.
+    proc = subprocess.run([real_gh, *tail], capture_output=True)  # noqa: S603
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def _next_backoff_sleep(
+    err: bytes, delay: float, cap_s: float, max_sleep_s: float
+) -> float | None:
+    """Seconds to sleep before the next retry, or None to give up now.
+
+    Honors the FULL `Retry-After` when present (RC-001) — the cap applies only
+    to the exponential fallback. If an explicit Retry-After exceeds our budget
+    (`max_sleep_s`), return None so the caller surfaces the 403 immediately
+    instead of hammering / burning all retries on a too-short sleep.
+    """
+    m = _RETRY_AFTER_RE.search(err.decode("utf-8", "replace"))
+    if m:
+        retry_after = float(m.group(1))
+        if retry_after > max_sleep_s:
+            _debug_log(
+                f"Retry-After {retry_after:.0f}s exceeds budget "
+                f"{max_sleep_s:.0f}s; returning 403 without retry"
+            )
+            return None
+        return retry_after  # honor it in full
+    return min(delay, cap_s)  # cap only the exponential fallback
+
+
+def _replay(rc: int, out: bytes, err: bytes) -> int:
+    sys.stdout.buffer.write(out)
+    sys.stdout.buffer.flush()
+    sys.stderr.buffer.write(err)
+    sys.stderr.buffer.flush()
+    return rc
+
+
+def handle_read(tail: list[str], real_gh: str) -> int:
+    """Read proxy: cache hit → replay; miss → serialize+pace+backoff, cache, replay.
+
+    Read-class verbs always run NON-INTERACTIVELY (piped subprocess, see
+    `_run_real_gh` / RC-010).
+
+    The backoff SLEEP happens with the proxy lock RELEASED (RC-004): each gh
+    attempt acquires the lock, re-checks the cache, paces, and runs exactly
+    once, then drops the lock before sleeping. Without this, one retrying call
+    would hold the exclusive lock for the whole backoff window and head-of-line
+    block every other read-class gh call on the host — exactly under the
+    secondary-limit storm this proxy is meant to absorb.
+    """
+    label = _subcommand_label(tail)
+    key = _cache_key(tail)
+
+    hit = _cache_read(key)
+    if hit is not None:
+        _tally(label, "hit")
+        return _replay(*hit)
+
+    retries, base_s, cap_s, max_sleep_s = _backoff_params()
+    delay = base_s
+    attempt = 0
+    while True:
+        with _proxy_lock():
+            _sweep_expired()  # opportunistic GC while holding the lock (RC-007)
+            # Re-check under the lock: a sibling racing us (or filling it during
+            # our backoff sleep) may have just written the entry.
+            hit = _cache_read(key)
+            if hit is not None:
+                _tally(label, "hit")
+                return _replay(*hit)
+            _pace()
+            rc, out, err = _run_real_gh(real_gh, tail)
+            if not _is_rate_limited(rc, err):
+                # Cache successes and non-transient failures (failing checks →
+                # rc!=0 is a real, cacheable answer). Never cache a still-rate-
+                # limited result: it's transient and caching would suppress
+                # recovery for the whole TTL.
+                _cache_write(key, rc, out, err)
+                _tally(label, "miss")
+                return _replay(rc, out, err)
+        # --- lock RELEASED before the backoff sleep (RC-004) ---
+        attempt += 1
+        if attempt > max(0, retries):
+            break
+        sleep_s = _next_backoff_sleep(err, delay, cap_s, max_sleep_s)
+        if sleep_s is None:
+            break  # Retry-After over budget → surface the 403 now (RC-001)
+        _debug_log(f"403/secondary-limit backoff: sleeping {sleep_s:.2f}s before retry")
+        time.sleep(sleep_s)
+        delay *= 2
+
+    _tally(label, "miss")
+    return _replay(rc, out, err)
+
+
+# --- issue create (#3460 slice 1) -------------------------------------------
+# `gh issue create` is routed to the cilia-native forge instead of github.com.
+# Unlike issue-serve below, this is FAIL-CLOSED: any native-forge trouble
+# (unreachable, or a real rejection) surfaces loudly and exits non-zero —
+# NEVER falls through to a raw `gh issue create`, which would create the issue
+# straight on GitHub and bypass the dedup+attestation gate entirely.
+
+# `--web`/`-w` opens a browser to draft interactively; the shim can't drive that.
+_ISSUE_CREATE_NONCACHEABLE_FLAGS = {"--web", "-w"}
+
+# `new` is gh's own documented alias for `create` (`gh issue create --help`
+# lists it under Aliases). Not covering it here would let `gh issue new`
+# create straight on GitHub, bypassing the dedup+attestation gate entirely.
+_ISSUE_CREATE_SUBCOMMANDS = {"create", "new"}
+
+
+def _is_issue_create(tail: list[str]) -> bool:
+    """Is this a `gh issue create` (or its `new` alias) the shim should route
+    to the native forge?"""
+    if len(tail) < 2 or tail[0] != "issue" or tail[1] not in _ISSUE_CREATE_SUBCOMMANDS:
+        return False
+    return not any(f in _ISSUE_CREATE_NONCACHEABLE_FLAGS for f in tail)
+
+
+def _http_post_json(url: str, token: str, payload: dict) -> tuple[int, bytes]:
+    """POST `payload` as JSON with a Bearer token. Returns (status, body).
+    Raises on a transport failure (caller treats that as a loud, non-zero
+    exit — never a silent fallback to real gh for a write)."""
+    req = request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    with request.urlopen(req, timeout=15) as resp:
+        return resp.status, resp.read()
+
+
+def handle_issue_create(args: list[str], real_gh: str) -> int:
+    """Route `gh issue create` to `POST /api/issues` on the cilia-native forge.
+
+    Accepts the real gh flags (`-t/--title`, `-b/--body`, `-F/--body-file`,
+    `-l/--label` repeatable, `-R/--repo`) plus a shim-only `--not-duplicate
+    "reason"` that becomes the create's `not_duplicate_attestation`. `gh`
+    itself has no such flag — an agent that omits it gets the create rejected
+    with the surfaced near-duplicate candidates printed to stderr, so it can
+    retry with one.
+
+    FAILS CLOSED (see module docstring, Layer 1.2): every failure path here
+    (interactive, missing creds, transport error, or a native-forge rejection)
+    either passes through for a form the shim genuinely can't drive (`--web`,
+    no `--title` at all) or exits non-zero WITHOUT touching real gh. A create
+    that silently fell back to raw `gh issue create` on any of these would
+    bypass dedup — exactly the failure mode this layer exists to prevent.
+    """
+    label = "issue create"
+    p = argparse.ArgumentParser(prog="cilia-gh-shim issue create", add_help=False)
+    p.add_argument("-t", "--title")
+    p.add_argument("-b", "--body")
+    p.add_argument("-F", "--body-file")
+    p.add_argument("-l", "--label", action="append", default=[])
+    p.add_argument("-R", "--repo")
+    p.add_argument("-w", "--web", action="store_true")
+    p.add_argument("--not-duplicate", dest="not_duplicate")
+    try:
+        parsed, unknown = p.parse_known_args(args)
+    except SystemExit:
+        # argparse rejected the args (e.g., -h) — let real gh handle it.
+        return _passthrough(real_gh, ["issue", "create"] + args)
+
+    if parsed.web:
+        # Already filtered by `_is_issue_create`, but defensive in case a
+        # future caller invokes this directly.
+        return _passthrough(real_gh, ["issue", "create"] + args)
+
+    if not parsed.title:
+        # No `--title` at all means gh would prompt interactively — the shim
+        # can't safely drive that, so let real gh handle it.
+        _debug_log(f"{label}: falling through (no --title, interactive mode): {args}")
+        return _passthrough(real_gh, ["issue", "create"] + args)
+
+    if unknown:
+        # Real `gh issue create` also supports -a/--assignee, -m/--milestone,
+        # -p/--project, -T/--template, --recover, --editor — none of which the
+        # native-forge create path implements yet. Silently accepting and
+        # dropping them (the old `parse_known_args` behavior) would create a
+        # materially different issue than the caller asked for. Fail closed
+        # instead of passing through (passthrough would create straight on
+        # GitHub and bypass dedup) and instead of silently ignoring them.
+        sys.stderr.write(
+            f"cilia-gh-shim: issue create does not yet support: {' '.join(unknown)}\n"
+            "The native-forge create path only implements -t/--title, -b/--body, "
+            "-F/--body-file, -l/--label (repeatable), -R/--repo, -w/--web, and the "
+            "shim-only --not-duplicate. Refusing to silently drop the semantics of "
+            "unsupported flags (e.g. --assignee, --milestone, --project, --template, "
+            "--recover) — that would create a different issue than requested.\n"
+        )
+        _tally(label, "unsupported_flags")
+        return 1
+
+    body_text = parsed.body
+    if parsed.body_file:
+        if parsed.body_file == "-":
+            # Real gh treats `-F -`/`--body-file -` as "read the body from
+            # stdin" (a common `echo ... | gh issue create -F -` idiom).
+            body_text = sys.stdin.read()
+        else:
+            try:
+                body_text = Path(parsed.body_file).read_text()
+            except OSError as e:
+                sys.stderr.write(f"cilia-gh-shim: cannot read --body-file {parsed.body_file}: {e}\n")
+                return 1
+
+    cilia_url = os.environ.get("CILIA_URL")
+    cilia_token = os.environ.get("CILIA_AUTH_TOKEN")
+    if not cilia_url or not cilia_token:
+        # Fail-closed (mirrors Layer 1's RC-002): this layer exists to
+        # guarantee issue creation goes through the native dedup+attestation
+        # gate. Falling through to real gh here would create straight on
+        # GitHub and defeat the whole point.
+        sys.stderr.write(
+            "cilia-gh-shim: refusing to create the issue on GitHub directly because CILIA_URL "
+            "or CILIA_AUTH_TOKEN is unset. This shim exists to route issue creation through the "
+            "native forge's dedup+attestation gate. Fix the worker's MCP credentials (see "
+            "services/remote-agent/wrappers/) and retry.\n"
+        )
+        return 2
+
+    base = _cilia_api_base()
+    if not base:
+        sys.stderr.write("cilia-gh-shim: could not derive the cilia REST base from CILIA_URL.\n")
+        return 2
+
+    payload = {
+        "title": parsed.title,
+        "body": body_text,
+        "labels": parsed.label,
+        "not_duplicate_attestation": parsed.not_duplicate,
+    }
+    if parsed.repo:
+        payload["repo"] = parsed.repo
+
+    try:
+        status, body = _http_post_json(f"{base}/api/issues", cilia_token, payload)
+    except error.HTTPError as e:
+        status = e.code
+        body = e.read() or b""
+    except Exception as e:  # noqa: BLE001 — any transport failure is LOUD, never a silent fallback
+        sys.stderr.write(
+            f"cilia-gh-shim: native forge unreachable while creating issue: {e}\n"
+            "Refusing to fall back to a raw `gh issue create` — that would bypass dedup.\n"
+        )
+        _tally(label, "error")
+        return 1
+
+    if 200 <= status < 300:
+        try:
+            created = json.loads(body.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            created = {}
+        number = created.get("number")
+        gh_mirror = created.get("gh_mirror") or {}
+        url = gh_mirror.get("url") or f"{base.replace('http://', 'cilia://').replace('https://', 'cilia://')}/issues/{number}"
+        print(url)
+        _debug_log(f"{label}: created native issue #{number} ({url})")
+        _tally(label, "created")
+        return 0
+
+    # Any non-2xx — including 409 (missing/blank attestation) and 400
+    # (malformed repo/empty title) — is a REAL rejection, surfaced loudly.
+    # Never passthrough here: that would create the issue straight on GitHub,
+    # bypassing the dedup+attestation gate this layer exists to enforce.
+    try:
+        err = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        err = {"error": body.decode("utf-8", "replace")}
+    sys.stderr.write(f"cilia-gh-shim: issue create rejected (HTTP {status}): {err.get('error', err)}\n")
+    candidates = err.get("dedup_candidates") or []
+    if candidates:
+        sys.stderr.write("Near-duplicate candidates surfaced by the dedup search:\n")
+        for c in candidates:
+            sys.stderr.write(f"  #{c.get('number')} (score={c.get('score'):.2f}): {c.get('title')}\n")
+        sys.stderr.write(
+            'Retry with --not-duplicate "reason this is not a duplicate of the above" '
+            "to proceed.\n"
+        )
+    _tally(label, "rejected")
+    return 1
+
+
+# --- issue serve (#1537 / #2418) --------------------------------------------
+# `gh issue view N` is served by the cilia issue store instead of github.com,
+# under a strict allowlist. The shim GETs the cilia REST endpoint; cilia
+# mirrors-on-read (shells real gh once on a store miss, serves its copy after).
+# `gh issue list` is NOT served in slice-1 — it passes straight through.
+
+# `--web`/`-w` open a browser (interactive); cilia can't serve those.
+_ISSUE_NONCACHEABLE_FLAGS = {"--web", "-w"}
+# `gh issue view` flags that consume the following token as their VALUE, so a
+# value is never mistaken for the positional issue number.
+_ISSUE_VALUE_FLAGS = {"-R", "--repo", "--json", "--jq", "-q", "--template", "-t"}
+# `--jq`/`--template` ask gh to render the result locally; we can't replicate
+# that over the JSON the cilia endpoint returns, so those forms pass through.
+_ISSUE_RENDER_FLAGS = {"--jq", "-q", "--template", "-t"}
+# `gh issue view --comments`/`-c` asks for the comment thread, which cilia
+# deliberately omits from its mirror (ISSUE_VIEW_FIELDS) — serving the cilia copy
+# would silently drop comments, so this form passes through (#2418 RC-003).
+_ISSUE_COMMENTS_FLAGS = {"-c", "--comments"}
+# The issue `--json` fields cilia's mirror actually stores. MUST stay in sync
+# with ISSUE_VIEW_FIELDS in services/cilia/src/gh.rs. A `--json` request is
+# served from cilia ONLY when every requested field is in this set; a field
+# cilia doesn't mirror (comments, id, closed, projectCards, projectItems,
+# reactionGroups, …) means cilia can't answer faithfully → fail OPEN to real gh
+# rather than serve a silently-incomplete projection (#2418 RC-007/012).
+_CILIA_MIRRORED_ISSUE_FIELDS = frozenset(
+    {
+        "number",
+        "title",
+        "state",
+        "body",
+        "author",
+        "labels",
+        "assignees",
+        "milestone",
+        "createdAt",
+        "updatedAt",
+        "closedAt",
+        "url",
+    }
+)
+
+
+def _is_issue_serve(tail: list[str]) -> bool:
+    """Is this a `gh issue view` the shim should TRY to serve from cilia?
+
+    Only `issue view` is a candidate (#2418): `gh issue list` is never served in
+    slice-1 (it passes through so the fleet sees live repo activity). `--web`/`-w`
+    open a browser, so they pass through too. `handle_issue` then applies the rest
+    of the allowlist and fails OPEN to real gh for any form cilia can't faithfully
+    serve.
+    """
+    if len(tail) < 2 or tail[0] != "issue" or tail[1] != "view":
+        return False
+    return not any(f in _ISSUE_NONCACHEABLE_FLAGS for f in tail)
+
+
+def _cilia_api_base() -> str | None:
+    """The cilia REST base derived from CILIA_URL (its `/mcp` endpoint).
+
+    CILIA_URL points at the JSON-RPC MCP endpoint — either the plain `/mcp`
+    (e.g. `http://127.0.0.1:8093/mcp`) or, for sessions opted into aggregate
+    routing (`route_mcp_aggregate`, #2440), `/mcp/aggregate`. The issue store
+    lives under `/api/...` on the same origin in BOTH cases — strip whichever
+    suffix is present to get there.
+
+    Bug fixed here (mobile-companion escalation, verified via direct repro):
+    only stripping a literal trailing `/mcp` left `/mcp/aggregate` callers
+    with a base of `.../mcp/aggregate`, so `POST {base}/api/issues` actually
+    hit `.../mcp/aggregate/api/issues` — a real, different route that happens
+    to exist and returns 405, not the 404 you'd expect from a pure typo. The
+    405 masked the real bug as something router-shaped. Check the longer
+    suffix first so `/mcp/aggregate` doesn't partially match as `/mcp`.
+    """
+    url = os.environ.get("CILIA_URL")
+    if not url:
+        return None
+    base = url.rstrip("/")
+    if base.endswith("/mcp/aggregate"):
+        base = base[: -len("/mcp/aggregate")]
+    elif base.endswith("/mcp"):
+        base = base[: -len("/mcp")]
+    return base
+
+
+def _extract_repo(args: list[str]) -> str | None:
+    """The repo from `-R`/`--repo` (detached, `--repo=`, or attached `-R`), or
+    the `GH_REPO`/`GITHUB_REPOSITORY` env. `None` → cilia uses its default."""
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-R", "--repo"):
+            return args[i + 1] if i + 1 < len(args) else None
+        if a.startswith("--repo="):
+            return a.split("=", 1)[1]
+        if a.startswith("-R") and len(a) > 2:
+            return a[2:]
+        i += 1
+    return os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY")
+
+
+def _extract_json_fields(args: list[str]) -> list[str] | None:
+    """The fields from `--json a,b` / `--json=a,b`, [] for a bare `--json`, or
+    None when no `--json` flag is present (a human-format request)."""
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--json":
+            return [f for f in args[i + 1].split(",") if f] if i + 1 < len(args) else []
+        if a.startswith("--json="):
+            return [f for f in a.split("=", 1)[1].split(",") if f]
+        i += 1
+    return None
+
+
+def _first_positional(args: list[str]) -> str | None:
+    """First non-flag token, skipping value-flag operands."""
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in _ISSUE_VALUE_FLAGS:
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        return a
+    return None
+
+
+def _project_fields(body: bytes, fields: list[str]) -> bytes:
+    """Subset a cilia issue / issue-list JSON to the caller's `--json` fields.
+
+    The cilia endpoint returns the full canonical field set; a `--json a,b`
+    caller asked for a subset, so we project to match what real gh would emit.
+    On any parse surprise, return the body unchanged.
+    """
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return body
+    fset = set(fields)
+    if isinstance(data, list):
+        proj: object = [
+            {k: v for k, v in row.items() if k in fset}
+            for row in data
+            if isinstance(row, dict)
+        ]
+    elif isinstance(data, dict):
+        proj = {k: v for k, v in data.items() if k in fset}
+    else:
+        return body
+    return json.dumps(proj).encode("utf-8")
+
+
+def _http_get(url: str, token: str) -> tuple[int, bytes]:
+    """GET `url` with a Bearer token. Returns (status, body). Raises on a
+    transport failure (caller falls through to real gh)."""
+    req = request.Request(
+        url,
+        method="GET",
+        headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+    )
+    try:
+        with request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read()
+    except error.HTTPError as e:
+        return e.code, e.read() or b""
+
+
+def _emit_served(body: bytes, fields: list[str] | None) -> int:
+    out = _project_fields(body, fields) if fields is not None else body
+    sys.stdout.buffer.write(out)
+    if not out.endswith(b"\n"):
+        sys.stdout.buffer.write(b"\n")
+    sys.stdout.buffer.flush()
+    return 0
+
+
+def handle_issue(tail: list[str], real_gh: str) -> int:
+    """Serve `gh issue view N` from cilia under the #2418 allowlist, falling
+    through to real gh for ANY form cilia can't answer faithfully (fail OPEN).
+
+    Served ONLY when ALL hold:
+      * `--json` is present with at least one field (no/empty `--json` → gh
+        renders human text we can't replicate, or errors → passthrough),
+      * every requested `--json` field is in `_CILIA_MIRRORED_ISSUE_FIELDS`
+        (an un-mirrored field like `comments` → passthrough, never a silently
+        incomplete projection),
+      * no `-c`/`--comments` (cilia doesn't mirror the comment thread),
+      * no `--jq`/`--template` render form (needs gh's local engine),
+      * cilia creds are present and the positional is a numeric issue id.
+    A wrong answer with exit 0 is worse than a passthrough.
+    """
+    args = tail[2:]  # tail[:2] == ["issue", "view"]
+    label = "issue view"
+
+    def passthrough(reason: str) -> int:
+        _debug_log(f"{label}: passthrough ({reason}): {args}")
+        _tally(label, "passthrough")
+        return _passthrough(real_gh, tail)
+
+    # Render forms need real gh's local jq/template engine.
+    if any(
+        a in _ISSUE_RENDER_FLAGS or a.startswith(("--jq=", "--template="))
+        for a in args
+    ):
+        return passthrough("jq/template render")
+
+    # Comments aren't mirrored — serving cilia's copy would silently drop them.
+    if any(a in _ISSUE_COMMENTS_FLAGS for a in args):
+        return passthrough("--comments not mirrored")
+
+    # `--json` is the machine-readable contract; without it (or with a bare
+    # `--json`, which gh itself rejects) gh prints a human view we can't render.
+    fields = _extract_json_fields(args)
+    if not fields:
+        return passthrough("no/empty --json (human render or gh error)")
+
+    # Serve only when EVERY requested field is one cilia actually mirrors.
+    unmirrored = [f for f in fields if f not in _CILIA_MIRRORED_ISSUE_FIELDS]
+    if unmirrored:
+        return passthrough(f"un-mirrored --json field(s) {unmirrored}")
+
+    base = _cilia_api_base()
+    token = os.environ.get("CILIA_AUTH_TOKEN")
+    if not base or not token:
+        # Fail OPEN: missing cilia creds here just means we serve from github
+        # directly (the read mirror is best-effort, NOT fail-closed like review).
+        return passthrough("CILIA_URL/CILIA_AUTH_TOKEN unset")
+
+    number = _first_positional(args)
+    if number is None or not number.isdigit():
+        # URL / branch / no-number forms — let real gh resolve them.
+        return passthrough("non-numeric issue ref")
+
+    repo = _extract_repo(args)
+    url = f"{base}/api/issues/{number}"
+    if repo:
+        url += f"?repo={quote(repo, safe='')}"
+
+    try:
+        status, body = _http_get(url, token)
+    except Exception as e:  # noqa: BLE001 — any transport failure → passthrough
+        return passthrough(f"cilia transport failure: {e}")
+
+    if 200 <= status < 300:
+        _debug_log(f"{label}: served by cilia ({url})")
+        _tally(label, "served")
+        return _emit_served(body, fields)
+
+    if status == 404:
+        # cilia's mirror says this issue genuinely doesn't exist — surface it
+        # like real gh (nonzero exit), don't double-check github.
+        sys.stderr.write(body.decode("utf-8", "replace").rstrip() + "\n")
+        _debug_log(f"{label}: cilia 404 (issue not found)")
+        _tally(label, "served")
+        return 1
+
+    # Any other non-2xx (5xx, 502 upstream gh failure, auth) → fall through so
+    # a hub problem never strands the agent.
+    return passthrough(f"cilia HTTP {status}")
+
+
+def _call_mcp_tool(url: str, token: str, name: str, arguments: dict) -> None:
+    """POST one JSON-RPC tools/call. Raises RuntimeError on any failure.
+
+    Cilia's MCP `tools/call` returns failures inside HTTP 200 JSON-RPC bodies
+    with `result.isError=true` or with a top-level `error` envelope (see
+    services/cilia/src/routes/misc.rs + services/cilia/src/mcp.rs). HTTP 2xx
+    alone is NOT enough to claim success — we must inspect both shapes.
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    }
+    req = request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    try:
+        with request.urlopen(req, timeout=15) as resp:
+            status = resp.status
+            body = resp.read()
+    except error.HTTPError as e:
+        status = e.code
+        body = e.read() or b""
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(f"transport failure calling {name}: {e}") from e
+
+    if not (200 <= status < 300):
+        raise RuntimeError(
+            f"HTTP {status} from cilia for {name}: {body.decode(errors='replace')[:200]}"
+        )
+
+    try:
+        parsed = json.loads(body.decode("utf-8") or "{}")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"non-JSON response from cilia for {name}: {e}") from e
+
+    if "error" in parsed:
+        err = parsed["error"]
+        msg = err.get("message", "unknown JSON-RPC error") if isinstance(err, dict) else str(err)
+        raise RuntimeError(f"JSON-RPC error from cilia for {name}: {msg}")
+
+    result = parsed.get("result")
+    if isinstance(result, dict) and result.get("isError"):
+        content = result.get("content") or []
+        msg = "unknown MCP error"
+        if content and isinstance(content[0], dict):
+            msg = content[0].get("text", msg)
+        raise RuntimeError(f"cilia MCP tool {name} returned isError: {msg}")
+
+
+def handle_pr_review(args: list[str], real_gh: str) -> int:
+    """Translate `gh pr review` to cilia MCP calls.
+
+    Falls through to the real gh whenever the invocation is interactive,
+    repo-ambiguous, or otherwise outside the slice the shim handles. The
+    fall-through is via os.execv so the operator sees identical behavior
+    to running the real gh directly.
+    """
+    # Mirror the short forms `gh pr review` accepts (per `gh help pr review`):
+    #   -a/--approve, -b/--body, -c/--comment, -F/--body-file,
+    #   -r/--request-changes, -R/--repo. Skipping any of these lets the
+    #   short-form invocation slip past `parse_known_args` and the shim
+    #   falls through to real gh — the exact RC-001 bypass.
+    p = argparse.ArgumentParser(prog="cilia-gh-shim pr review", add_help=False)
+    p.add_argument("pr_number", type=int, nargs="?")
+    p.add_argument("-R", "--repo")
+    p.add_argument("-a", "--approve", action="store_true")
+    p.add_argument("-r", "--request-changes", action="store_true")
+    p.add_argument("-c", "--comment", action="store_true")
+    p.add_argument("-b", "--body")
+    p.add_argument("-F", "--body-file")
+    try:
+        parsed, _unknown = p.parse_known_args(args)
+    except SystemExit:
+        # argparse rejected the args (e.g., -h) — let real gh handle it.
+        return _passthrough(real_gh, ["pr", "review"] + args)
+
+    if parsed.approve:
+        verdict = "approve"
+    elif parsed.request_changes:
+        verdict = "request_changes"
+    elif parsed.comment:
+        verdict = "comment"
+    else:
+        # Interactive mode (no verdict flag) — only real gh can drive this.
+        _debug_log(f"falling through (no verdict flag): {args}")
+        return _passthrough(real_gh, ["pr", "review"] + args)
+
+    if not parsed.pr_number or not parsed.repo:
+        # Repo-ambiguous: real gh resolves the current dir to a remote, we don't.
+        _debug_log(f"falling through (no pr_number or --repo): {args}")
+        return _passthrough(real_gh, ["pr", "review"] + args)
+
+    body_text = parsed.body
+    if parsed.body_file:
+        try:
+            body_text = Path(parsed.body_file).read_text()
+        except OSError as e:
+            sys.stderr.write(f"cilia-gh-shim: cannot read --body-file {parsed.body_file}: {e}\n")
+            return 1
+
+    cilia_url = os.environ.get("CILIA_URL")
+    cilia_token = os.environ.get("CILIA_AUTH_TOKEN")
+    if not cilia_url or not cilia_token:
+        # RC-002: fail-closed. This shim's whole reason to exist is to
+        # guarantee `gh pr review` lands in cilia even when the worker's
+        # MCP wiring is broken. Falling through to real gh in that case
+        # defeats the layer — review posts to GitHub, cilia never sees it.
+        sys.stderr.write(
+            "cilia-gh-shim: refusing to forward review to GitHub because CILIA_URL or "
+            "CILIA_AUTH_TOKEN is unset. This shim exists to ensure reviews land in cilia. "
+            "Fix the worker's MCP credentials (see services/remote-agent/wrappers/) and retry.\n"
+        )
+        return 2
+
+    from parser import parse_review_body  # noqa: WPS433 (local import — sys.path set above)
+
+    concerns = parse_review_body(body_text or "")
+    pr_ref = f"github://{parsed.repo}/{parsed.pr_number}"
+
+    # RC-003: any failure from _call_mcp_tool — transport, HTTP non-2xx,
+    # JSON-RPC error, or isError-in-2xx — must exit non-zero WITHOUT
+    # falling through to real gh. Concerns may have partially registered;
+    # re-running real gh would post to GitHub a second time.
+    try:
+        for concern in concerns:
+            _call_mcp_tool(
+                cilia_url,
+                cilia_token,
+                "register_review_concern",
+                {
+                    "pr_ref": pr_ref,
+                    "severity": concern["severity"],
+                    "concern_text": concern["concern_text"],
+                    "file_path": concern["file_path"],
+                    "line_range": concern["line_range"],
+                },
+            )
+            _debug_log("register_review_concern ok")
+
+        _call_mcp_tool(
+            cilia_url,
+            cilia_token,
+            "approve_pr",
+            {"pr_ref": pr_ref, "verdict_override": verdict},
+        )
+        _debug_log("approve_pr ok")
+    except RuntimeError as e:
+        sys.stderr.write(f"cilia-gh-shim: {e}\n")
+        return 1
+
+    # Synthetic stdout shaped like real gh so any caller scraping output
+    # gets a recognizable line. Only printed on full success.
+    print(
+        f"Reviewed pull request #{parsed.pr_number} ({verdict}) "
+        f"— translated to {len(concerns)} cilia concern(s) via gh-shim"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
