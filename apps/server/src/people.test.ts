@@ -1,9 +1,10 @@
 import { findLeaks } from "@elochair/policy/testing";
 import { ROLE_INVITATIONS } from "@elochair/schema";
-import { and, eq, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "./db/client";
 import {
+  assignmentReleases,
   assignments,
   auditLog,
   conferenceRoles,
@@ -1509,24 +1510,15 @@ describe("removing a role", () => {
   let chair: string;
   let chairId: string;
   const slug = "sandbox";
-  /** A reviewer's assignments that count: those that have not been released. */
+  /** A reviewer's assignments: the table holds those that stand, and no others. */
   const assignmentsOf = async (reviewerId: string) =>
-    t.db
-      .select()
-      .from(assignments)
-      .where(and(eq(assignments.reviewerId, reviewerId), isNull(assignments.releasedAt)));
-  /** The assignments a reviewer was released from: the rows are kept. */
+    t.db.select().from(assignments).where(eq(assignments.reviewerId, reviewerId));
+  /** The record of the assignments a reviewer was released from. */
   const releasedOf = async (reviewerId: string) =>
-    t.db
-      .select()
-      .from(assignments)
-      .where(and(eq(assignments.reviewerId, reviewerId), isNotNull(assignments.releasedAt)));
-  /** The sandbox's assignments that count. */
+    t.db.select().from(assignmentReleases).where(eq(assignmentReleases.reviewerId, reviewerId));
+  /** The sandbox's assignments. */
   const activeAssignments = async () =>
-    t.db
-      .select()
-      .from(assignments)
-      .where(and(eq(assignments.conferenceId, s.conferenceId), isNull(assignments.releasedAt)));
+    t.db.select().from(assignments).where(eq(assignments.conferenceId, s.conferenceId));
 
   beforeAll(async () => {
     s = await seedSandbox(t.db, { submissions: 60 });
@@ -1563,10 +1555,9 @@ describe("removing a role", () => {
     const mine = await assignmentsOf(victim.personId);
     expect(mine).toHaveLength(victim.assigned);
     const snapshot = async () => ({
-      // The rows are kept: a release is recorded on its row.
-      rows: (await t.db.select().from(assignments)).length,
-      assignments: (await t.db.select().from(assignments).where(isNull(assignments.releasedAt)))
-        .length,
+      // A release takes the assignment out of its table and writes its record to another.
+      assignments: (await t.db.select().from(assignments)).length,
+      releases: (await t.db.select().from(assignmentReleases)).length,
       roles: (await t.db.select().from(conferenceRoles)).length,
       profiles: (await t.db.select().from(reviewerProfiles)).length,
       people: (await t.db.select().from(people)).length,
@@ -1612,6 +1603,7 @@ describe("removing a role", () => {
     expect(after).toEqual({
       ...before,
       assignments: before.assignments - victim.assigned,
+      releases: before.releases + victim.assigned,
       // The role and the profile granted above at the other conference are still there.
       roles: before.roles - 1 + 1,
       profiles: before.profiles - 1 + 1,
@@ -1632,13 +1624,25 @@ describe("removing a role", () => {
         ),
     ).toEqual([]);
     expect(await assignmentsOf(victim.personId)).toEqual([]);
-    // Each of their assignments is released, because their role was removed: the same rows,
-    // for the same proposals, made by whoever made them.
+    // Each of their assignments is released, because their role was removed: a record for
+    // each, of the same proposal, made by whoever made it, ended by this chair.
     const gone = await releasedOf(victim.personId);
-    const byId = <T extends { id: string }>(rows: T[]) =>
-      [...rows].sort((a, b) => a.id.localeCompare(b.id));
-    expect(byId(gone)).toEqual(
-      byId(mine).map((a) => ({ ...a, releasedAt: NOW, releaseReason: "role_removed" })),
+    const byAssignment = <T extends { assignmentId: string }>(rows: T[]) =>
+      [...rows].sort((a, b) => a.assignmentId.localeCompare(b.assignmentId));
+    expect(byAssignment(gone).map(({ id: _id, ...record }) => record)).toEqual(
+      byAssignment(
+        mine.map((a) => ({
+          conferenceId: a.conferenceId,
+          submissionId: a.submissionId,
+          reviewerId: a.reviewerId,
+          assignmentId: a.id,
+          assignedByPersonId: a.assignedByPersonId,
+          assignedAt: a.createdAt,
+          releasedByPersonId: chairId,
+          releasedAt: NOW,
+          reason: "role_removed",
+        })),
+      ),
     );
     // Their conflicts stay: they are facts about people, not about the role.
     expect(

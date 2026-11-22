@@ -1,12 +1,11 @@
 import {
-  type ActiveAssignment,
+  type Assignment,
   type BlindMode,
   type ConferenceConfig,
   type Conflict,
   type Contribution,
   effectiveBlindMode,
   findType,
-  isActiveAssignment,
   reviewersCanRead,
   type Submission,
 } from "@elochair/schema";
@@ -23,23 +22,14 @@ export type SubmissionContext = {
   submission: Submission;
   contributions: Contribution[];
   /**
-   * The active assignments for this submission. A released one is not put here (the server's
-   * loader leaves it out), and counts for nothing if it is: read them through
-   * activeAssignments().
+   * Assignments for this submission: those that stand. One that was released is no longer an
+   * assignment (its record is kept elsewhere, and is not the policy's to read), so a reviewer
+   * who was taken off the proposal is a stranger to it again.
    */
-  assignments: ActiveAssignment[];
+  assignments: Assignment[];
   /** Conflicts that name this submission or any of its contributors. */
   conflicts: Conflict[];
 };
-
-/**
- * The assignments of a submission that count: those that have not been released. Everything in
- * this package that decides or counts by assignments reads them here, so that a released
- * reviewer is a stranger to the proposal again, whatever a caller hands over.
- */
-export function activeAssignments(ctx: Pick<SubmissionContext, "assignments">): ActiveAssignment[] {
-  return ctx.assignments.filter(isActiveAssignment);
-}
 
 export type Access =
   | "none"
@@ -110,12 +100,12 @@ function personAccess(p: PersonViewer, ctx: SubmissionContext, baseline: Access)
   }
 
   // Reviewer rule: only assigned reviewers, only in pools they serve, only once submitted, and
-  // only once the conference is in review. Before that, and after the assignment is released,
-  // an assigned reviewer gets what a stranger gets.
+  // only once the conference is in review. Before that an assigned reviewer gets what a
+  // stranger gets, and so does a reviewer whose assignment was released: it is no longer there.
   const reviewer = hasRole(p, s.conferenceId, ["reviewer"]);
   const pool = findType(ctx.config, s.typeKey)?.reviewPool;
   const inPool = reviewer && pool && (reviewer.scope.length === 0 || reviewer.scope.includes(pool));
-  const assigned = activeAssignments(ctx).some(
+  const assigned = ctx.assignments.some(
     (a) => a.reviewerId === p.personId && a.submissionId === s.id,
   );
   if (inPool && assigned && isReviewable(s) && reviewersCanRead(ctx.phase)) {

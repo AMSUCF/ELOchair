@@ -5,7 +5,6 @@
  * kind of viewer and searched for what it must not hold.
  */
 import {
-  type ActiveAssignment,
   type Assignment,
   type AssignmentReleaseReason,
   CONFERENCE_PHASES,
@@ -140,7 +139,7 @@ function proposal(n: number, v: Made = {}): SubmissionContext {
     ...on(v.invited ?? [], "invited", authors.length),
     ...on(v.declined ?? [], "declined", authors.length + (v.invited?.length ?? 0)),
   ];
-  const assignments: ActiveAssignment[] = (v.reviewers ?? []).map((r, i) => ({
+  const assignments: Assignment[] = (v.reviewers ?? []).map((r, i) => ({
     id: uuid(9000 + n * 10 + i),
     conferenceId: CONFERENCE,
     reviewerId: uuid(r),
@@ -148,8 +147,6 @@ function proposal(n: number, v: Made = {}): SubmissionContext {
     createdAt: day(50 + i),
     dueAt: null,
     assignedByPersonId: CHAIR,
-    releasedAt: null,
-    releaseReason: null,
   }));
   const conflicts: Conflict[] = [
     ...(v.conflicted ?? []).map((p, i) => ({
@@ -203,7 +200,7 @@ function record(
   };
 }
 
-/** The record with one reviewer's assignment to one proposal released, as it would be loaded. */
+/** The record once one reviewer's assignment to one proposal has been released: it is gone. */
 function release(
   rec: ReviewersRecord,
   submissionId: string,
@@ -839,20 +836,10 @@ describe("what the views give away", () => {
     );
   });
 
-  it("a released assignment that is handed over all the same is shown to nobody", () => {
-    // The server's loader never hands one over. If one were, no view would hold it.
+  it("a released reviewer is shown to nobody as a reviewer, and can be offered again", () => {
     const chair = chairOf(CONFERENCE);
     const p = proposal(1, { reviewers: [80, 81] });
-    const gone: Assignment = {
-      ...(p.assignments[0] as ActiveAssignment),
-      releasedAt: day(60),
-      releaseReason: "chair",
-    };
-    const handed = {
-      ...p,
-      assignments: [gone as ActiveAssignment, ...p.assignments.slice(1)],
-    };
-    const rec = record([{ n: 80 }, { n: 81 }], [handed]);
+    const rec = release(record([{ n: 80 }, { n: 81 }], [p]), p.submission.id, 80, "chair");
     const view = projectProposalReviewers(chair, rec, p.submission.id, CLOSED);
     expect(view?.assigned.map((a) => a.personId)).toEqual([uuid(81)]);
     // Released by a chair, they can be assigned again: a candidate, with nothing counted.

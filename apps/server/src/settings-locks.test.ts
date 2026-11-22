@@ -2,7 +2,7 @@ import type { ConferenceConfig } from "@elochair/schema";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "./db/client";
-import { assignments, contributions, reviewerProfiles, submissions } from "./db/schema";
+import { assignmentReleases, contributions, reviewerProfiles, submissions } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { RateLimiter } from "./ratelimit";
 import { grantRole, lockConference, shareConference } from "./repo";
@@ -148,6 +148,9 @@ const statusOf = async (w: World, submissionId: string, email: string) => {
 
 // Statements as the query builder writes them.
 const LOCKS_SUBMISSION = /from "submissions" .* for update$/;
+// A proposal's row as assigning a reviewer and releasing one take it: in order with the owner's
+// writes and with each other, and passed by a foreign key's check (services/assignments.ts).
+const LOCKS_PROPOSAL = /from "submissions" .* for no key update$/;
 const SHARES_CONFERENCE = /from "conferences" .* for share$/;
 const LOCKS_CONFERENCE = /from "conferences" .* for update$/;
 const READS_TEAM = /from "contributions"/;
@@ -166,7 +169,7 @@ const READS_ROLES = /from "conference_roles"/;
  * be running when the next one begins.
  */
 const WRITES_AS_CHAIR =
-  /^(insert into|update|delete from) "(conferences|people|role_invitations|role_invitation_sends|conference_roles|reviewer_profiles|assignments|audit_log)"|^insert into "outbox"/;
+  /^(insert into|update|delete from) "(conferences|people|role_invitations|role_invitation_sends|conference_roles|reviewer_profiles|assignments|assignment_releases|audit_log)"|^insert into "outbox"/;
 
 describe("a settings save and writes to submitted work", () => {
   let w: World;
@@ -461,10 +464,12 @@ describe("what is done as a chair, and the locks it takes", () => {
     const at = (re: RegExp) => first(sent, re);
     // No request takes the rows of both, and none takes two rows of either.
     expect(
-      sent.filter((q) => LOCKS_INVITATION.test(q) || LOCKS_SUBMISSION.test(q)).length,
+      sent.filter(
+        (q) => LOCKS_INVITATION.test(q) || LOCKS_SUBMISSION.test(q) || LOCKS_PROPOSAL.test(q),
+      ).length,
       `${what}: one row at most`,
     ).toBeLessThanOrEqual(1);
-    const invitation = Math.max(at(LOCKS_INVITATION), at(LOCKS_SUBMISSION));
+    const invitation = Math.max(at(LOCKS_INVITATION), at(LOCKS_SUBMISSION), at(LOCKS_PROPOSAL));
     const role = roles ? at(roles) : -1;
     const conference = Math.max(at(SHARES_CONFERENCE), at(LOCKS_CONFERENCE));
     const counting = at(COUNTS_INVITATIONS);
@@ -637,7 +642,7 @@ describe("what is done as a chair, and the locks it takes", () => {
       const steps: [string, () => Promise<{ status: number }>, number, RegExp][] = [
         ["assign", () => asChair("POST", on(), { reviewerId }), 204, SHARES_ROLES],
         ["release", () => asChair("DELETE", on(`/${reviewerId}`)), 204, SHARES_ROLES],
-        // Assigned again: the same row is made active again, under the same locks.
+        // Assigned again: a new assignment, under the same locks.
         ["assign again", () => asChair("POST", on(), { reviewerId }), 204, SHARES_ROLES],
         // Refused under them too: what is refused was read as it is when the others commit.
         ["assign twice", () => asChair("POST", on(), { reviewerId }), 409, SHARES_ROLES],
@@ -648,7 +653,9 @@ describe("what is done as a chair, and the locks it takes", () => {
           answered = await run();
         });
         expect(answered.status, what).toBe(status);
-        const proposal = first(sent, LOCKS_SUBMISSION);
+        const proposal = first(sent, LOCKS_PROPOSAL);
+        // Never "for update": a removal's record of a release must be able to point to it.
+        expect(first(sent, LOCKS_SUBMISSION), what).toBe(-1);
         const role = first(sent, roles);
         const conference = first(sent, SHARES_CONFERENCE);
         expect(proposal, `${what}: the proposal's row`).toBeGreaterThanOrEqual(0);
@@ -660,7 +667,7 @@ describe("what is done as a chair, and the locks it takes", () => {
         // Nothing but that one proposal and the conference is locked, and the roles lock is
         // taken once, shared: an assignment changes nobody's role.
         expect(
-          sent.filter((q) => / for (update|share)$/.test(q)),
+          sent.filter((q) => / for (no key update|update|share)$/.test(q)),
           what,
         ).toHaveLength(2);
         expect(
@@ -673,7 +680,15 @@ describe("what is done as a chair, and the locks it takes", () => {
         if (status === 204) {
           const order = expectOrder(what, sent, roles);
           expect(order.write, what).toBeGreaterThan(conference);
-          expect(sent[order.write], what).toMatch(/^(insert into|update) "assignments"/);
+          // Made, an assignment is inserted; released, it is deleted, and its record written.
+          expect(sent[order.write], what).toMatch(
+            what === "release" ? /^delete from "assignments"/ : /^insert into "assignments"/,
+          );
+          if (what === "release") {
+            expect(first(sent, /^insert into "assignment_releases"/), what).toBeGreaterThan(
+              order.write,
+            );
+          }
         } else {
           expect(write, `${what}: writes nothing`).toBe(-1);
         }
@@ -688,13 +703,16 @@ describe("what is done as a chair, and the locks it takes", () => {
       });
       expect(removed.status).toBe(204);
       const order = expectOrder("remove a reviewer", sent, LOCKS_ROLES);
-      expect(sent.filter((q) => / for (update|share)$/.test(q))).toEqual([]);
-      expect(first(sent, /^update "assignments"/)).toBeGreaterThan(order.role);
-      const [row] = await w.t.db
+      expect(sent.filter((q) => / for (no key update|update|share)$/.test(q))).toEqual([]);
+      expect(first(sent, /^delete from "assignments"/)).toBeGreaterThan(order.role);
+      expect(first(sent, /^insert into "assignment_releases"/)).toBeGreaterThan(
+        first(sent, /^delete from "assignments"/),
+      );
+      const records = await w.t.db
         .select()
-        .from(assignments)
-        .where(eq(assignments.reviewerId, reviewerId));
-      expect(row?.releaseReason).toBe("role_removed");
+        .from(assignmentReleases)
+        .where(eq(assignmentReleases.reviewerId, reviewerId));
+      expect(records.map((r) => r.reason)).toEqual(["chair", "role_removed"]);
     } finally {
       // The call is open again, for the tests that write to a proposal.
       expect(

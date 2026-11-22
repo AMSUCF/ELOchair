@@ -6,12 +6,7 @@ import {
   type ReviewPool,
   type Submission,
 } from "@elochair/schema";
-import {
-  activeAssignments,
-  isConflicted,
-  type SubmissionContext,
-  submissionAccess,
-} from "./access";
+import { isConflicted, type SubmissionContext, submissionAccess } from "./access";
 import { assignedCount, byName, canManagePeople, type RoleHolder } from "./people";
 import type { PersonViewer, Viewer } from "./viewer";
 
@@ -25,9 +20,9 @@ import type { PersonViewer, Viewer } from "./viewer";
  *   chair is given as a chair (submissionAccess). Their own proposals and those they have a
  *   conflict with are not theirs to manage: they do not learn who reviews them, by name, by id
  *   or by a number.
- * - Only active assignments exist here. A released one is never handed over (see
- *   SubmissionContext.assignments), with one exception: the reviewers released from a proposal
- *   because of a conflict are named to the record, so that they are never offered for it again.
+ * - An assignment that was released is no longer one: nothing here is told of it. The record
+ *   of releases is kept apart, and one thing of it is handed over: who left a proposal because
+ *   of a conflict, so that they are never offered for it again.
  * - A reviewer's load is counted as the chair looking may know it (assignedCount).
  */
 
@@ -85,13 +80,13 @@ export type ReviewersRecord = {
   reviewers: { personId: string; scope: string[] }[];
   /** What each reviewer said on accepting. A reviewer given the role on the server has none. */
   reviewerProfiles: { personId: string; languages: string[]; maxLoad: number }[];
-  /** Person records of the reviewers, and of anyone else who has an active assignment. */
+  /** Person records of the reviewers, and of anyone else who has an assignment. */
   people: Map<string, Person>;
-  /** The conference's submissions, each with its active assignments. */
+  /** The conference's submissions, each with its assignments. */
   submissions: SubmissionContext[];
   /**
    * By submission id: the reviewers who were released from it because of a conflict. They are
-   * never offered for it again. Nothing else about a released assignment is known here.
+   * never offered for it again. Nothing else of the record of releases is known here.
    */
   conflictReleased: ReadonlyMap<string, readonly string[]>;
 };
@@ -104,8 +99,8 @@ export type ReviewerOffer = "offered" | "assigned" | "not_offered";
  * that reviews its format (a reviewer's role names their pools; no scope is every pool). Never
  * offered: anyone on the proposal, whatever their status (invited, confirmed, or declined);
  * anyone with a conflict with it or with one of its people (isConflicted, as for reading it);
- * and anyone who was released from it because of a conflict. Someone who has an active
- * assignment to it is there already.
+ * and anyone who was released from it because of a conflict. Someone who is assigned to it is
+ * there already.
  *
  * One answer covers every reason for not being offered: a refusal never says which it was.
  */
@@ -114,7 +109,7 @@ export function reviewerOffer(
   ctx: SubmissionContext,
   personId: string,
 ): ReviewerOffer {
-  if (activeAssignments(ctx).some((a) => a.reviewerId === personId)) return "assigned";
+  if (ctx.assignments.some((a) => a.reviewerId === personId)) return "assigned";
   if (!couldReview(rec, ctx, personId)) return "not_offered";
   if (rec.conflictReleased.get(ctx.submission.id)?.includes(personId)) return "not_offered";
   return "offered";
@@ -242,7 +237,7 @@ export function projectProposalReviewers(
     pool: pool?.key ?? null,
     needed: pool?.reviewsPerSubmission ?? 0,
     assigned: byName(
-      activeAssignments(ctx).map((a) => ({
+      ctx.assignments.map((a) => ({
         ...holder(rec, a.reviewerId),
         assignedAt: a.createdAt,
         blocked: !couldReview(rec, ctx, a.reviewerId),
@@ -332,7 +327,7 @@ export function projectAssignments(
       .filter((s) => reviewPoolOf(s)?.key === pool.key)
       .map((s) => {
         const reviewers = byName(
-          activeAssignments(s)
+          s.assignments
             .filter((a) => couldReview(rec, s, a.reviewerId))
             .map((a) => holder(rec, a.reviewerId)),
         );

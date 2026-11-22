@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Key } from "./config";
-import { Assignment, isActiveAssignment, roleInvitationState } from "./domain";
+import { Assignment, AssignmentRelease, roleInvitationState } from "./domain";
 import { LocalizedText } from "./i18n";
 import {
   AnswerInvitationInput,
@@ -405,8 +405,8 @@ describe("assignments (spec 03, §1.3)", () => {
     expect(ok(AssignmentsPoolQuery, { cursor: "short" })).toBe(false);
   });
 
-  it("an assignment is released with a time and a reason, or is active with neither", () => {
-    const active = {
+  it("an assignment says nothing of a release: the record of one is a thing of its own", () => {
+    const assignment = {
       id: id(1),
       conferenceId: id(2),
       reviewerId: id(3),
@@ -414,28 +414,42 @@ describe("assignments (spec 03, §1.3)", () => {
       createdAt: "2027-02-15T12:00:00Z",
       dueAt: null,
       assignedByPersonId: null,
-      releasedAt: null,
-      releaseReason: null,
     };
-    const released = { ...active, releasedAt: "2027-02-16T12:00:00Z", releaseReason: "chair" };
-    expect(ok(Assignment, active)).toBe(true);
-    expect(ok(Assignment, released)).toBe(true);
-    expect(isActiveAssignment(Assignment.parse(active))).toBe(true);
-    expect(isActiveAssignment(Assignment.parse(released))).toBe(false);
+    expect(ok(Assignment, assignment)).toBe(true);
+    // An assignment is one that stands: it has no field that could say otherwise.
+    expect(Object.keys(Assignment.shape).sort()).toEqual(Object.keys(assignment).sort());
+    const release = {
+      id: id(5),
+      conferenceId: id(2),
+      submissionId: id(4),
+      reviewerId: id(3),
+      assignmentId: id(1),
+      assignedByPersonId: id(6),
+      assignedAt: "2027-02-15T12:00:00Z",
+      releasedByPersonId: id(6),
+      releasedAt: "2027-02-16T12:00:00Z",
+      reason: "chair",
+    };
+    expect(ok(AssignmentRelease, release)).toBe(true);
     for (const reason of ["chair", "conflict", "expertise", "time", "role_removed"]) {
-      expect(ok(Assignment, { ...released, releaseReason: reason }), reason).toBe(true);
+      expect(ok(AssignmentRelease, { ...release, reason }), reason).toBe(true);
     }
+    // The people named in it may be gone, and the record stays.
+    expect(
+      ok(AssignmentRelease, {
+        ...release,
+        reviewerId: null,
+        assignedByPersonId: null,
+        releasedByPersonId: null,
+      }),
+    ).toBe(true);
     for (const bad of [
-      { ...active, releasedAt: "2027-02-16T12:00:00Z" },
-      { ...active, releaseReason: "chair" },
-      { ...released, releaseReason: "withdrawn" },
+      { ...release, reason: "withdrawn" },
+      { ...release, reason: null },
+      { ...release, releasedAt: null },
+      { ...release, submissionId: null },
     ]) {
-      expect(ok(Assignment, bad), JSON.stringify(bad)).toBe(false);
+      expect(ok(AssignmentRelease, bad), JSON.stringify(bad)).toBe(false);
     }
-    // Half a release never counts as active, whatever handed it over.
-    expect(isActiveAssignment({ releasedAt: null, releaseReason: "chair" })).toBe(false);
-    expect(isActiveAssignment({ releasedAt: "2027-02-16T12:00:00Z", releaseReason: null })).toBe(
-      false,
-    );
   });
 });

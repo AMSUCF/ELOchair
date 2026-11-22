@@ -180,13 +180,11 @@ export const conflicts = pgTable(
 );
 
 /**
- * One reviewer on one proposal (spec 03, §1.3): at most one row for the two.
- * - Rows are kept. Taking a reviewer off a proposal releases the assignment: `released_at` and
- *   `release_reason` are set together, and the row counts for nothing from then on.
- * - Assigning the same reviewer again makes the same row active again: `released_at` and
- *   `release_reason` go back to null, and `created_at` becomes the time of the new assignment.
- * - Only `loadActiveAssignments()` in repo.ts reads rows for the policy, and it reads the active
- *   ones. Released rows are read by services/assignments.ts alone.
+ * One reviewer on one proposal (spec 03, §1.3): at most one row for the two. The table holds
+ * the assignments that stand, and nothing else, as it always has: whatever reads it reads the
+ * ones that count, in this version of the app and in every earlier one. Taking a reviewer off a
+ * proposal deletes the row and writes the record of it to `assignment_releases`, in the same
+ * transaction.
  */
 export const assignments = pgTable(
   "assignments",
@@ -201,25 +199,62 @@ export const assignments = pgTable(
     submissionId: uuid("submission_id")
       .notNull()
       .references(() => submissions.id, { onDelete: "cascade" }),
-    /** When the assignment was made; made again after a release, when that was. */
     createdAt: created(),
     dueAt: ts("due_at"),
     /** The chair who made it. Null on rows from before this column, and on seeded ones. */
     assignedByPersonId: uuid("assigned_by_person_id").references(() => people.id, {
       onDelete: "set null",
     }),
-    releasedAt: ts("released_at"),
-    releaseReason: text("release_reason"),
+  },
+  (t) => [unique("assignments_reviewer_submission").on(t.reviewerId, t.submissionId)],
+);
+
+/**
+ * The record of every assignment that was released (spec 03, §1.3): what the assignment was,
+ * and when, why and by whom it ended. A row here gives nobody anything. It is read for three
+ * things only, all in services/assignments.ts: that a proposal has had a reviewer (the guard on
+ * anonymity, and the rule that such a proposal keeps its format), and who left a proposal
+ * because of a conflict (never offered for it again).
+ *
+ * What survives what:
+ * - The record of who reviewed a proposal goes with the proposal, as its assignments do
+ *   (`submission_id`, cascade): an owner deleting a draft never fails on it, and nothing is left
+ *   of a proposal that is gone.
+ * - A person's deletion does not fail on it either, and does not take the record away: their
+ *   id becomes null (`reviewer_id`, `assigned_by_person_id`, `released_by_person_id`), and the
+ *   proposal keeps the fact that it has had a reviewer.
+ * - `assignment_id` is the id the row in `assignments` had. That row is gone, so it is no
+ *   foreign key.
+ */
+export const assignmentReleases = pgTable(
+  "assignment_releases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    reviewerId: uuid("reviewer_id").references(() => people.id, { onDelete: "set null" }),
+    assignmentId: uuid("assignment_id").notNull(),
+    assignedByPersonId: uuid("assigned_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    assignedAt: ts("assigned_at").notNull(),
+    releasedByPersonId: uuid("released_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    releasedAt: ts("released_at").notNull(),
+    reason: text("reason").notNull(),
   },
   (t) => [
-    unique("assignments_reviewer_submission").on(t.reviewerId, t.submissionId),
-    // Released with a reason, or active with neither: never one without the other. (The reason
-    // is said to be there before it is compared: a comparison with nothing is not false, and a
-    // check lets through whatever is not false.)
     check(
-      "assignments_release_check",
-      sql`(${t.releasedAt} is null and ${t.releaseReason} is null) or (${t.releasedAt} is not null and ${t.releaseReason} is not null and ${t.releaseReason} in ('chair','conflict','expertise','time','role_removed'))`,
+      "assignment_releases_reason_check",
+      sql`${t.reason} in ('chair','conflict','expertise','time','role_removed')`,
     ),
+    index("assignment_releases_submission_idx").on(t.submissionId),
+    index("assignment_releases_conference_idx").on(t.conferenceId),
   ],
 );
 

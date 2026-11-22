@@ -520,13 +520,13 @@ export async function cancelRoleInvitation(
  * - A chair is whoever holds the `chair` or the `admin` role, and loses both.
  * - A chair cannot remove their own chair role, so that a conference keeps a chair.
  * - A reviewer's assignments at the conference are all released in the same transaction, with
- *   the reason `role_removed` (their rows are kept; spec 03, §1.3), and their reviewer profile
+ *   the reason `role_removed` (each is recorded; spec 03, §1.3), and their reviewer profile
  *   is deleted. The request names the number of assigned proposals the confirmation showed (as
  *   the People page counts them for this chair); when that is no longer the number, nothing is
  *   removed (409 `stale`, with the number as it is now).
  * - The roles lock is taken exclusive, so no chair is assigning this reviewer meanwhile (an
  *   assignment shares it): one made before is released here, and one that comes after finds no
- *   reviewer to assign. Nobody who is not a reviewer is left with an active assignment.
+ *   reviewer to assign. Nobody who is not a reviewer is left with an assignment.
  *
  * `v.personId` comes from the address and is only ever used to find the role's rows. Whose role
  * it is, is then read from those rows: an id written another way (in capitals) names the same

@@ -1,6 +1,6 @@
 import type { PersonViewer, SubmissionRecord, Tier } from "@elochair/policy";
 import {
-  type ActiveAssignment,
+  type Assignment,
   ConferenceConfig,
   type Conflict,
   type Contribution,
@@ -273,20 +273,17 @@ export async function grantRole(
 }
 
 /**
- * A conference's assignments that count: those that have not been released (spec 03, §1.3).
- * This is the one place assignments are read for the policy, so a released reviewer is a
+ * A conference's assignments. The table holds the ones that stand, and nothing else: one that
+ * was released is deleted from it, and its record kept in `assignment_releases` (spec 03, §1.3;
+ * services/assignments.ts). So there is nothing to leave out here, and a released reviewer is a
  * stranger to the proposal everywhere at once: in what they may read, in who a chair is told
- * reviews it, and in every count. A released row is read only by the code that manages
- * assignments (services/assignments.ts).
+ * reviews it, and in every count.
  */
-export async function loadActiveAssignments(
-  db: Db,
-  conferenceId: string,
-): Promise<ActiveAssignment[]> {
+export async function loadAssignments(db: Db, conferenceId: string): Promise<Assignment[]> {
   const rows = await db
     .select()
     .from(assignments)
-    .where(and(eq(assignments.conferenceId, conferenceId), isNull(assignments.releasedAt)));
+    .where(eq(assignments.conferenceId, conferenceId));
   return rows.map((a) => ({
     id: a.id,
     conferenceId: a.conferenceId,
@@ -295,14 +292,12 @@ export async function loadActiveAssignments(
     createdAt: iso(a.createdAt),
     dueAt: isoOrNull(a.dueAt),
     assignedByPersonId: a.assignedByPersonId,
-    releasedAt: null,
-    releaseReason: null,
   }));
 }
 
 /**
  * Everything packages/policy needs to project every submission of a conference: each with its
- * active assignments (loadActiveAssignments) and the phase the conference row holds.
+ * assignments (loadAssignments) and the phase the conference row holds.
  */
 export async function loadSubmissionRecords(
   db: Db,
@@ -330,7 +325,7 @@ export async function loadSubmissionRecords(
     ? await db.select().from(people).where(inArray(people.id, personIds))
     : [];
   const peopleById = new Map(peopleRows.map((p) => [p.id, toPerson(p)]));
-  const assigns = await loadActiveAssignments(db, conference.id);
+  const assigns = await loadAssignments(db, conference.id);
   const confls = await db.select().from(conflicts).where(eq(conflicts.conferenceId, conference.id));
 
   const bySub = <T extends { submissionId: string | null }>(rows: T[]) => {

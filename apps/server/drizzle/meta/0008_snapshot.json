@@ -1,5 +1,5 @@
 {
-  "id": "375c14f4-a353-43ae-a67a-596f542c5c13",
+  "id": "3d9f0415-1e4a-40cd-a36a-f78257a00923",
   "prevId": "7ec2dfa3-b2c2-4e27-bf5d-8fbac5eaa331",
   "version": "7",
   "dialect": "postgresql",
@@ -200,6 +200,182 @@
       },
       "isRLSEnabled": false
     },
+    "public.assignment_releases": {
+      "name": "assignment_releases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "conference_id": {
+          "name": "conference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reviewer_id": {
+          "name": "reviewer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assigned_by_person_id": {
+          "name": "assigned_by_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "released_by_person_id": {
+          "name": "released_by_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "assignment_releases_submission_idx": {
+          "name": "assignment_releases_submission_idx",
+          "columns": [
+            {
+              "expression": "submission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "assignment_releases_conference_idx": {
+          "name": "assignment_releases_conference_idx",
+          "columns": [
+            {
+              "expression": "conference_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_releases_conference_id_conferences_id_fk": {
+          "name": "assignment_releases_conference_id_conferences_id_fk",
+          "tableFrom": "assignment_releases",
+          "tableTo": "conferences",
+          "columnsFrom": [
+            "conference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "assignment_releases_submission_id_submissions_id_fk": {
+          "name": "assignment_releases_submission_id_submissions_id_fk",
+          "tableFrom": "assignment_releases",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "assignment_releases_reviewer_id_people_id_fk": {
+          "name": "assignment_releases_reviewer_id_people_id_fk",
+          "tableFrom": "assignment_releases",
+          "tableTo": "people",
+          "columnsFrom": [
+            "reviewer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "assignment_releases_assigned_by_person_id_people_id_fk": {
+          "name": "assignment_releases_assigned_by_person_id_people_id_fk",
+          "tableFrom": "assignment_releases",
+          "tableTo": "people",
+          "columnsFrom": [
+            "assigned_by_person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "assignment_releases_released_by_person_id_people_id_fk": {
+          "name": "assignment_releases_released_by_person_id_people_id_fk",
+          "tableFrom": "assignment_releases",
+          "tableTo": "people",
+          "columnsFrom": [
+            "released_by_person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "assignment_releases_reason_check": {
+          "name": "assignment_releases_reason_check",
+          "value": "\"assignment_releases\".\"reason\" in ('chair','conflict','expertise','time','role_removed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.assignments": {
       "name": "assignments",
       "schema": "",
@@ -245,18 +421,6 @@
         "assigned_by_person_id": {
           "name": "assigned_by_person_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "released_at": {
-          "name": "released_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "release_reason": {
-          "name": "release_reason",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -328,12 +492,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "assignments_release_check": {
-          "name": "assignments_release_check",
-          "value": "(\"assignments\".\"released_at\" is null and \"assignments\".\"release_reason\" is null) or (\"assignments\".\"released_at\" is not null and \"assignments\".\"release_reason\" is not null and \"assignments\".\"release_reason\" in ('chair','conflict','expertise','time','role_removed'))"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.audit_log": {

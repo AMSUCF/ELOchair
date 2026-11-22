@@ -4,9 +4,7 @@
  * the viewer must not see appears anywhere in it.
  */
 import {
-  type ActiveAssignment,
   type Assignment,
-  type AssignmentReleaseReason,
   CONFERENCE_PHASES,
   type ConferenceConfig,
   type ConferencePhase,
@@ -264,7 +262,7 @@ function build({
     updatedAt: now,
     submittedAt: now,
   };
-  const assignments: ActiveAssignment[] = [
+  const assignments: Assignment[] = [
     {
       id: id(11),
       conferenceId,
@@ -273,8 +271,6 @@ function build({
       createdAt: now,
       dueAt: null,
       assignedByPersonId: null,
-      releasedAt: null,
-      releaseReason: null,
     },
   ];
   return {
@@ -364,30 +360,17 @@ function valuesIn(out: unknown, values: Iterable<string>): string[] {
 }
 
 /**
- * The record with its one assignment released. A released assignment is never handed to the
- * policy (its type says so, and the server's loader leaves it out); these tests hand one over
- * all the same, to show that it would count for nothing.
+ * The record as it is once its one assignment has been released: the assignment is gone (its
+ * record is kept elsewhere, where the policy does not read), whatever the reason was.
  */
-function released(b: Built, reason: AssignmentReleaseReason): SubmissionRecord {
-  const gone: Assignment[] = b.rec.assignments.map((a) => ({
-    ...a,
-    releasedAt: "2027-02-02T12:00:00Z",
-    releaseReason: reason,
-  }));
-  return { ...b.rec, assignments: gone as ActiveAssignment[] };
+function released(b: Built): SubmissionRecord {
+  return { ...b.rec, assignments: [] };
 }
 /** Someone with the same roles and no tie to the proposal: an id no scenario uses. */
 const strangerLike = (viewer: PersonViewer): PersonViewer => ({
   ...viewer,
   personId: "99999999-9999-4999-8999-999999999999",
 });
-const RELEASE_REASONS: AssignmentReleaseReason[] = [
-  "chair",
-  "conflict",
-  "expertise",
-  "time",
-  "role_removed",
-];
 
 describe("reviewers", () => {
   it("never see what their submission type's blind mode hides, nor anyone unconfirmed", () => {
@@ -481,11 +464,13 @@ describe("reviewers", () => {
     }
   });
 
-  it("released from a proposal, get what a stranger gets, whatever the reason", () => {
+  it("released from a proposal, get what a stranger gets", () => {
     fc.assert(
-      fc.property(reading, fc.constantFrom(...RELEASE_REASONS), (s, reason) => {
+      fc.property(reading, (s) => {
         const b = build(s);
-        const rec = released(b, reason);
+        // Assigned, they read it. Released, the assignment is no longer there.
+        expect(projectSubmission(reviewer(b), b.rec)?.view).toBe("reviewer");
+        const rec = released(b);
         const stranger = strangerLike(reviewer(b));
         expect(submissionAccess(reviewer(b), rec)).toBe("none");
         expect(submissionAccess(reviewer(b), rec)).toBe(submissionAccess(stranger, rec));

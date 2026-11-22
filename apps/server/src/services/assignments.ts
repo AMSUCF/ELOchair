@@ -15,12 +15,19 @@ import {
   type Viewer,
 } from "@elochair/policy";
 import type { AssignmentReleaseReason } from "@elochair/schema";
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { CursorCodec } from "../cursor";
 import type { Db } from "../db/client";
-import { assignments, conferenceRoles, people, reviewerProfiles, submissions } from "../db/schema";
+import {
+  assignmentReleases,
+  assignments,
+  conferenceRoles,
+  people,
+  reviewerProfiles,
+  submissions,
+} from "../db/schema";
 import { type ConferenceRow, loadSubmissionRecords, shareConference, toPerson } from "../repo";
 import { Refusal } from "../routes/common";
 import { stillChair } from "./roles";
@@ -34,13 +41,18 @@ import { cursorContext } from "./submissions";
  * packages/policy (assignments.ts). This module loads what the policy needs and writes what it
  * allows.
  *
- * Released assignments are kept (their rows are never deleted) and count for nothing. Nothing
- * outside this module reads one: the policy is given the active ones (loadActiveAssignments in
- * repo.ts). Two things about released rows leave here, and both are IDs:
- * - which reviewers were released from which proposal because of a conflict, so that they are
- *   never offered for it again (loadReviewersRecord);
- * - which proposals have ever had a reviewer, for the guard on anonymity (everAssigned) and for
- *   the rule that such a proposal keeps its format (everHadReviewer).
+ * Two tables. `assignments` holds the assignments that stand, as it always has: every reader of
+ * it, in this version and in any earlier one, reads the ones that count. Releasing an
+ * assignment deletes its row there and writes the record of it to `assignment_releases`, in one
+ * transaction (releaseAssignments, the only code that releases). Assigning the same reviewer
+ * again makes a new assignment.
+ *
+ * The record of releases gives nobody anything, and nothing outside this module reads it. Three
+ * things are read of it, and all three are IDs:
+ * - who was released from which proposal because of a conflict, so that they are never offered
+ *   for it again (loadReviewersRecord);
+ * - which proposals have ever had a reviewer, for the guard on anonymity (everAssigned);
+ * - whether one proposal has, for the rule that it then keeps its format (everHadReviewer).
  *
  * Both writes are a chair's. They take their locks in the one order of services/roles.ts: the
  * proposal's row, then the conference's roles lock (shared, with the chair read again under it:
@@ -79,20 +91,25 @@ export async function loadReviewersRecord(
     ]),
   ];
   const rows = named.length ? await db.select().from(people).where(inArray(people.id, named)) : [];
-  // The one thing read of released assignments for the policy: who left a proposal because of
-  // a conflict. Not when, not by whom, and nothing of any other release.
+  // The one thing read of the record of releases for the policy: who left a proposal because
+  // of a conflict. Not when, not by whom, and nothing of any other release.
   const conflicts = await db
-    .select({ submissionId: assignments.submissionId, reviewerId: assignments.reviewerId })
-    .from(assignments)
+    .select({
+      submissionId: assignmentReleases.submissionId,
+      reviewerId: assignmentReleases.reviewerId,
+    })
+    .from(assignmentReleases)
     .where(
       and(
-        eq(assignments.conferenceId, conference.id),
-        isNotNull(assignments.releasedAt),
-        eq(assignments.releaseReason, "conflict" satisfies AssignmentReleaseReason),
+        eq(assignmentReleases.conferenceId, conference.id),
+        eq(assignmentReleases.reason, "conflict" satisfies AssignmentReleaseReason),
+        // A person whose record was deleted is nobody to keep off a proposal.
+        isNotNull(assignmentReleases.reviewerId),
       ),
     );
   const conflictReleased = new Map<string, string[]>();
   for (const c of conflicts) {
+    if (!c.reviewerId) continue;
     conflictReleased.set(c.submissionId, [
       ...(conflictReleased.get(c.submissionId) ?? []),
       c.reviewerId,
@@ -115,33 +132,43 @@ export async function loadReviewersRecord(
 }
 
 /**
- * The submissions of a conference that have, or have had, a reviewer: every assignment row
- * counts, released or not. For the guard on anonymity alone (namesRevealed in settings.ts):
- * someone released from a proposal may have read it anonymized, and can be assigned to it
- * again.
+ * The submissions of a conference that have, or have had, a reviewer: one who is assigned now,
+ * or one whose assignment was released. For the guard on anonymity alone (namesRevealed in
+ * settings.ts): someone released from a proposal may have read it anonymized, and can be
+ * assigned to it again.
  */
 export async function everAssigned(db: Db, conferenceId: string): Promise<Set<string>> {
-  const rows = await db
+  const now = await db
     .selectDistinct({ submissionId: assignments.submissionId })
     .from(assignments)
     .where(eq(assignments.conferenceId, conferenceId));
-  return new Set(rows.map((r) => r.submissionId));
+  const before = await db
+    .selectDistinct({ submissionId: assignmentReleases.submissionId })
+    .from(assignmentReleases)
+    .where(eq(assignmentReleases.conferenceId, conferenceId));
+  return new Set([...now, ...before].map((r) => r.submissionId));
 }
 
 /**
- * Whether a proposal has, or has had, a reviewer: any assignment row, released or not. Such a
+ * Whether a proposal has, or has had, a reviewer: one assigned now, or one released. Such a
  * proposal keeps its format (the owner's edit refuses another one): its format decides what a
  * reviewer of it is shown, and which pool reviews it. Without this, a proposal taken back to a
  * draft while its call is open again could be sent in again in a format that shows names to
  * someone who was given it as anonymized.
  */
 export async function everHadReviewer(db: Db, submissionId: string): Promise<boolean> {
-  const rows = await db
+  const [now] = await db
     .select({ id: assignments.id })
     .from(assignments)
     .where(eq(assignments.submissionId, submissionId))
     .limit(1);
-  return rows.length > 0;
+  if (now) return true;
+  const [before] = await db
+    .select({ id: assignmentReleases.id })
+    .from(assignmentReleases)
+    .where(eq(assignmentReleases.submissionId, submissionId))
+    .limit(1);
+  return Boolean(before);
 }
 
 /** A pool on the Assignments page with one page of its proposals, and where the next begins. */
@@ -222,13 +249,24 @@ export async function assignmentsPage(
   return { ...view, pools };
 }
 
-/** The proposal of this conference with that id, its row locked until the transaction ends. */
+/**
+ * The proposal of this conference with that id, its row locked until the transaction ends.
+ *
+ * Locked "for no key update", not "for update". Both put this in order with the owner's writes
+ * (mutateSubmission) and with every other change to who reviews the proposal. The difference is
+ * what a foreign key's check may do meanwhile: writing a row that points to the proposal takes a
+ * key-share lock on it, which a lock for update makes wait and this one lets pass. That matters
+ * for one writer. Removing a reviewer's role releases their assignments under the roles lock,
+ * exclusive, and each record it writes points to a proposal. Were this lock for update, an
+ * assignment that holds a proposal's row and waits for the roles lock, and a removal that holds
+ * the roles lock and waits for that row, would wait for each other.
+ */
 async function lockProposal(tx: Db, conference: ConferenceRow, submissionId: string) {
   const [row] = await tx
     .select({ id: submissions.id })
     .from(submissions)
     .where(and(eq(submissions.id, submissionId), eq(submissions.conferenceId, conference.id)))
-    .for("update");
+    .for("no key update");
   // Another conference's proposal does not exist here.
   if (!row) throw new Refusal(404, "not_found");
 }
@@ -245,8 +283,8 @@ async function lockProposal(tx: Db, conference: ConferenceRow, submissionId: str
  *   reached the number they said they would take, unless the request says the chair was shown
  *   that (`confirmedFull`). The number is what they offered, not a lock.
  *
- * A reviewer who was released from the proposal (and not because of a conflict) gets the same
- * row back, active, as a new assignment: made now, by this chair.
+ * A reviewer who was released from the proposal (and not because of a conflict) can be
+ * assigned to it again: that is a new assignment, made now, by this chair.
  */
 export async function assignReviewer(
   deps: Deps,
@@ -279,35 +317,29 @@ export async function assignReviewer(
         maxLoad: candidate.maxLoad,
       });
     }
-    // The one row for this reviewer and this proposal, if they were on it before.
+    // Whether they were on it before: said in the audit row, and nowhere else.
     const [before] = await tx
-      .select({ id: assignments.id })
-      .from(assignments)
+      .select({ id: assignmentReleases.id })
+      .from(assignmentReleases)
       .where(
-        and(eq(assignments.submissionId, v.submissionId), eq(assignments.reviewerId, v.reviewerId)),
-      );
-    const made = before
-      ? await tx
-          .update(assignments)
-          .set({
-            releasedAt: null,
-            releaseReason: null,
-            assignedByPersonId: actor.personId,
-            createdAt: now,
-          })
-          // Only a released row is made active again: an active one is somebody's already.
-          .where(and(eq(assignments.id, before.id), isNotNull(assignments.releasedAt)))
-          .returning({ id: assignments.id })
-      : await tx
-          .insert(assignments)
-          .values({
-            conferenceId: conference.id,
-            reviewerId: v.reviewerId,
-            submissionId: v.submissionId,
-            assignedByPersonId: actor.personId,
-            createdAt: now,
-          })
-          .returning({ id: assignments.id });
+        and(
+          eq(assignmentReleases.submissionId, v.submissionId),
+          eq(assignmentReleases.reviewerId, v.reviewerId),
+        ),
+      )
+      .limit(1);
+    // One row for a reviewer and a proposal: the table refuses a second, whatever was checked.
+    const made = await tx
+      .insert(assignments)
+      .values({
+        conferenceId: conference.id,
+        reviewerId: v.reviewerId,
+        submissionId: v.submissionId,
+        assignedByPersonId: actor.personId,
+        createdAt: now,
+      })
+      .onConflictDoNothing({ target: [assignments.reviewerId, assignments.submissionId] })
+      .returning({ id: assignments.id });
     if (made.length === 0) throw new Refusal(409, "already_assigned");
     await audit(tx, viewer, {
       action: "assignment.made",
@@ -320,9 +352,10 @@ export async function assignReviewer(
 }
 
 /**
- * Release a conference's active assignments that match, and record each: one audit row per
- * release, with the proposal, the reviewer and the reason. Returns how many were released. Run
- * it inside the transaction of what causes the release, under the locks that needs.
+ * Release a conference's assignments that match: each row is deleted from `assignments` and its
+ * record written to `assignment_releases`, with one audit row per release (the proposal, the
+ * reviewer, the reason). This is the only code that releases. Returns how many were released.
+ * Run it inside the transaction of what causes the release, under the locks that needs.
  */
 export async function releaseAssignments(
   tx: Db,
@@ -337,17 +370,30 @@ export async function releaseAssignments(
   },
 ): Promise<number> {
   const released = await tx
-    .update(assignments)
-    .set({ releasedAt: v.now, releaseReason: v.reason })
+    .delete(assignments)
     .where(
       and(
         eq(assignments.conferenceId, v.conferenceId),
         eq(assignments.reviewerId, v.reviewerId),
         v.submissionId ? eq(assignments.submissionId, v.submissionId) : undefined,
-        isNull(assignments.releasedAt),
       ),
     )
-    .returning({ submissionId: assignments.submissionId });
+    .returning();
+  if (released.length === 0) return 0;
+  await tx.insert(assignmentReleases).values(
+    released.map((a) => ({
+      conferenceId: a.conferenceId,
+      submissionId: a.submissionId,
+      reviewerId: a.reviewerId,
+      assignmentId: a.id,
+      assignedByPersonId: a.assignedByPersonId,
+      assignedAt: a.createdAt,
+      // The person whose act this is: a chair, here. Nobody, for one the system makes.
+      releasedByPersonId: actor.kind === "person" ? actor.personId : null,
+      releasedAt: v.now,
+      reason: v.reason,
+    })),
+  );
   for (const row of released) {
     await audit(tx, actor, {
       action: "assignment.released",
@@ -361,7 +407,7 @@ export async function releaseAssignments(
 }
 
 /**
- * A chair removes a reviewer from a proposal: the assignment is released, and its row kept.
+ * A chair removes a reviewer from a proposal: the assignment is released (releaseAssignments).
  * From then on it counts nowhere, and the reviewer no longer sees the proposal. 404 `not_found`
  * for a proposal the chair does not manage as a chair, and for someone who is not reviewing it
  * (any more). A proposal that takes no new reviewers can still lose one.

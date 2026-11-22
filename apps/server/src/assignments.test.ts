@@ -1,9 +1,10 @@
 import { findLeaks } from "@elochair/policy/testing";
 import type { ConferenceConfig } from "@elochair/schema";
-import { and, eq, inArray, isNull, like } from "drizzle-orm";
+import { and, desc, eq, inArray, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "./db/client";
 import {
+  assignmentReleases,
   assignments,
   auditLog,
   conferenceRoles,
@@ -26,7 +27,12 @@ import {
   shareConference,
 } from "./repo";
 import { Refusal } from "./routes/common";
-import { assignReviewer, releaseReviewer } from "./services/assignments";
+import {
+  assignReviewer,
+  everAssigned,
+  everHadReviewer,
+  releaseReviewer,
+} from "./services/assignments";
 import { removeRole } from "./services/people";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
@@ -251,13 +257,16 @@ async function shown(w: World, cookie: string, id: string): Promise<Reviewers> {
   expect(res.status, JSON.stringify(res.json)).toBe(200);
   return res.json;
 }
+/** A proposal's assignments: the table holds those that stand, and no others. */
 const rowsOf = (t: TestApp, submissionId: string) =>
   t.db.select().from(assignments).where(eq(assignments.submissionId, submissionId));
-const activeOf = (t: TestApp, submissionId: string) =>
+/** The record of the assignments it had that were released, oldest first. */
+const releasesOf = (t: TestApp, submissionId: string) =>
   t.db
     .select()
-    .from(assignments)
-    .where(and(eq(assignments.submissionId, submissionId), isNull(assignments.releasedAt)));
+    .from(assignmentReleases)
+    .where(eq(assignmentReleases.submissionId, submissionId))
+    .orderBy(assignmentReleases.releasedAt, assignmentReleases.id);
 const audited = async (t: TestApp, conferenceId: string) =>
   (
     await t.db
@@ -491,7 +500,7 @@ describe("who may assign, release and see the reviewers of a proposal", () => {
       }
     }
     expect(await untouched()).toEqual(before);
-    expect((await activeOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
+    expect((await rowsOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
   });
 
   it("refuses a chair's agents, whatever their tier and on either listener", async () => {
@@ -658,7 +667,7 @@ describe("who may assign, release and see the reviewers of a proposal", () => {
       ),
     ).toBe("403 forbidden");
     expect(await untouched()).toEqual(before);
-    expect((await activeOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
+    expect((await rowsOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
   });
 });
 
@@ -707,7 +716,7 @@ describe("which proposals take a reviewer, and when", () => {
     expect(res.status).toBe(409);
     expect(res.json).toEqual({ error: "not_under_consideration" });
     expect((await release(w, { cookie: cookies.chair }, subs.withdrawn, ids.r1)).status).toBe(204);
-    expect(await activeOf(t, subs.withdrawn)).toEqual([]);
+    expect(await rowsOf(t, subs.withdrawn)).toEqual([]);
   });
 
   it("not one with a decision, in whatever status an assigned reviewer still reads it", async () => {
@@ -726,7 +735,7 @@ describe("which proposals take a reviewer, and when", () => {
           .where(eq(submissions.id, subs.boundary));
       }
     }
-    expect(await activeOf(t, subs.boundary)).toEqual([]);
+    expect(await rowsOf(t, subs.boundary)).toEqual([]);
   });
 });
 
@@ -821,7 +830,7 @@ describe("who is offered, and who is refused if asked for", () => {
   });
 
   it("never someone already on it: asked for again, there is still one assignment", async () => {
-    expect((await activeOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
+    expect((await rowsOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
     expect(await offered(cookies.chair, subs.plain)).not.toContain(ids.r2);
     for (const cookie of [cookies.chair, cookies.admin]) {
       const res = await assign(w, { cookie }, subs.plain, ids.r2);
@@ -852,7 +861,7 @@ describe("who is offered, and who is refused if asked for", () => {
       expect(res.status).toBe(409);
       expect(res.json).toEqual({ error: "reviewer_full", assigned: 1, maxLoad: 1 });
     }
-    expect(await activeOf(t, subs.boundary)).toEqual([]);
+    expect(await rowsOf(t, subs.boundary)).toEqual([]);
     // Told, the chair assigns them all the same: the number is what they offered, not a lock.
     expect(
       (await assign(w, { cookie: cookies.chair }, subs.boundary, ids.full, { confirmedFull: true }))
@@ -886,7 +895,7 @@ describe("who is offered, and who is refused if asked for", () => {
       });
       expect(res.status, JSON.stringify(body)).toBe(400);
     }
-    expect(await activeOf(t, subs.boundary)).toEqual([]);
+    expect(await rowsOf(t, subs.boundary)).toEqual([]);
   });
 });
 
@@ -933,17 +942,13 @@ describe("a chair's own proposal, and one they have a conflict with", () => {
     ];
     const withReviewer = await seenByAuthor();
     expect(findLeaks(withReviewer[0], [subs.own, "A chair's own talk"])).toEqual([]);
-    await t.db
-      .update(assignments)
-      .set({ releasedAt: NOW, releaseReason: "chair" })
-      .where(and(eq(assignments.submissionId, subs.own), eq(assignments.reviewerId, ids.r1)));
+    const [theirs] = await rowsOf(t, subs.own);
+    if (!theirs) throw new Error("nobody reviews the chair's own talk");
+    await t.db.delete(assignments).where(eq(assignments.id, theirs.id));
     try {
       expect(await seenByAuthor()).toEqual(withReviewer);
     } finally {
-      await t.db
-        .update(assignments)
-        .set({ releasedAt: null, releaseReason: null })
-        .where(and(eq(assignments.submissionId, subs.own), eq(assignments.reviewerId, ids.r1)));
+      await t.db.insert(assignments).values(theirs);
     }
     // Their own view of their proposal says nothing of reviewers, as before.
     const own = await read(t, cookies.authorChair, subs.own);
@@ -980,8 +985,20 @@ describe("assigning, releasing, and assigning again", () => {
       submissionId: id,
       assignedByPersonId: ids.chair,
       createdAt: NOW,
-      releasedAt: null,
-      releaseReason: null,
+    });
+    if (!made) throw new Error("no assignment was made");
+    expect(await releasesOf(t, id)).toEqual([]);
+    // What the assignment was, who made it and when, and who ended it, when and why.
+    const first = (releasedAt: Date) => ({
+      conferenceId: w.conferenceId,
+      submissionId: id,
+      reviewerId: ids.other,
+      assignmentId: made.id,
+      assignedByPersonId: ids.chair,
+      assignedAt: NOW,
+      releasedByPersonId: ids.admin,
+      releasedAt,
+      reason: "chair",
     });
     const counts = async () => {
       const chairView = await read(t, cookies.chair, id);
@@ -1027,7 +1044,9 @@ describe("assigning, releasing, and assigning again", () => {
     t.setNow(later);
     try {
       expect((await release(w, { cookie: cookies.admin }, id, ids.other)).status).toBe(204);
-      expect(await rowsOf(t, id)).toEqual([{ ...made, releasedAt: later, releaseReason: "chair" }]);
+      // The assignment is gone from the table of assignments, and its record is kept apart.
+      expect(await rowsOf(t, id)).toEqual([]);
+      expect(await releasesOf(t, id)).toMatchObject([first(later)]);
       expect(await counts()).toEqual({
         assignedReviewerIds: [],
         section: [],
@@ -1044,19 +1063,20 @@ describe("assigning, releasing, and assigning again", () => {
       expect((await release(w, { cookie: cookies.admin }, id, ids.r1)).status).toBe(404);
       expect((await release(w, { cookie: cookies.admin }, id, "nobody")).status).toBe(404);
 
-      // Assigned again, two hours on: the same row is active again, as a new assignment.
+      // Assigned again, two hours on: a new assignment, made then, by that chair.
       const evenLater = new Date(NOW.getTime() + 2 * HOUR);
       t.setNow(evenLater);
       expect((await assign(w, { cookie: cookies.admin }, id, ids.other)).status).toBe(204);
-      expect(await rowsOf(t, id)).toEqual([
-        {
-          ...made,
-          assignedByPersonId: ids.admin,
-          createdAt: evenLater,
-          releasedAt: null,
-          releaseReason: null,
-        },
-      ]);
+      const [second] = await rowsOf(t, id);
+      expect(second).toMatchObject({
+        reviewerId: ids.other,
+        submissionId: id,
+        assignedByPersonId: ids.admin,
+        createdAt: evenLater,
+      });
+      expect(second?.id).not.toBe(made.id);
+      expect(await rowsOf(t, id)).toHaveLength(1);
+      expect(await releasesOf(t, id)).toMatchObject([first(later)]);
       expect((await counts()).assignedReviewerIds).toEqual([ids.other]);
       // An id in capitals in the address is the same reviewer.
       expect(
@@ -1066,7 +1086,14 @@ describe("assigning, releasing, and assigning again", () => {
     } finally {
       t.setNow(NOW);
     }
-    expect(await activeOf(t, id)).toEqual([]);
+    expect(await rowsOf(t, id)).toEqual([]);
+    // Two assignments were made and released: two records, in the order they ended.
+    expect(
+      (await releasesOf(t, id)).map((r) => [r.assignedByPersonId, r.releasedByPersonId]),
+    ).toEqual([
+      [ids.chair, ids.admin],
+      [ids.admin, ids.chair],
+    ]);
     // One audit row for each: the proposal, the reviewer, and for a release its reason.
     const target = { targetType: "submission", targetId: id, kind: "human" };
     expect((await audited(t, w.conferenceId)).slice(start)).toEqual([
@@ -1101,21 +1128,26 @@ describe("assigning, releasing, and assigning again", () => {
 
   it("a reviewer released because of a conflict is never offered for that proposal again", async () => {
     const id = subs.performance;
-    // Released with each reason the next step will produce: only a conflict keeps them off.
+    // Released for each reason there is (the record is written as the next step will write it
+    // for the reasons a reviewer gives): only a conflict keeps them off.
+    const [last] = await t.db
+      .select()
+      .from(assignmentReleases)
+      .where(
+        and(eq(assignmentReleases.submissionId, id), eq(assignmentReleases.reviewerId, ids.other)),
+      )
+      .orderBy(desc(assignmentReleases.releasedAt));
+    if (!last) throw new Error("no release on record");
+    const because = (reason: string) =>
+      t.db.update(assignmentReleases).set({ reason }).where(eq(assignmentReleases.id, last.id));
     for (const reason of ["expertise", "time", "role_removed", "chair"] as const) {
-      await t.db
-        .update(assignments)
-        .set({ releasedAt: NOW, releaseReason: reason })
-        .where(and(eq(assignments.submissionId, id), eq(assignments.reviewerId, ids.other)));
+      await because(reason);
       expect(
         (await shown(w, cookies.chair, id)).candidates.map((c) => c.personId),
         reason,
       ).toContain(ids.other);
     }
-    await t.db
-      .update(assignments)
-      .set({ releasedAt: NOW, releaseReason: "conflict" })
-      .where(and(eq(assignments.submissionId, id), eq(assignments.reviewerId, ids.other)));
+    await because("conflict");
     const view = await shown(w, cookies.chair, id);
     expect(view.candidates.map((c) => c.personId)).not.toContain(ids.other);
     // Named nowhere in what the chair is shown of the proposal.
@@ -1123,32 +1155,112 @@ describe("assigning, releasing, and assigning again", () => {
     const res = await assign(w, { cookie: cookies.chair }, id, ids.other, { confirmedFull: true });
     expect(res.status).toBe(409);
     expect(res.json).toEqual({ error: "not_offered" });
-    expect(await activeOf(t, id)).toEqual([]);
-    // The row says so, and no request can say otherwise.
-    expect((await rowsOf(t, id)).map((a) => a.releaseReason)).toEqual(["conflict"]);
+    expect(await rowsOf(t, id)).toEqual([]);
+    // The record says so, and no request can say otherwise.
+    expect((await releasesOf(t, id)).map((r) => r.reason)).toEqual(["chair", "conflict"]);
   });
 
-  it("the database refuses half a release, and a reason there is not", async () => {
-    const row = {
-      conferenceId: w.conferenceId,
-      reviewerId: ids.r3,
-      submissionId: subs.performance,
-    };
-    for (const bad of [
-      { releasedAt: NOW },
-      { releaseReason: "chair" },
-      { releasedAt: NOW, releaseReason: "withdrawn" },
-    ]) {
-      await expect(t.db.insert(assignments).values({ ...row, ...bad })).rejects.toThrow();
-    }
-    // And a second row for the same reviewer and proposal, released or not.
+  it("the database refuses a second assignment of a reviewer to a proposal, and a reason there is not", async () => {
+    // Rolf reviews the plain talk: there is one row for the two, and there cannot be another.
+    expect((await rowsOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
     await expect(
       t.db.insert(assignments).values({
         conferenceId: w.conferenceId,
-        reviewerId: ids.other,
-        submissionId: subs.performance,
+        reviewerId: ids.r2,
+        submissionId: subs.plain,
       }),
     ).rejects.toThrow();
+    const record = {
+      conferenceId: w.conferenceId,
+      submissionId: subs.performance,
+      reviewerId: ids.r3,
+      assignmentId: "00000000-0000-4000-8000-00000000aaaa",
+      assignedAt: NOW,
+      releasedAt: NOW,
+    };
+    await expect(
+      t.db.insert(assignmentReleases).values({ ...record, reason: "withdrawn" }),
+    ).rejects.toThrow();
+    expect((await releasesOf(t, subs.performance)).map((r) => r.reviewerId)).toEqual([
+      ids.other,
+      ids.other,
+    ]);
+  });
+
+  it("the record of a release goes with its proposal, and outlives the people it names", async () => {
+    // A proposal's deletion: an owner deleting a draft must never fail on the record, and
+    // nothing is left of a proposal that is gone.
+    const [draft] = await t.db
+      .insert(submissions)
+      .values({
+        conferenceId: w.conferenceId,
+        ownerPersonId: ids.stranger,
+        typeKey: "talk",
+        language: "en",
+        title: "",
+        abstract: "",
+        status: "draft",
+      })
+      .returning({ id: submissions.id });
+    if (!draft) throw new Error("no draft");
+    await t.db.insert(assignmentReleases).values({
+      conferenceId: w.conferenceId,
+      submissionId: draft.id,
+      reviewerId: ids.r3,
+      assignmentId: "00000000-0000-4000-8000-00000000bbbb",
+      assignedAt: NOW,
+      releasedAt: NOW,
+      reason: "chair",
+    });
+    expect(await everHadReviewer(t.db, draft.id)).toBe(true);
+    await t.db.delete(submissions).where(eq(submissions.id, draft.id));
+    expect(await releasesOf(t, draft.id)).toEqual([]);
+    expect(await everHadReviewer(t.db, draft.id)).toBe(false);
+
+    // A person's deletion: it does not fail on the record either, and the record stays without
+    // them. The proposal keeps the fact that it has had a reviewer, so the guard on anonymity
+    // and the rule about its format keep what they know.
+    const email = mail("ghost");
+    await w.person(email, "Gus Ghostreviewer");
+    const ghost = await reviewer(w, email, [POOL_B]);
+    const [kept] = await t.db
+      .insert(submissions)
+      .values({
+        conferenceId: w.conferenceId,
+        ownerPersonId: ids.stranger,
+        typeKey: "performance",
+        language: "en",
+        title: "A performance with a ghost",
+        abstract: words(400),
+        status: "submitted",
+        submittedAt: NOW,
+      })
+      .returning({ id: submissions.id });
+    if (!kept) throw new Error("no proposal");
+    try {
+      expect((await assign(w, { cookie: cookies.chair }, kept.id, ghost)).status).toBe(204);
+      expect((await release(w, { cookie: cookies.chair }, kept.id, ghost)).status).toBe(204);
+      expect(await releasesOf(t, kept.id)).toMatchObject([
+        { reviewerId: ghost, assignedByPersonId: ids.chair, releasedByPersonId: ids.chair },
+      ]);
+      await t.db.delete(people).where(eq(people.id, ghost));
+      expect(await t.db.select().from(people).where(eq(people.id, ghost))).toEqual([]);
+      expect(await releasesOf(t, kept.id)).toMatchObject([
+        {
+          submissionId: kept.id,
+          reviewerId: null,
+          assignedByPersonId: ids.chair,
+          releasedByPersonId: ids.chair,
+          reason: "chair",
+        },
+      ]);
+      expect(await everHadReviewer(t.db, kept.id)).toBe(true);
+      expect((await everAssigned(t.db, w.conferenceId)).has(kept.id)).toBe(true);
+      // Nobody is on it, and the chairs' page of it is as for any proposal without a reviewer.
+      expect((await shown(w, cookies.chair, kept.id)).assigned).toEqual([]);
+    } finally {
+      await t.db.delete(submissions).where(eq(submissions.id, kept.id));
+    }
   });
 });
 
@@ -1319,9 +1431,9 @@ describe("a proposal that has had a reviewer keeps its format", () => {
         // Another format of the same committee is refused too: the rule is one sentence.
         expect((await format(id, "workshop")).status).toBe(422);
       }
-      expect((await activeOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
-      expect(await activeOf(t, subs.boundary)).toEqual([]);
-      expect((await rowsOf(t, subs.boundary)).length).toBeGreaterThan(0);
+      expect((await rowsOf(t, subs.plain)).map((a) => a.reviewerId)).toEqual([ids.r2]);
+      expect(await rowsOf(t, subs.boundary)).toEqual([]);
+      expect((await releasesOf(t, subs.boundary)).length).toBeGreaterThan(0);
       // Everything else about it can still be changed, and it is sent in again as a talk.
       const edited = await call(t.public, "PATCH", sub(subs.plain), {
         cookie: cookies.stranger,
@@ -1364,11 +1476,18 @@ describe("removing a reviewer's role releases what they had", () => {
       { cookie: cookies.chair, body: { assignments: 2 } },
     );
     expect(removed.status).toBe(204);
-    const rows = await t.db.select().from(assignments).where(eq(assignments.reviewerId, id));
-    expect(rows.map((a) => [a.releaseReason, a.releasedAt])).toEqual([
-      ["role_removed", NOW],
-      ["role_removed", NOW],
+    // Neither assignment is left, and each has its record: why, when, and by whose act.
+    const theirs = () => t.db.select().from(assignments).where(eq(assignments.reviewerId, id));
+    const records = () =>
+      t.db.select().from(assignmentReleases).where(eq(assignmentReleases.reviewerId, id));
+    expect(await theirs()).toEqual([]);
+    expect((await records()).map((r) => [r.reason, r.releasedAt, r.releasedByPersonId])).toEqual([
+      ["role_removed", NOW, ids.chair],
+      ["role_removed", NOW, ids.chair],
     ]);
+    expect((await records()).map((r) => r.submissionId).sort()).toEqual(
+      [subs.boundary, subs.team].sort(),
+    );
     expect((await audited(t, w.conferenceId)).slice(start)).toEqual(
       expect.arrayContaining(
         [subs.boundary, subs.team].map((targetId) => ({
@@ -1390,13 +1509,12 @@ describe("removing a reviewer's role releases what they had", () => {
         error: "not_offered",
       });
     }
-    // Invited again and a reviewer again, they can be assigned again: the same rows.
+    // Invited again and a reviewer again, they can be assigned again: a new assignment.
     await reviewer(w, email, [POOL_A]);
     expect((await assign(w, { cookie: cookies.chair }, subs.boundary, id)).status).toBe(204);
     expect((await read(t, cookie, subs.boundary)).view).toBe("reviewer");
-    expect(
-      await t.db.select().from(assignments).where(eq(assignments.reviewerId, id)),
-    ).toHaveLength(2);
+    expect((await theirs()).map((a) => a.submissionId)).toEqual([subs.boundary]);
+    expect(await records()).toHaveLength(2);
     expect((await release(w, { cookie: cookies.chair }, subs.boundary, id)).status).toBe(204);
   });
 });
@@ -1422,7 +1540,7 @@ describe("the Assignments page", () => {
     expect(a.nextCursor).toBeNull();
     for (const item of a.items) {
       expect(item.short, item.title).toBe(item.reviewers.length < NEEDED_A);
-      const rows = await activeOf(t, item.id);
+      const rows = await rowsOf(t, item.id);
       expect(item.reviewers.map((r) => r.personId).sort(), item.title).toEqual(
         rows.map((r) => r.reviewerId).sort(),
       );
@@ -1499,7 +1617,7 @@ describe("the Assignments page", () => {
     // moved to the end of the list.
     const last = first.items[1]?.id ?? "";
     expect(first.items[1]?.short).toBe(true);
-    const before = (await activeOf(t, last)).length;
+    const before = (await rowsOf(t, last)).length;
     // As many of those offered for it as it still needs, so that it has its reviewers.
     const offered = (await shown(w, cookies.chair, last)).candidates.filter((c) => !c.full);
     const added: string[] = [];
@@ -1619,11 +1737,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         .select()
         .from(assignments)
         .where(
-          and(
-            eq(assignments.submissionId, submissionId),
-            eq(assignments.reviewerId, reviewerId),
-            isNull(assignments.releasedAt),
-          ),
+          and(eq(assignments.submissionId, submissionId), eq(assignments.reviewerId, reviewerId)),
         );
     const isReviewer = async (id: string) =>
       (
@@ -1692,6 +1806,18 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         expect(gone.map((r) => r.status).sort(), `round ${round}`).toEqual([204, 404, 404, 404]);
         expect(await active(talk, reviewerId), `round ${round}`).toEqual([]);
       }
+      // Twelve releases, twelve records of them, and no assignment left.
+      expect(
+        await pg.db
+          .select()
+          .from(assignmentReleases)
+          .where(
+            and(
+              eq(assignmentReleases.submissionId, talk),
+              eq(assignmentReleases.reviewerId, reviewerId),
+            ),
+          ),
+      ).toHaveLength(12);
       // One audit row for each assignment made and each release: twelve of each.
       const rows = (await audited(pg, p.conferenceId)).filter(
         (r) => (r.details as { reviewerId: string }).reviewerId === reviewerId,
@@ -1707,7 +1833,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         chairs.map((c, i) => assign(p, { cookie: c.cookie }, talk, reviewers[1 + i] as string)),
       );
       expect(results.map((r) => r.status)).toEqual([204, 204, 204, 204]);
-      expect(await activeOf(pg, talk)).toHaveLength(4);
+      expect(await rowsOf(pg, talk)).toHaveLength(4);
       for (const [i, c] of chairs.entries()) {
         expect(
           (await release(p, { cookie: c.cookie }, talk, reviewers[1 + i] as string)).status,
@@ -1807,6 +1933,51 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
       }
     }, 120_000);
 
+    it("a removal that releases a reviewer from a proposal while another is being assigned to it: both finish", async () => {
+      // The removal writes the record of each release under the roles lock, and the record
+      // points to the proposal: the database checks that with a lock of its own on the
+      // proposal's row. An assignment holds that row and then waits for the roles lock. Were its
+      // lock on the row "for update", the two would wait for each other.
+      const talk = talks[3] as string;
+      const leaving = reviewers[6] as string;
+      const arriving = reviewers[4] as string;
+      for (let i = 0; i < 4; i++) {
+        await reviewer(p, address("reviewer-6"), [POOL_A]);
+        expect((await assign(p, { cookie: chairs[0]?.cookie }, talk, leaving)).status).toBe(204);
+        // The removal is stopped at the assignment it is about to release, whose row this test
+        // holds: it has the roles lock, exclusive, and has written no record yet.
+        const holder = hold((tx) =>
+          tx
+            .select()
+            .from(assignments)
+            .where(and(eq(assignments.submissionId, talk), eq(assignments.reviewerId, leaving)))
+            .for("update"),
+        );
+        await holder.ready;
+        const removal = removing(chairs[1]?.cookie ?? "", leaving, 1);
+        let released = false;
+        try {
+          expect(await within(removal, 300), `round ${i}: the removal`).toBe("waiting");
+          // The assignment takes the proposal's row, and waits for the roles lock.
+          const assigning = assign(p, { cookie: chairs[0]?.cookie }, talk, arriving);
+          expect(await within(assigning, 500), `round ${i}: the assignment`).toBe("waiting");
+          await holder.release();
+          released = true;
+          const done = await within(Promise.all([removal, assigning]), 10_000);
+          if (done === "waiting") throw new Error(`round ${i}: still waiting: a deadlock`);
+          expect(
+            done.map((r) => r.status),
+            `round ${i}`,
+          ).toEqual([204, 204]);
+        } finally {
+          if (!released) await holder.release();
+        }
+        expect(await active(talk, leaving), `round ${i}`).toEqual([]);
+        expect(await active(talk, arriving), `round ${i}`).toHaveLength(1);
+        expect((await release(p, { cookie: chairs[0]?.cookie }, talk, arriving)).status).toBe(204);
+      }
+    }, 120_000);
+
     it("an assignment begun first commits, and the removal waits for it and then releases it", async () => {
       const talk = talks[2] as string;
       const reviewerId = reviewers[7] as string;
@@ -1833,11 +2004,17 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         }
         expect(await isReviewer(reviewerId), `round ${i}`).toBe(false);
         expect(await active(talk, reviewerId), `round ${i}`).toEqual([]);
-        const [row] = await pg.db
+        const [record] = await pg.db
           .select()
-          .from(assignments)
-          .where(and(eq(assignments.submissionId, talk), eq(assignments.reviewerId, reviewerId)));
-        expect(row?.releaseReason, `round ${i}`).toBe("role_removed");
+          .from(assignmentReleases)
+          .where(
+            and(
+              eq(assignmentReleases.submissionId, talk),
+              eq(assignmentReleases.reviewerId, reviewerId),
+            ),
+          )
+          .orderBy(desc(assignmentReleases.releasedAt));
+        expect(record?.reason, `round ${i}`).toBe("role_removed");
       }
     }, 120_000);
 
@@ -2006,7 +2183,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         const left = await pg.db
           .select({ reviewerId: assignments.reviewerId })
           .from(assignments)
-          .where(and(eq(assignments.conferenceId, q.conferenceId), isNull(assignments.releasedAt)));
+          .where(eq(assignments.conferenceId, q.conferenceId));
         const roles = await pg.db
           .select({ personId: conferenceRoles.personId })
           .from(conferenceRoles)

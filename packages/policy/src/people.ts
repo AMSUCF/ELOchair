@@ -7,12 +7,7 @@ import {
   type RoleInvitation,
   roleInvitationState,
 } from "@elochair/schema";
-import {
-  activeAssignments,
-  isReviewable,
-  type SubmissionContext,
-  submissionAccess,
-} from "./access";
+import { isReviewable, type SubmissionContext, submissionAccess } from "./access";
 import { isConferenceChair, type PersonViewer, type Viewer } from "./viewer";
 
 /*
@@ -45,7 +40,7 @@ export type PeopleRecord = {
   people: Map<string, Person>;
   /** The conference's role invitations, in any state. */
   invitations: RoleInvitation[];
-  /** The conference's submissions with their active assignments, to count each reviewer's. */
+  /** The conference's submissions with their assignments, to count each reviewer's proposals. */
   submissions: SubmissionContext[];
 };
 
@@ -111,8 +106,8 @@ export function reviewerPools(scope: readonly string[], poolKeys: readonly strin
 /**
  * How many proposals are assigned to a reviewer, as one chair may know it: counted over the
  * submissions that chair manages as a chair (submissionAccess), and no others. An assignment
- * that was released is not counted, and neither is one to a proposal its reviewers no longer
- * read (a withdrawn one): that is nobody's work. It is the reviewer's load wherever a chair is
+ * that was released is no longer one, so it is not counted; and neither is one to a proposal its
+ * reviewers no longer read (a withdrawn one): that is nobody's work. It is the reviewer's load wherever a chair is
  * shown one (the People page, and the list a chair assigns from).
  */
 export function assignedCount(
@@ -123,7 +118,7 @@ export function assignedCount(
   let n = 0;
   for (const s of submissions) {
     if (!isReviewable(s.submission)) continue;
-    if (!activeAssignments(s).some((a) => a.reviewerId === reviewerId)) continue;
+    if (!s.assignments.some((a) => a.reviewerId === reviewerId)) continue;
     if (submissionAccess(viewer, s) === "chair") n += 1;
   }
   return n;

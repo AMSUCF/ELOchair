@@ -33,6 +33,13 @@ import { Refusal } from "../routes/common";
  *   4. the locks that count a day's invitations: the sender's, then the address's.
  * No transaction holds the rows of two submissions, of two invitations or of two conferences.
  * So nothing waits for a lock while it holds one that comes later, and the orders cannot cross.
+ *
+ * One more lock is taken by the database itself, in no order of ours: writing a row checks its
+ * foreign keys, which takes a key-share lock on each row it points to. Only a lock "for update"
+ * makes that wait. A reviewer's removal writes the records of the assignments it releases under
+ * the roles lock, and each points to a proposal. So the two writes that hold a proposal's row
+ * and then ask for the roles lock (assigning a reviewer, releasing one) take that row "for no
+ * key update": the removal's check passes it, and neither waits for the other.
  */
 
 export type RolesLock = "shared" | "exclusive";

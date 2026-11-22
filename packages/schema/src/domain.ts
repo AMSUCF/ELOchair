@@ -117,7 +117,26 @@ export const Conflict = z
 export type Conflict = z.infer<typeof Conflict>;
 
 /**
- * Why a reviewer was taken off a proposal (spec 03, §1.3). The row is kept and says which:
+ * One reviewer on one proposal: at most one for the two. An assignment exists while it stands.
+ * Taking the reviewer off the proposal releases it: the assignment is removed, and a record of
+ * it is kept apart (AssignmentRelease). So whatever reads assignments reads the ones that count,
+ * and a reviewer who was released is a stranger to the proposal again.
+ */
+export const Assignment = z.object({
+  id: Id,
+  conferenceId: Id,
+  reviewerId: Id,
+  submissionId: Id,
+  /** When the assignment was made. */
+  createdAt: z.iso.datetime({ offset: true }),
+  dueAt: z.iso.datetime({ offset: true }).nullable(),
+  /** The chair who made it. Null for one made before this was recorded, or on the server. */
+  assignedByPersonId: Id.nullable(),
+});
+export type Assignment = z.infer<typeof Assignment>;
+
+/**
+ * Why a reviewer was taken off a proposal (spec 03, §1.3):
  * - `chair`: a chair removed them from the proposal;
  * - `conflict`: the reviewer said they have a conflict of interest, or know whose work it is.
  *   They are never offered for that proposal again;
@@ -136,37 +155,27 @@ export const AssignmentReleaseReason = z.enum([
 export type AssignmentReleaseReason = z.infer<typeof AssignmentReleaseReason>;
 
 /**
- * One reviewer on one proposal: there is at most one row for the two. Taking the reviewer off
- * releases the assignment and keeps the row: `releasedAt` and `releaseReason` are set together.
- * A released assignment counts for nothing, anywhere: the reviewer is a stranger to the proposal
- * again. Assigning the same reviewer again makes the same row active again, as a new assignment.
+ * The record of an assignment that was released: what it was, when and why it ended, and who
+ * ended it. It gives nobody anything: it is what is remembered. A reviewer assigned to the same
+ * proposal again gets a new assignment, and a later release adds another record.
  */
-export const Assignment = z
-  .object({
-    id: Id,
-    conferenceId: Id,
-    reviewerId: Id,
-    submissionId: Id,
-    /** When the assignment was made; made again after a release, when that was. */
-    createdAt: z.iso.datetime({ offset: true }),
-    dueAt: z.iso.datetime({ offset: true }).nullable(),
-    /** The chair who made it. Null for one made before this was recorded, or on the server. */
-    assignedByPersonId: Id.nullable(),
-    releasedAt: z.iso.datetime({ offset: true }).nullable(),
-    releaseReason: AssignmentReleaseReason.nullable(),
-  })
-  .refine((a) => (a.releasedAt === null) === (a.releaseReason === null), {
-    message: "a released assignment says when and why, and an active one says neither",
-  });
-export type Assignment = z.infer<typeof Assignment>;
-
-/** An assignment that has not been released: the only kind that gives a reviewer anything. */
-export type ActiveAssignment = Assignment & { releasedAt: null; releaseReason: null };
-
-/** Whether an assignment counts: it has not been released. */
-export const isActiveAssignment = (
-  a: Pick<Assignment, "releasedAt" | "releaseReason">,
-): a is ActiveAssignment => a.releasedAt === null && a.releaseReason === null;
+export const AssignmentRelease = z.object({
+  id: Id,
+  conferenceId: Id,
+  submissionId: Id,
+  /** Who was released. Null only once that person's record has been deleted. */
+  reviewerId: Id.nullable(),
+  /** The id the assignment had while it stood. */
+  assignmentId: Id,
+  /** Who made the assignment, and when. */
+  assignedByPersonId: Id.nullable(),
+  assignedAt: z.iso.datetime({ offset: true }),
+  /** The person whose act released it: the chair who removed them, or the reviewer themself. */
+  releasedByPersonId: Id.nullable(),
+  releasedAt: z.iso.datetime({ offset: true }),
+  reason: AssignmentReleaseReason,
+});
+export type AssignmentRelease = z.infer<typeof AssignmentRelease>;
 
 /** Per-conference role grants. Scope narrows track chairs to tracks and reviewers to pools. */
 export const ConferenceRole = z.enum(["admin", "chair", "track_chair", "reviewer"]);

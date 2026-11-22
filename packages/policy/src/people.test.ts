@@ -3,7 +3,7 @@
  * typed names carry markers; each view is rendered and searched for what it must not hold.
  */
 import {
-  type ActiveAssignment,
+  type Assignment,
   type ConferenceConfig,
   ConferenceConfig as ConfigSchema,
   type Conflict,
@@ -138,7 +138,7 @@ function submission(
     invitedName: null,
     invitedAffiliation: null,
   }));
-  const assignments: ActiveAssignment[] = (v.reviewers ?? []).map((reviewerId, i) => ({
+  const assignments: Assignment[] = (v.reviewers ?? []).map((reviewerId, i) => ({
     id: uuid(9000 + n * 10 + i),
     conferenceId: CONFERENCE,
     reviewerId,
@@ -146,8 +146,6 @@ function submission(
     createdAt: at(-10),
     dueAt: null,
     assignedByPersonId: null,
-    releasedAt: null,
-    releaseReason: null,
   }));
   const conflicts: Conflict[] = (v.conflicted ?? []).map((personId, i) => ({
     id: uuid(8000 + n * 10 + i),
@@ -501,17 +499,15 @@ describe("how many proposals a reviewer has, as a chair may know it", () => {
     expect(projectPeople(author, rec, NOW)?.reviewers.map((r) => r.assigned)).toEqual([2, 2]);
   });
 
-  it("does not count an assignment that was released, should one ever be handed over", () => {
-    // The server's loader leaves released assignments out. Handed over all the same, one counts
-    // for nothing: the reviewer no longer has that proposal.
+  it("does not count an assignment that was released: it is no longer one", () => {
+    // Releasing removes the assignment (its record is kept elsewhere). What is left is counted.
     const chair = chairOf(CONFERENCE, uuid(11));
     const kept = submission(1, { reviewers: [reviewer, other] });
-    const gone = submission(2, { reviewers: [reviewer] });
-    gone.assignments = gone.assignments.map(
-      (a) => ({ ...a, releasedAt: at(-1), releaseReason: "chair" }) as unknown as ActiveAssignment,
-    );
-    expect(assignedCount(chair, reviewer, [kept, gone])).toBe(1);
-    expect(assignedCount(chair, other, [kept, gone])).toBe(1);
+    const before = submission(2, { reviewers: [reviewer] });
+    expect(assignedCount(chair, reviewer, [kept, before])).toBe(2);
+    const after = { ...before, assignments: [] };
+    expect(assignedCount(chair, reviewer, [kept, after])).toBe(1);
+    expect(assignedCount(chair, other, [kept, after])).toBe(1);
   });
 
   it("is the same in every phase: a load is a load before reviewers can read", () => {

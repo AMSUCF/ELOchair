@@ -10,7 +10,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assignments, auditLog } from "./db/schema";
+import { assignmentReleases, assignments, auditLog } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { createApiToken, getConference, grantRole, saveConference } from "./repo";
 import { configIssues, configToken, reviewConfig } from "./services/settings";
@@ -1175,18 +1175,28 @@ describe("an anonymized review that has begun stays anonymized", () => {
   });
 
   it("still counts an assignment that was released: the reviewer may have read it, and can be assigned again", async () => {
-    // Every assignment of the conference is released, for each of the reasons there are. A
-    // released assignment counts nowhere else; here it does (spec 03, §1.3), or a chair could
-    // release the reviewers, show names, and assign the same people again.
+    // Every assignment of the conference is released, for each of the reasons there are: its
+    // row leaves `assignments`, and its record is written to `assignment_releases`. A released
+    // assignment counts nowhere else; here it does (spec 03, §1.3), or a chair could release
+    // the reviewers, show names, and assign the same people again.
     const rows = await t.db.select().from(assignments).where(eq(assignments.conferenceId, guardId));
     expect(rows.length).toBeGreaterThanOrEqual(3);
     const reasons = ["chair", "conflict", "expertise", "time", "role_removed"] as const;
-    for (const [i, row] of rows.entries()) {
-      await t.db
-        .update(assignments)
-        .set({ releasedAt: NOW, releaseReason: reasons[i % reasons.length] })
-        .where(eq(assignments.id, row.id));
-    }
+    await t.db.delete(assignments).where(eq(assignments.conferenceId, guardId));
+    await t.db.insert(assignmentReleases).values(
+      rows.map((row, i) => ({
+        conferenceId: row.conferenceId,
+        submissionId: row.submissionId,
+        reviewerId: row.reviewerId,
+        assignmentId: row.id,
+        assignedAt: row.createdAt,
+        releasedAt: NOW,
+        reason: reasons[i % reasons.length] ?? "chair",
+      })),
+    );
+    expect(
+      await t.db.select().from(assignments).where(eq(assignments.conferenceId, guardId)),
+    ).toEqual([]);
     try {
       // Nobody reviews anything now: a chair's list of the proposals says so.
       const listed = await call(t.public, "GET", `/api/conferences/${GUARD}/submissions`, {
@@ -1207,13 +1217,23 @@ describe("an anonymized review that has begun stays anonymized", () => {
       expect(res.json.error).toBe("reviewers_assigned");
       expect((await settings("chair", GUARD)).json.token).toBe(token);
     } finally {
-      // Active again, as the tests above left them.
-      for (const row of rows) {
-        await t.db
-          .update(assignments)
-          .set({ releasedAt: null, releaseReason: null })
-          .where(eq(assignments.id, row.id));
-      }
+      // Assigned again, as the tests above left them.
+      await t.db.delete(assignmentReleases).where(eq(assignmentReleases.conferenceId, guardId));
+      await t.db.insert(assignments).values(rows);
+    }
+    // With no record of a release and nobody assigned, the same change would be taken: it is
+    // the record that the guard read.
+    await t.db.delete(assignments).where(eq(assignments.conferenceId, guardId));
+    try {
+      const { config, token } = await changed((c) => {
+        poolOf(c, "scientific").blindMode = "single";
+      });
+      expect((await preview("chair", config, token)).json).toMatchObject({
+        issues: [],
+        canSave: true,
+      });
+    } finally {
+      await t.db.insert(assignments).values(rows);
     }
   });
 });
@@ -1307,8 +1327,6 @@ describe("a review never carries anyone's words (house rule 2)", () => {
                 createdAt: NOW.toISOString(),
                 dueAt: null,
                 assignedByPersonId: null,
-                releasedAt: null,
-                releaseReason: null,
               },
             ]
           : [],

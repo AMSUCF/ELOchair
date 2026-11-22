@@ -11,7 +11,7 @@ import {
   type Submission,
   type SubmissionIssue,
 } from "@elochair/schema";
-import { type Access, activeAssignments, type SubmissionContext, submissionAccess } from "./access";
+import { type Access, type SubmissionContext, submissionAccess } from "./access";
 import { selfIdFindings, shownIdentity, submissionIssues } from "./derived";
 import type { Viewer } from "./viewer";
 
@@ -214,10 +214,7 @@ function core(s: Submission): SubmissionCore {
 }
 
 /** Who reviews it now: a reviewer whose assignment was released is not among them. */
-const reviewerIds = (rec: SubmissionRecord) =>
-  activeAssignments(rec)
-    .map((a) => a.reviewerId)
-    .sort();
+const reviewerIds = (rec: SubmissionRecord) => rec.assignments.map((a) => a.reviewerId).sort();
 const issueCodes = (rec: SubmissionRecord) =>
   [
     ...new Set(
