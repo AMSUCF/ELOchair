@@ -41,6 +41,15 @@ import { type AgentViewer, type PersonViewer, PUBLIC, type Viewer } from "./view
 const CONFIG: ConferenceConfig = ConfigSchema.parse(conferences.elo2026);
 const [POOL_A, POOL_B] = CONFIG.reviewPools.map((p) => p.key) as [string, string];
 const TYPE_A = CONFIG.submissionTypes.find((t) => t.reviewPool === POOL_A)?.key ?? "";
+/** How many reviews the first committee asks for of each of its proposals. */
+const NEEDED = CONFIG.reviewPools.find((p) => p.key === POOL_A)?.reviewsPerSubmission ?? 0;
+/** The same conference once its chairs ask the first committee for one review more. */
+const RAISED: ConferenceConfig = {
+  ...CONFIG,
+  reviewPools: CONFIG.reviewPools.map((p) =>
+    p.key === POOL_A ? { ...p, reviewsPerSubmission: NEEDED + 1 } : p,
+  ),
+};
 const RUNS = { numRuns: 300 };
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -78,6 +87,7 @@ const agentOf = (owner: PersonViewer, tier: "M" | "C"): AgentViewer => ({
 type Made = {
   status?: SubmissionStatus;
   phase?: string;
+  config?: ConferenceConfig;
   authors?: number[];
   reviewers?: number[];
   conflicted?: number[];
@@ -135,7 +145,7 @@ function proposal(n: number, v: Made = {}): SubmissionContext {
     declaredBy: "chair" as const,
   }));
   return {
-    config: CONFIG,
+    config: v.config ?? CONFIG,
     phase: v.phase ?? "reviewing",
     submission,
     contributions,
@@ -354,13 +364,32 @@ describe("whether something still holds when the email is made", () => {
 
   it("a notice to chairs holds for a chair who manages the proposal", () => {
     for (const kind of ["declined", "reviews_complete"] as const) {
-      expect(notificationHolds(chairOf(10), kind, assigned), kind).toBe(true);
-      expect(notificationHolds(adminOf(11), kind, assigned), kind).toBe(true);
+      expect(notificationHolds(chairOf(10), kind, assigned, NEEDED), kind).toBe(true);
+      expect(notificationHolds(adminOf(11), kind, assigned, NEEDED), kind).toBe(true);
       // Whatever phase the conference is in by then: it happened.
       for (const phase of ["reviewing", "deciding", "confirming"]) {
-        expect(notificationHolds(chairOf(10), kind, proposal(1, { phase })), phase).toBe(true);
+        expect(notificationHolds(chairOf(10), kind, proposal(1, { phase }), NEEDED), phase).toBe(
+          true,
+        );
       }
     }
+  });
+
+  it("a proposal has all its reviews only while as many are sent as its committee asks for now", () => {
+    const chair = chairOf(10);
+    expect(NEEDED).toBeGreaterThan(0);
+    expect(notificationHolds(chair, "reviews_complete", assigned, NEEDED)).toBe(true);
+    expect(notificationHolds(chair, "reviews_complete", assigned, NEEDED + 1)).toBe(true);
+    // A review fewer, or none that anyone counted: it does not have them all.
+    expect(notificationHolds(chair, "reviews_complete", assigned, NEEDED - 1)).toBe(false);
+    expect(notificationHolds(chair, "reviews_complete", assigned, 0)).toBe(false);
+    expect(notificationHolds(chair, "reviews_complete", assigned)).toBe(false);
+    // The chairs raised the number since: what was all of them is one short.
+    const raised = proposal(1, { reviewers: [80], config: RAISED });
+    expect(notificationHolds(chair, "reviews_complete", raised, NEEDED)).toBe(false);
+    expect(notificationHolds(chair, "reviews_complete", raised, NEEDED + 1)).toBe(true);
+    // A proposal that was given back was given back, however many reviews it has.
+    expect(notificationHolds(chair, "declined", raised, 0)).toBe(true);
   });
 
   it("a notice to chairs never holds for a chair's own proposal, or one they have a conflict with", () => {
@@ -379,7 +408,7 @@ describe("whether something still holds when the email is made", () => {
         ["a proposal that is gone", chairOf(10), undefined],
       ];
       for (const [why, who, ctx] of cases) {
-        expect(notificationHolds(who, kind, ctx), `${kind}: ${why}`).toBe(false);
+        expect(notificationHolds(who, kind, ctx, NEEDED), `${kind}: ${why}`).toBe(false);
       }
     }
   });
@@ -396,6 +425,8 @@ describe("what is made of what waits", () => {
     pending: PendingNotice[],
     submissions: SubmissionContext[],
     phase = "reviewing",
+    // Every proposal has the reviews its committee asks for, unless told otherwise.
+    sent: (s: SubmissionContext) => number = () => NEEDED,
   ) =>
     planNotices(who, {
       kind,
@@ -403,6 +434,7 @@ describe("what is made of what waits", () => {
       phase,
       pending,
       submissions: byId(...submissions),
+      sentReviews: new Map(submissions.map((s) => [s.submission.id, sent(s)])),
       summaryAt: SUMMARY,
     });
   const mine = [1, 2, 3].map((n) => proposal(n, { reviewers: [80] }));
@@ -616,6 +648,41 @@ describe("what is made of what waits", () => {
     });
   });
 
+  it("drops a proposal that no longer has all its reviews: the chairs ask for one more now", () => {
+    // Both had all their reviews when it was written down; the first committee is asked for
+    // one more since, and the second proposal got that one too.
+    const list = [1, 2].map((n) => proposal(n, { config: RAISED }));
+    const pending = [1, 2].map((n) => notice("reviews_complete", n, before));
+    const ids = pending.map((n) => n.id);
+    const sent = (s: SubmissionContext) => (s === list[1] ? NEEDED + 1 : NEEDED);
+    for (const often of ["each", "daily"] as const) {
+      expect(
+        plan(chairOf(10), "reviews_complete", often, pending, list, "reviewing", sent),
+        often,
+      ).toEqual({
+        action: "decide",
+        emails: [{ ids: [ids[1]], count: 1, reasons: [] }],
+        dropped: [ids[0]],
+      });
+    }
+    // With only the first, the chair gets no email: none says a proposal has what it lacks.
+    expect(
+      plan(chairOf(10), "reviews_complete", "each", pending.slice(0, 1), list, "reviewing", sent),
+    ).toEqual({ action: "decide", emails: [], dropped: [ids[0]] });
+    // A proposal nobody counted reviews of has none.
+    expect(
+      planNotices(chairOf(10), {
+        kind: "reviews_complete",
+        frequency: "each",
+        phase: "reviewing",
+        pending,
+        submissions: byId(...list),
+        sentReviews: new Map(),
+        summaryAt: SUMMARY,
+      }),
+    ).toEqual({ action: "decide", emails: [], dropped: ids });
+  });
+
   it("never counts a chair's own proposal, or one they have a conflict with: not in an email, not in a number", () => {
     const list = [proposal(1, { authors: [10] }), proposal(2, { conflicted: [10] }), proposal(3)];
     for (const kind of ["declined", "reviews_complete"] as const) {
@@ -691,8 +758,11 @@ describe("what is made of what waits", () => {
           }),
           { maxLength: 8 },
         ),
-        ([, viewerOf], specs, kind, often, phase, waiting) => {
+        // How many reviews of each proposal are sent: fewer than asked for, as many, or more.
+        fc.array(fc.integer({ min: 0, max: NEEDED + 1 }), { minLength: 4, maxLength: 4 }),
+        ([, viewerOf], specs, kind, often, phase, waiting, counts) => {
           const list = specs.map((spec, i) => proposal(i, { ...spec, phase }));
+          const sentReviews = new Map(list.map((s, i) => [s.submission.id, counts[i] ?? 0]));
           const pending = waiting.map((w) =>
             notice(kind, w.n, w.at, kind === "declined" ? w.reason : null),
           );
@@ -702,6 +772,7 @@ describe("what is made of what waits", () => {
             phase,
             pending,
             submissions: byId(...list),
+            sentReviews,
             summaryAt: SUMMARY,
           });
           if (result.action === "wait") {
@@ -718,9 +789,9 @@ describe("what is made of what waits", () => {
             expect(email.count).toBeLessThanOrEqual(email.ids.length);
             // Every notification an email answers still holds for that person.
             for (const id of email.ids) {
-              const n = pending.find((p) => p.id === id);
+              const of = pending.find((p) => p.id === id)?.submissionId ?? "";
               expect(
-                notificationHolds(viewerOf, kind, byId(...list).get(n?.submissionId ?? "")),
+                notificationHolds(viewerOf, kind, byId(...list).get(of), sentReviews.get(of)),
               ).toBe(true);
             }
             expect(Object.keys(email).sort()).toEqual(["count", "ids", "reasons"]);

@@ -2602,7 +2602,7 @@ test.describe("conference settings", () => {
     const remind = chair.getByLabel("Reminder to reviewers: days before reviews are due");
     await expect(remind).toHaveValue("");
     await expect(remind).toHaveAccessibleDescription(
-      "Optional. Left empty, it is 3 days. That many days before the day reviews are due, from 8:00 in the conference's time zone, each reviewer who still has reviews to send gets one email, unless they turned it off. No reminder is sent while no day is set. If you move the day afterwards, reviewers are reminded again before the new one.",
+      "Optional. Left empty, it is 3 days. That many days before the day reviews are due, from 8:00 in the conference's time zone, each reviewer who still has reviews to send gets one email, unless they turned it off. No reminder is sent while no day is set. If you move the day afterwards, reviewers are reminded again before the new one, unless the reminder for that day has already gone out.",
     );
     await expectTouchTarget(remind);
     // Between the day reviews are due and the day decisions are sent.

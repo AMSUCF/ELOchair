@@ -11,7 +11,7 @@ import {
   reviewReminderDays,
 } from "@elochair/schema";
 import type { SubmissionContext } from "./access";
-import { canManageReviewers } from "./assignments";
+import { canManageReviewers, reviewPoolOf } from "./assignments";
 import { canWriteReview } from "./reviews";
 import { hasRole, type Viewer } from "./viewer";
 
@@ -128,16 +128,27 @@ export function projectEmailChoices(
  *   the committee, an assignment that stands, no conflict, a proposal reviewers read, and the
  *   conference in `reviewing`);
  * - `declined`, `reviews_complete`: they chair the conference, and manage the proposal as a
- *   chair (canManageReviewers), so never their own and never one they have a conflict with.
+ *   chair (canManageReviewers), so never their own and never one they have a conflict with;
+ * - `reviews_complete`, besides: the proposal still has all its reviews. `sentReviews` is how
+ *   many reviews of it are sent now, and it holds while that is at least what its committee
+ *   asks for now: where the chairs raised the number meanwhile, it no longer has them all.
+ *
+ * Whether the proposal is the person's to hear of is asked first: for one that is kept from
+ * them, nothing is made to depend on how many reviews it has.
  */
 export function notificationHolds(
   viewer: Viewer,
   kind: NotificationKind,
   ctx: SubmissionContext | undefined,
+  sentReviews = 0,
 ): boolean {
   if (!ctx) return false;
   if (kind === "assigned") return canWriteReview(viewer, ctx);
-  return emailRoles(viewer, ctx.submission.conferenceId).chair && canManageReviewers(viewer, ctx);
+  if (!emailRoles(viewer, ctx.submission.conferenceId).chair) return false;
+  if (!canManageReviewers(viewer, ctx)) return false;
+  if (kind !== "reviews_complete") return true;
+  const needed = reviewPoolOf(ctx)?.reviewsPerSubmission;
+  return needed !== undefined && sentReviews >= needed;
 }
 
 /** Something a person is to be told about, as it was recorded when it happened. */
@@ -198,7 +209,8 @@ export function noticesWait(v: Waiting): boolean {
  * - "One summary a day" is then one email that counts all that has gathered; "each one" is an
  *   email for each proposal, at once.
  * - Whatever no longer holds is dropped, and counted nowhere (notificationHolds): a new
- *   assignment once review is over among them.
+ *   assignment once review is over among them, and a proposal that no longer has all the
+ *   reviews its committee asks for.
  * - What is counted is proposals: one that was assigned to the same person twice meanwhile is
  *   one new assignment, one that two reviewers gave back is one proposal given back (with both
  *   their reasons), and one that reached its number of reviews twice is one.
@@ -208,6 +220,12 @@ export function planNotices(
   v: Waiting & {
     /** The conference's submissions, by id. */
     submissions: ReadonlyMap<string, SubmissionContext>;
+    /**
+     * How many reviews of each proposal are sent, by its id: a number, and nothing of what a
+     * review says. Read for a proposal with all its reviews only; one that is not in it has
+     * none.
+     */
+    sentReviews: ReadonlyMap<string, number>;
   },
 ): NoticePlan {
   const pending = v.pending.filter((n) => n.kind === v.kind);
@@ -217,7 +235,8 @@ export function planNotices(
   const byProposal = new Map<string, PendingNotice[]>();
   const dropped: string[] = [];
   for (const n of pending) {
-    if (!notificationHolds(viewer, v.kind, v.submissions.get(n.submissionId))) {
+    const sent = v.sentReviews.get(n.submissionId) ?? 0;
+    if (!notificationHolds(viewer, v.kind, v.submissions.get(n.submissionId), sent)) {
       dropped.push(n.id);
       continue;
     }

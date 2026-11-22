@@ -26,9 +26,10 @@ CREATE TABLE "notifications" (
 );
 --> statement-breakpoint
 CREATE TABLE "review_reminders" (
-	"conference_id" uuid PRIMARY KEY NOT NULL,
+	"conference_id" uuid NOT NULL,
 	"reviews_due" timestamp with time zone NOT NULL,
-	"sent_at" timestamp with time zone NOT NULL
+	"sent_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "review_reminders_conference_id_reviews_due_pk" PRIMARY KEY("conference_id","reviews_due")
 );
 --> statement-breakpoint
 ALTER TABLE "notification_choices" ADD CONSTRAINT "notification_choices_person_id_people_id_fk" FOREIGN KEY ("person_id") REFERENCES "public"."people"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

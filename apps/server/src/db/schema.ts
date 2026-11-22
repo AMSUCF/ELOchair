@@ -656,17 +656,22 @@ export const notifications = pgTable(
 );
 
 /**
- * That a conference's reminder before reviews are due has gone out, and for which day (spec 03,
- * §1.7): one row for a conference at most, written in the transaction that puts the reminders
- * in the outbox. The reminder is decided once for all of a conference's reviewers together, so
- * this is all that has to be remembered: while the row names the day reviews are due, nobody is
- * reminded of that day again. A day the chairs set afterwards is another day.
+ * Every reminder before reviews are due that has gone out: one row for a conference and the
+ * day it was for (spec 03, §1.7), written in the transaction that puts the reminders in the
+ * outbox. The reminder is decided once for all of a conference's reviewers together, so this is
+ * all that has to be remembered. Rows are kept: a day that was reminded once is never reminded
+ * again, also when the chairs move the day away and back. A day they have not had before is
+ * another day.
  */
-export const reviewReminders = pgTable("review_reminders", {
-  conferenceId: uuid("conference_id")
-    .primaryKey()
-    .references(() => conferences.id, { onDelete: "cascade" }),
-  /** The day reviews were due when it went out. */
-  reviewsDue: ts("reviews_due").notNull(),
-  sentAt: ts("sent_at").notNull(),
-});
+export const reviewReminders = pgTable(
+  "review_reminders",
+  {
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    /** The day reviews were due when it went out. */
+    reviewsDue: ts("reviews_due").notNull(),
+    sentAt: ts("sent_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.conferenceId, t.reviewsDue] })],
+);

@@ -24,7 +24,7 @@ import {
   REVIEW_EMAILS,
   reviewReminderWindow,
 } from "@elochair/schema";
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { Db } from "../db/client";
@@ -77,8 +77,8 @@ import {
  * The job may run twice, and may miss a run:
  * - a notification is answered once: its row is marked in the transaction that writes the
  *   outbox row, and a run that finds it marked (or held by another run) leaves it alone;
- * - a reminder goes out once for a conference and a day: `review_reminders` holds one row for
- *   the conference, with the day, written in the transaction that writes the reminders;
+ * - a reminder goes out once for a conference and a day: `review_reminders` holds a row for
+ *   every day that was reminded, written in the transaction that writes the reminders;
  * - a summary whose hour passed while the server was down is due at the next run, and so is a
  *   reminder, until the day reviews are due.
  * The job takes none of the locks of services/roles.ts: what it reads may be a moment old, and
@@ -349,10 +349,19 @@ async function answerNotifications(
 
   const records = await loadSubmissionRecords(db, conference);
   const submissions = new Map(records.map((r) => [r.submission.id, r]));
+  // How many reviews of each proposal are sent now, and nothing of what they say: a proposal
+  // that was announced as having all its reviews must still have them (the chairs may have
+  // raised the committee's number since).
+  const sentReviews = new Map<string, number>();
+  if (due.some((g) => g.kind === "reviews_complete")) {
+    for (const review of await loadSentReviews(db, conference.id)) {
+      sentReviews.set(review.submissionId, (sentReviews.get(review.submissionId) ?? 0) + 1);
+    }
+  }
   for (const { personId, kind, rows, asked } of due) {
     const to = await recipient(db, personId);
     if (!to) continue;
-    const plan = planNotices(to.viewer, { ...asked, submissions });
+    const plan = planNotices(to.viewer, { ...asked, submissions, sentReviews });
     if (plan.action === "wait") continue;
     const mails = plan.emails.map((email) =>
       noticeMail(kind, conference, to.person, email, origin),
@@ -402,12 +411,13 @@ async function answerNotifications(
  * A conference's reminder before reviews are due: to every reviewer who has reviews that are
  * not sent and has not turned it off, from the summary's hour on the day that is the chairs'
  * number of days before the day reviews are due (three, unless they set another), and until
- * that day. Decided once for all of them together, and remembered with the day it was for: the
- * row is written with the reminders, and a second run finds the day in it.
+ * that day. Decided once for all of them together, and remembered for the conference and the
+ * day: the row is written with the reminders, and a second run finds it.
  *
  * No reminder where no day is set, where the conference is not in review, and once the day has
  * passed. If the chairs move the day afterwards, it is another day: reviewers are reminded of
- * it in its turn. Returns how many reminders were put in the outbox.
+ * it in its turn. A day that was reminded once stays reminded, also when the chairs move the
+ * day away and back. Returns how many reminders were put in the outbox.
  */
 async function remind(
   deps: Pick<Deps, "db" | "env">,
@@ -421,8 +431,13 @@ async function remind(
   const [reminded] = await db
     .select({ reviewsDue: reviewReminders.reviewsDue })
     .from(reviewReminders)
-    .where(eq(reviewReminders.conferenceId, conference.id));
-  if (reminded?.reviewsDue.getTime() === window.closes.getTime()) return 0;
+    .where(
+      and(
+        eq(reviewReminders.conferenceId, conference.id),
+        eq(reviewReminders.reviewsDue, window.closes),
+      ),
+    );
+  if (reminded) return 0;
 
   const { config } = conference;
   const origin = new URL(deps.env.APP_ORIGIN).origin;
@@ -466,16 +481,12 @@ async function remind(
   }
   return db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
-    // Written only where the conference is not yet marked for this day: a run that comes
-    // second finds it marked, or waits here and then finds it so, and sends nothing.
+    // One row for the conference and this day, and its key refuses a second: a run that
+    // comes second finds the row, or waits here and then finds it, and sends nothing.
     const marked = await tx
       .insert(reviewReminders)
       .values({ conferenceId: conference.id, reviewsDue: window.closes, sentAt: now })
-      .onConflictDoUpdate({
-        target: reviewReminders.conferenceId,
-        set: { reviewsDue: window.closes, sentAt: now },
-        setWhere: ne(reviewReminders.reviewsDue, window.closes),
-      })
+      .onConflictDoNothing({ target: [reviewReminders.conferenceId, reviewReminders.reviewsDue] })
       .returning({ conferenceId: reviewReminders.conferenceId });
     if (marked.length === 0) return 0;
     for (const mail of mails) await enqueueMail(tx, "review_reminder", mail, now);

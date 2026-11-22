@@ -51,7 +51,7 @@ export const settingsEn = {
   settingsLabel_rules_bio_maxWords: "Most words in a bio",
   settingsLabel_rules_reviewReminderDays: "Reminder to reviewers: days before reviews are due",
   settingsReminderDaysHint:
-    "Optional. Left empty, it is {days} days. That many days before the day reviews are due, from {hour} in the conference's time zone, each reviewer who still has reviews to send gets one email, unless they turned it off. No reminder is sent while no day is set. If you move the day afterwards, reviewers are reminded again before the new one.",
+    "Optional. Left empty, it is {days} days. That many days before the day reviews are due, from {hour} in the conference's time zone, each reviewer who still has reviews to send gets one email, unless they turned it off. No reminder is sent while no day is set. If you move the day afterwards, reviewers are reminded again before the new one, unless the reminder for that day has already gone out.",
   settingsLabel_type_name: "Name",
   settingsLabel_type_description: "Description",
   settingsLabel_type_abstract_label: "What the abstract is called",

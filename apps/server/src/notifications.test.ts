@@ -811,6 +811,51 @@ describe("notices to chairs, as each chair chose", () => {
     ).toBe(2);
   });
 
+  it("a proposal that no longer has all its reviews when the email is made is not announced: the chairs ask for one more meanwhile", async () => {
+    const v = await world();
+    const rs = [await reviewer(v), await reviewer(v), await reviewer(v), await reviewer(v)];
+    const id = await talk(v);
+    await inReview(v);
+    await assigned(v, id, ...rs);
+    for (const r of rs) await chosen(r, v, { assignments: "none" });
+    const complete = async () =>
+      (await waiting(v.chair)).filter((n) => n.kind === "reviews_complete");
+    // The third review is the committee's number: written down for the chair, who chose
+    // nothing and so gets one summary a day.
+    expect(NEEDED).toBe(3);
+    for (const r of rs.slice(0, NEEDED)) expect((await sendReview(r, id)).status).toBe(200);
+    expect(await complete()).toEqual([
+      { kind: "reviews_complete", status: "pending", reason: null, done: false },
+    ]);
+    // Before the summary's hour nothing is sent; the reviewers' own notifications, which they
+    // want no email about, are answered here and are out of the numbers below.
+    expect(await job(v)).toMatchObject({ emails: 0 });
+    expect(await complete()).toMatchObject([{ status: "pending" }]);
+    // Still before it, the chairs ask that committee for four.
+    await setConfig(v, (c) => {
+      const pool = c.reviewPools.find((p) => p.key === POOL);
+      if (pool) pool.reviewsPerSubmission = NEEDED + 1;
+    });
+    // At eight, the proposal has three of four: no email says it has them all.
+    expect(await jobAt(v, after(eight()))).toMatchObject({ emails: 0, dropped: 1 });
+    expect(await mailTo(v.chair)).toEqual([]);
+    expect(await complete()).toEqual([
+      { kind: "reviews_complete", status: "dropped", reason: null, done: true },
+    ]);
+    // The fourth review gives it all its reviews: that is what the next summary says.
+    expect((await sendReview(rs[3] as Person, id)).status).toBe(200);
+    expect(await jobAt(v, after(eight(1)))).toMatchObject({ emails: 1, dropped: 0 });
+    const mails = await mailTo(v.chair);
+    expect(mails).toHaveLength(1);
+    expect(mails[0]?.kind).toBe("reviews_complete");
+    expect(
+      count(
+        mails[0]?.text ?? "",
+        "Proposals that now have all the reviews their committee asks for",
+      ),
+    ).toBe(1);
+  });
+
   it("are in the chair's language", async () => {
     const v = await world();
     const es = await chairOf(v, "presidenta", ["es"]);
@@ -999,6 +1044,8 @@ describe("the one reminder before reviews are due", () => {
     (await mailTo(who)).filter((m) => m.kind === "review_reminder");
   const marker = (w: World) =>
     t.db.select().from(reviewReminders).where(eq(reviewReminders.conferenceId, w.conferenceId));
+  /** The days a conference's reviewers were reminded of, earliest first. */
+  const days = async (w: World) => (await marker(w)).map((m) => m.reviewsDue.toISOString()).sort();
 
   it("goes out three days before, at eight in the morning: not a minute earlier", async () => {
     const s = await set();
@@ -1095,12 +1142,50 @@ describe("the one reminder before reviews are due", () => {
     const mails = await reminders(s.busy);
     expect(mails).toHaveLength(2);
     expect(mails.map((m) => /February (\d+), 2027/.exec(m.text)?.[1]).sort()).toEqual(["11", "25"]);
-    expect((await marker(s.w)).map((m) => m.reviewsDue.toISOString())).toEqual([
-      new Date(later).toISOString(),
-    ]);
+    // Both days are remembered.
+    expect(await days(s.w)).toEqual([CLOSES.toISOString(), new Date(later).toISOString()]);
     // Once for that day too.
     expect(await jobAt(s.w, after(opens, DAY))).toMatchObject({ reminders: 0 });
     expect(await reminders(s.busy)).toHaveLength(2);
+  });
+
+  it("never reminds of the same day twice: the chairs move the day, and then move it back", async () => {
+    const s = await set();
+    // Reminded of the 11th.
+    expect(await jobAt(s.w, OPENS)).toMatchObject({ reminders: 2 });
+    // The chairs give everyone one more day, and reviewers are reminded of the 12th in its turn.
+    const other = "2027-02-12T23:59:00-05:00";
+    const move = (to: string) =>
+      setConfig(s.w, (c) => {
+        c.deadlines.reviewsDue = to;
+      });
+    await move(other);
+    expect(await jobAt(s.w, after(OPENS, DAY))).toMatchObject({ reminders: 2 });
+    expect(await days(s.w)).toEqual([CLOSES.toISOString(), new Date(other).toISOString()]);
+    // Then they take the day back: it is the 11th again, three days before it has come, and it
+    // has not passed. Nobody is reminded of it a second time, whenever the job runs.
+    await move(DUE);
+    for (const later of [
+      after(OPENS, DAY + HOUR),
+      after(OPENS, 2 * DAY),
+      new Date(CLOSES.getTime() - 60_000),
+    ]) {
+      expect(await jobAt(s.w, later), later.toISOString()).toMatchObject({
+        reminders: 0,
+        emails: 0,
+      });
+    }
+    // Nor of the 12th, if they move it there once more.
+    await move(other);
+    expect(await jobAt(s.w, after(OPENS, 2 * DAY))).toMatchObject({ reminders: 0, emails: 0 });
+    for (const who of [s.busy, s.drafting]) {
+      const mails = await reminders(who);
+      expect(mails.map((m) => /February (\d+), 2027/.exec(m.text)?.[1]).sort()).toEqual([
+        "11",
+        "12",
+      ]);
+    }
+    expect(await days(s.w)).toEqual([CLOSES.toISOString(), new Date(other).toISOString()]);
   });
 
   it("is not lost where there was nobody to remind, or where a day was typed wrong", async () => {

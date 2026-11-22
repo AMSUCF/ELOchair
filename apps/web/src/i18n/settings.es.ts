@@ -55,7 +55,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsLabel_rules_reviewReminderDays:
     "Recordatorio a quienes revisan: días antes de la entrega de las revisiones",
   settingsReminderDaysHint:
-    "Opcional. Si lo dejas vacío, son {days} días. Esos días antes del día de entrega de las revisiones, desde las {hour} en la zona horaria del congreso, cada persona que revisa y todavía tiene revisiones por enviar recibe un correo, salvo que lo haya desactivado. No se envía ningún recordatorio mientras no haya un día fijado. Si cambias el día después, se les vuelve a recordar antes del nuevo.",
+    "Opcional. Si lo dejas vacío, son {days} días. Esos días antes del día de entrega de las revisiones, desde las {hour} en la zona horaria del congreso, cada persona que revisa y todavía tiene revisiones por enviar recibe un correo, salvo que lo haya desactivado. No se envía ningún recordatorio mientras no haya un día fijado. Si cambias el día después, se les vuelve a recordar antes del nuevo, salvo que el recordatorio de ese día ya se haya enviado.",
   settingsLabel_type_name: "Nombre",
   settingsLabel_type_description: "Descripción",
   settingsLabel_type_abstract_label: "Cómo se llama el resumen",

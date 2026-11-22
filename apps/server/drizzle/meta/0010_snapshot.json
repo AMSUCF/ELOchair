@@ -1,5 +1,5 @@
 {
-  "id": "7383894e-79cd-4d31-b340-7b5097584fa2",
+  "id": "c63dc6d9-41ee-4850-af85-994249d210e4",
   "prevId": "0fe100c9-ee2d-4492-b468-07ba95a15cf3",
   "version": "7",
   "dialect": "postgresql",
@@ -1823,7 +1823,7 @@
         "conference_id": {
           "name": "conference_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "reviews_due": {
@@ -1855,7 +1855,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "review_reminders_conference_id_reviews_due_pk": {
+          "name": "review_reminders_conference_id_reviews_due_pk",
+          "columns": [
+            "conference_id",
+            "reviews_due"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

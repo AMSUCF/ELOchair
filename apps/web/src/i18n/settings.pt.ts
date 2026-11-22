@@ -55,7 +55,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsLabel_rules_reviewReminderDays:
     "Lembrete a quem revê: dias antes da entrega das revisões",
   settingsReminderDaysHint:
-    "Opcional. Se ficar vazio, são {days} dias. Esses dias antes do dia de entrega das revisões, a partir das {hour} no fuso horário do congresso, cada pessoa que revê e ainda tem revisões por enviar recebe um email, salvo se o tiver desativado. Não é enviado nenhum lembrete enquanto não houver um dia fixado. Se alterar o dia depois, essas pessoas voltam a ser lembradas antes do novo.",
+    "Opcional. Se ficar vazio, são {days} dias. Esses dias antes do dia de entrega das revisões, a partir das {hour} no fuso horário do congresso, cada pessoa que revê e ainda tem revisões por enviar recebe um email, salvo se o tiver desativado. Não é enviado nenhum lembrete enquanto não houver um dia fixado. Se alterar o dia depois, essas pessoas voltam a ser lembradas antes do novo, salvo se o lembrete desse dia já tiver sido enviado.",
   settingsLabel_type_name: "Nome",
   settingsLabel_type_description: "Descrição",
   settingsLabel_type_abstract_label: "Como se chama o resumo",
