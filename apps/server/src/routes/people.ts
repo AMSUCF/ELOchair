@@ -58,11 +58,12 @@ export const peopleRoutes = new Hono<AppEnv>()
     writer(c);
     const role = RemovableRole.safeParse(c.req.param("role"));
     if (!role.success) throw new Refusal(404, "not_found");
-    const { assignments } = RoleRemovalInput.parse(await c.req.json());
+    const { assignments, reviews } = RoleRemovalInput.parse(await c.req.json());
     await removeRole(c.get("deps"), viewer, k, {
       personId: idParam(c.req.param("personId")),
       role: role.data,
       assignments,
+      reviews,
     });
     return c.body(null, 204);
   });

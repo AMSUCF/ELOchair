@@ -197,6 +197,14 @@ function Committee({
           ? t("assignmentsAsksOne")
           : t("assignmentsAsksMany", { needed: pool.needed })}
       </p>
+      {/* Those that have their reviewers and not yet their reviews: listed after the first. */}
+      {pool.waiting > 0 && (
+        <p>
+          {pool.waiting === 1
+            ? t("assignmentsWaitingOne")
+            : t("assignmentsWaitingMany", { n: pool.waiting })}
+        </p>
+      )}
       {paged(pool.proposals, pool.items.length) ? (
         <p className="meta" role="status" id={showing} tabIndex={-1}>
           {t("manageShowing", { shown: pool.items.length, total: pool.proposals })}
@@ -223,6 +231,8 @@ function Committee({
               <span>
                 {t("assignmentsReviewers", { n: item.reviewers.length, needed: pool.needed })}
               </span>
+              {" · "}
+              <span>{t("assignmentsSent", { n: item.sent })}</span>
             </p>
             <p className="meta">
               {item.reviewers.length === 0

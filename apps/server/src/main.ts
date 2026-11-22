@@ -4,7 +4,7 @@ import { createApp } from "./app";
 import { openDatabase } from "./db/client";
 import { makeDeps } from "./deps";
 import { loadEnv } from "./env";
-import { seedOpenCall, seedSandbox } from "./fixtures";
+import { seedChairReviews, seedOpenCall, seedPhaseRoom, seedSandbox } from "./fixtures";
 import { deliverPending } from "./mail";
 import { createConferenceIfMissing, getConference } from "./repo";
 
@@ -21,12 +21,20 @@ if (env.SEED_ON_START) {
   await createConferenceIfMissing(database.db, conferences.elo2026, "archived");
   await createConferenceIfMissing(database.db, conferences.elo2027, "draft");
   if (!(await getConference(database.db, "sandbox"))) await seedSandbox(database.db);
+  // The sandbox stays in review, where its reviewers write. A phase is moved in this one.
+  if (!(await getConference(database.db, "phase-room"))) {
+    await seedPhaseRoom(database.db, { chairEmails: ["chair@example.org"] });
+  }
+  // A chair may also review: a small conference where the sandbox's chair does.
+  if (!(await getConference(database.db, "chair-reviews"))) {
+    await seedChairReviews(database.db, { chairEmail: "chair@example.org" });
+  }
   await seedOpenCall(database.db, {
     now: new Date(),
     chairEmails: ["chair@example.org", "admin@example.org"],
   });
   console.log(
-    "seeded elo2026, elo2027, the synthetic sandbox, and an open test call (elo2027-open); sign in as chair@example.org",
+    "seeded elo2026, elo2027, the synthetic sandbox, an empty conference in review (phase-room), a small one whose chair also reviews (chair-reviews) and an open test call (elo2027-open); sign in as chair@example.org",
   );
 }
 

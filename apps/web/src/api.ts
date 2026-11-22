@@ -5,6 +5,7 @@ import type {
   ContributionRole,
   ContributionStatus,
   LocalizedText,
+  Recommendation,
   SelfIdKind,
   SubmissionIssue,
   SubmissionStatus,
@@ -219,6 +220,8 @@ export type People = {
     pools: string[];
     /** Among the proposals the chair looking manages: their own and conflicted ones left out. */
     assigned: number;
+    /** How many of those have a review of theirs that was sent. */
+    sent: number;
     maxLoad: number | null;
     languages: string[];
   })[];
@@ -251,6 +254,17 @@ export type ReviewerCandidate = RoleHolder & {
   full: boolean;
 };
 
+/** A review that was sent, as a chair who manages its proposal reads it (packages/policy). */
+export type ChairReview = {
+  scores: Record<string, number>;
+  comments: string;
+  chairNote: string;
+  recommendation: Recommendation | null;
+  sentAt: string;
+  /** When it was last changed, if that was after it was first sent. */
+  changedAt: string | null;
+};
+
 /** Who reviews a proposal and who could, for a chair who manages it. */
 export type ProposalReviewers = {
   view: "proposal_reviewers";
@@ -258,8 +272,23 @@ export type ProposalReviewers = {
   /** The review pool of the proposal's format: a "committee" wherever a person reads it. */
   pool: string | null;
   needed: number;
-  /** Everyone assigned to it. `blocked`: they can no longer review it, and are not counted. */
-  assigned: (RoleHolder & { assignedAt: string; blocked: boolean })[];
+  /**
+   * Everyone assigned to it. `blocked`: they can no longer review it, and are not counted.
+   * `review`: their review once it is sent; until then nothing says whether they began one.
+   */
+  assigned: (RoleHolder & {
+    assignedAt: string;
+    blocked: boolean;
+    review: ChairReview | null;
+  })[];
+  /** Sent reviews by people who are no longer assigned to it. */
+  otherReviews: (RoleHolder & { review: ChairReview })[];
+  /** Who said they could not review it, with their reason and their note for the chairs. */
+  declined: (RoleHolder & {
+    reason: "conflict" | "expertise" | "time";
+    note: string | null;
+    at: string;
+  })[];
   takes: "yes" | "call_not_closed" | "not_under_consideration";
   candidates: ReviewerCandidate[];
 };
@@ -271,6 +300,8 @@ export type AssignmentsProposal = {
   typeKey: string;
   reviewers: RoleHolder[];
   short: boolean;
+  /** How many reviews of it were sent. */
+  sent: number;
 };
 
 /** One review pool on that page: its totals, and one page of its proposals. */
@@ -279,8 +310,50 @@ export type AssignmentsPool = {
   needed: number;
   proposals: number;
   short: number;
+  /** How many have their reviewers and fewer sent reviews than the committee asks for. */
+  waiting: number;
   items: AssignmentsProposal[];
   nextCursor: string | null;
+};
+
+/** Where a reviewer's own review of a proposal stands. */
+export type OwnReviewStatus = "not_started" | "draft" | "sent";
+
+/** A reviewer's own review of a proposal (the own-review projection in packages/policy). */
+export type OwnReview = {
+  view: "own_review";
+  submissionId: string;
+  status: OwnReviewStatus;
+  /** The version a save names; 0 while nothing has been saved. */
+  version: number;
+  scores: Record<string, number>;
+  comments: string;
+  chairNote: string;
+  recommendation: Recommendation | null;
+  sentAt: string | null;
+  updatedAt: string | null;
+  /** The conference is in review: the review can be saved, sent and changed. */
+  open: boolean;
+  /** "I cannot review this proposal" is offered. */
+  canDecline: boolean;
+};
+
+/** A reviewer's own list for one conference ("My reviews"). */
+export type MyReviews = {
+  view: "my_reviews";
+  conference: { slug: string; title: LocalizedText; timezone: string; defaultLanguage: string };
+  open: boolean;
+  reviewsDue: string | null;
+  counts: { sent: number; draft: number; notStarted: number };
+  committees: { key: string; name: LocalizedText; guidelines: LocalizedText | null }[];
+  formats: Record<string, LocalizedText>;
+  proposals: {
+    submissionId: string;
+    title: string;
+    typeKey: string;
+    language: string;
+    status: OwnReviewStatus;
+  }[];
 };
 
 export type Assignments = {

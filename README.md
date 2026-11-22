@@ -29,6 +29,7 @@ It is mobile-first, and chairs can run it through agents, with submission conten
 ```bash
 npm ci
 SEED_ON_START=1 npm run dev   # API on :8080: ELO 2026, an ELO 2027 placeholder, a synthetic sandbox,
+                              # two small conferences in review (phase-room, chair-reviews),
                               # and "elo2027-open", a test call that is always open
 npm run dev:web               # open http://localhost:5173
 ```

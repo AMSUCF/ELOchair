@@ -42,6 +42,11 @@ export type PeopleRecord = {
   invitations: RoleInvitation[];
   /** The conference's submissions with their assignments, to count each reviewer's proposals. */
   submissions: SubmissionContext[];
+  /**
+   * Which reviews were sent: the proposal and the reviewer of each, and nothing of what it
+   * says. A draft is its reviewer's own and is not among them.
+   */
+  sentReviews: readonly { submissionId: string; reviewerId: string }[];
 };
 
 /** A role holder, from their profile. The name is null while they have not set one. */
@@ -65,6 +70,11 @@ export type PeopleReviewer = RoleHolder & {
    * theirs to learn, and a count would give it away.
    */
   assigned: number;
+  /**
+   * How many of those proposals have a review of theirs that was sent (sentCount): counted
+   * over the same proposals, so it says nothing of the chair's own either.
+   */
+  sent: number;
   /** What they said on accepting; null and empty when they were given the role on the server. */
   maxLoad: number | null;
   languages: string[];
@@ -118,6 +128,29 @@ export function assignedCount(
   let n = 0;
   for (const s of submissions) {
     if (!isReviewable(s.submission)) continue;
+    if (!s.assignments.some((a) => a.reviewerId === reviewerId)) continue;
+    if (submissionAccess(viewer, s) === "chair") n += 1;
+  }
+  return n;
+}
+
+/**
+ * How many of a reviewer's assigned proposals have a review of theirs that was sent, as one
+ * chair may know it: counted exactly where assignedCount counts, so it is never more than that
+ * number, and a chair's own proposals and conflicts are left out of both.
+ */
+export function sentCount(
+  viewer: PersonViewer,
+  reviewerId: string,
+  submissions: readonly SubmissionContext[],
+  sentReviews: readonly { submissionId: string; reviewerId: string }[],
+): number {
+  const sent = new Set(
+    sentReviews.filter((r) => r.reviewerId === reviewerId).map((r) => r.submissionId),
+  );
+  let n = 0;
+  for (const s of submissions) {
+    if (!sent.has(s.submission.id) || !isReviewable(s.submission)) continue;
     if (!s.assignments.some((a) => a.reviewerId === reviewerId)) continue;
     if (submissionAccess(viewer, s) === "chair") n += 1;
   }
@@ -192,6 +225,7 @@ export function projectPeople(viewer: Viewer, rec: PeopleRecord, now: Date): Peo
           ...holder(id),
           pools: reviewerPools(scopeOf(id, "reviewer"), rec.poolKeys),
           assigned: assignedCount(viewer, id, rec.submissions),
+          sent: sentCount(viewer, id, rec.submissions, rec.sentReviews),
           maxLoad: profile?.maxLoad ?? null,
           languages: [...(profile?.languages ?? [])],
         };

@@ -4,6 +4,7 @@ import { api, type Issue, type Me, type Profile } from "../api";
 import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { conferenceRoleKey } from "../labels";
+import { sessionChanged } from "../session";
 import { PageHeading } from "../ui";
 import { sortUnsaved, type UnsavedValues } from "../unsaved";
 import { useApi } from "../useApi";
@@ -115,6 +116,7 @@ export function MePage() {
     if (out.ok) {
       // Unsaved text must not wait in this browser for whoever uses it next.
       if (person) forgetUnsaved(person.id);
+      sessionChanged();
       navigate(`/${lang}/`);
     } else setSignOutFailed(true);
   }

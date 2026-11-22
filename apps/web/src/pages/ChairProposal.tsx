@@ -1,5 +1,5 @@
 import type { ConferenceConfig } from "@elochair/schema";
-import { localize } from "@elochair/schema/pure";
+import { localize, reviewPoolFor } from "@elochair/schema/pure";
 import { Link } from "react-router";
 import { answerOf } from "../answers";
 import type { ChairSubmission } from "../api";
@@ -8,6 +8,7 @@ import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, type IssueCode, issueLabelKey, modeKey, roleKey } from "../labels";
 import { Localized, PageHeading, StatusBadge } from "../ui";
 import { ProposalReviewersSection } from "./ProposalReviewers";
+import { ReviewSection } from "./ReviewForm";
 
 /**
  * A proposal as a chair is given it (the chair projection in packages/policy): everything the
@@ -17,6 +18,11 @@ import { ProposalReviewersSection } from "./ProposalReviewers";
  *
  * Under the proposal, a chair of the conference finds its reviewers, and assigns and removes
  * them there (spec 03, §1.3). A track chair is given the proposal and not that part.
+ *
+ * A chair may also review: where they hold the reviewer's role and this proposal is assigned to
+ * them, their own review is here too, above the reviewers, with the committee's guidelines (spec
+ * 03, §1.4). They read the proposal as a chair all the same; the server says whether the review
+ * is theirs to write (ReviewSection asks, and shows nothing where it is not).
  */
 export function ChairProposal({
   sub,
@@ -24,6 +30,8 @@ export function ChairProposal({
   phase,
   config,
   managesReviewers,
+  reviewsHere,
+  personId,
 }: {
   sub: ChairSubmission;
   slug: string;
@@ -32,10 +40,15 @@ export function ChairProposal({
   config: ConferenceConfig;
   /** The person looking is a chair of the conference (a chair, an admin or a site admin). */
   managesReviewers: boolean;
+  /** The person looking also holds the reviewer's role at the conference. */
+  reviewsHere: boolean;
+  /** The person signed in: their unsaved review text is kept in this browser under their id. */
+  personId: string | null;
 }) {
   const { lang, t } = useT();
   const fallback = config.defaultLanguage;
   const type = config.submissionTypes.find((x) => x.key === sub.typeKey);
+  const pool = reviewPoolFor(config, sub.typeKey);
   const track = config.tracks.find((x) => x.key === sub.trackKey);
   const topics = config.topics.filter((x) => sub.topicKeys.includes(x.key));
   const words = { lang, fallback, yes: t("editYes"), no: t("editNo") };
@@ -146,6 +159,28 @@ export function ChairProposal({
           );
         })}
       </ul>
+      {reviewsHere && pool && (
+        <ReviewSection
+          key={sub.id}
+          submissionId={sub.id}
+          language={sub.language}
+          pool={pool}
+          config={config}
+          personId={personId}
+          whereTheirs
+          before={
+            pool.guidelines && (
+              <details className="guidelines-box">
+                <summary>{t("reviewGuidelines")}</summary>
+                {/* As the chairs wrote them: their line breaks are kept (.guidelines). */}
+                <p className="guidelines">
+                  <Localized text={pool.guidelines} fallback={fallback} />
+                </p>
+              </details>
+            )
+          }
+        />
+      )}
       {managesReviewers && (
         <ProposalReviewersSection
           slug={slug}

@@ -5,6 +5,7 @@ import { api, type RoleInvitation } from "../api";
 import { formatDateTime, viewerTimeZone } from "../format";
 import { cleanName, nameRefusal } from "../forms";
 import { LANG_NAMES, LANGS, type Lang, type MessageKey, useT } from "../i18n";
+import { sessionChanged } from "../session";
 import { FocusPending, PageHeading } from "../ui";
 
 type Answered = { answer: "accepted" | "declined"; info: RoleInvitation };
@@ -161,7 +162,12 @@ export function RoleInvitationPage() {
     });
     inFlight.current = false;
     setBusy(false);
-    if (res.ok) return settle({ step: "done", answer: res.data.answer, info });
+    if (res.ok) {
+      // A role accepted may be a reviewer's: the main menu asks again whether to offer
+      // "My reviews".
+      sessionChanged();
+      return settle({ step: "done", answer: res.data.answer, info });
+    }
     // Only these mean the link is dead. Anything else keeps the form, and the token with it.
     if (res.error === "invalid_or_expired" || res.issues.some((i) => i.path === "token")) {
       return settle({ step: "invalid" });

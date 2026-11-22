@@ -77,9 +77,46 @@ function dateIn(iso: string, timeZone: string): string | null {
 export const Criterion = z.object({
   key: Key,
   label: LocalizedText,
+  /**
+   * What the criterion asks, or what its lowest and highest scores mean: shown under its label
+   * on the review form, where the chairs wrote one.
+   */
+  description: LocalizedText.optional(),
   min: z.int().default(1),
   max: z.int().default(5),
 });
+
+/**
+ * The fixed part of a pool's review form (spec 03, §1.8), under the scores: the comments for
+ * the authors, the note for the chairs only, and the overall recommendation. Their names are
+ * the app's own; every limit and every description a reviewer meets on them is here, and is
+ * the chairs' to set. All of it is optional, and a configuration that says nothing has the
+ * form as the app words it: comments without a word limit, a note and a recommendation.
+ *
+ * Each part is always there once a configuration has been read (an empty object stands for
+ * "nothing set"), so that its settings are offered whether or not anything is written yet.
+ */
+export const ReviewFormConfig = z.object({
+  /** The comments for the authors: always on the form, and required to send a review. */
+  comments: z
+    .object({
+      /** Shown under the field, in place of the app's standard sentence. */
+      description: LocalizedText.optional(),
+      /** The fewest and the most words a review that is sent may have. Left out: no limit. */
+      minWords: z.int().min(1).optional(),
+      maxWords: z.int().min(1).optional(),
+    })
+    .prefault({}),
+  /** The note for the chairs only: optional for the reviewer, and the chairs can take it off. */
+  chairNote: z
+    .object({ enabled: z.boolean().default(true), description: LocalizedText.optional() })
+    .prefault({}),
+  /** Accept, unsure or reject: required to send while the form has it. */
+  recommendation: z
+    .object({ enabled: z.boolean().default(true), description: LocalizedText.optional() })
+    .prefault({}),
+});
+export type ReviewFormConfig = z.infer<typeof ReviewFormConfig>;
 
 export const ReviewPool = z.object({
   key: Key,
@@ -94,6 +131,8 @@ export const ReviewPool = z.object({
    */
   guidelines: LocalizedText.optional(),
   criteria: z.array(Criterion).min(1),
+  /** What the review form holds beside the criteria, and how it is worded (ReviewFormConfig). */
+  form: ReviewFormConfig.prefault({}),
 });
 export type ReviewPool = z.infer<typeof ReviewPool>;
 
@@ -179,6 +218,7 @@ export type ConfigIssueCode =
   | "min_not_below_max"
   | "no_whole_number"
   | "deadline_order"
+  | "reviews_due_order"
   | "dates_order"
   | "final_before_conference"
   | "agreement_needs_text_or_link"
@@ -307,6 +347,12 @@ const ConferenceConfigShape = z.object({
     submissionsClose: IsoDateTime,
     notification: IsoDateTime,
     finalMaterials: IsoDateTime,
+    /**
+     * The day reviews are due (spec 03, §1.4), where the chairs set one: after the call closes
+     * and before decisions are sent. Reviewers are shown it. It locks nothing: a review can be
+     * sent and changed for as long as the conference is in review.
+     */
+    reviewsDue: IsoDateTime.optional(),
   }),
   rules: z.object({
     presenterCap: z
@@ -454,8 +500,20 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
       ["reviewPools", i, "criteria"],
       p.criteria.map((k) => k.key),
     );
+    const form = ["reviewPools", i, "form"];
+    text([...form, "comments", "description"], p.form.comments.description);
+    text([...form, "chairNote", "description"], p.form.chairNote.description);
+    text([...form, "recommendation", "description"], p.form.recommendation.description);
+    const { minWords, maxWords } = p.form.comments;
+    if (minWords !== undefined && maxWords !== undefined && minWords > maxWords) {
+      issue([...form, "comments"], "minWords must not exceed maxWords", {
+        code: "min_over_max",
+        leaf: "minWords",
+      });
+    }
     p.criteria.forEach((k, j) => {
       text(["reviewPools", i, "criteria", j, "label"], k.label);
+      text(["reviewPools", i, "criteria", j, "description"], k.description);
       // A scale needs two ends that differ: the smallest score is below the largest.
       if (k.min >= k.max) {
         issue(["reviewPools", i, "criteria", j], "min must be less than max", {
@@ -537,7 +595,8 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
   // because mail goes out in each of them whatever the conference's languages are.
 
   const d = c.deadlines;
-  const order: [keyof typeof d, keyof typeof d][] = [
+  type Required = Exclude<keyof typeof d, "reviewsDue">;
+  const order: [Required, Required][] = [
     ["submissionsOpen", "submissionsClose"],
     ["submissionsClose", "notification"],
     ["notification", "finalMaterials"],
@@ -545,6 +604,18 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
   for (const [a, b] of order) {
     if (Date.parse(d[a]) > Date.parse(d[b]))
       issue(["deadlines", b], `${b} must not be before ${a}`, { code: "deadline_order" });
+  }
+  // Reviews are written between the day the call closes and the day decisions are sent: a day
+  // for them that is not after the first and before the second is a mistake.
+  if (d.reviewsDue !== undefined) {
+    const due = Date.parse(d.reviewsDue);
+    if (due <= Date.parse(d.submissionsClose) || due >= Date.parse(d.notification)) {
+      issue(
+        ["deadlines", "reviewsDue"],
+        "reviewsDue must be after submissionsClose and before notification",
+        { code: "reviews_due_order" },
+      );
+    }
   }
   if (c.dates.start > c.dates.end) {
     issue(["dates", "end"], "end must not be before start", { code: "dates_order" });

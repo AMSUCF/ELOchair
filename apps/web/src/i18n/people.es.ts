@@ -52,6 +52,8 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   peopleAssignedNone: "Ninguna propuesta asignada",
   peopleAssignedOne: "1 propuesta asignada",
   peopleAssignedMany: "{n} propuestas asignadas",
+  peopleSentOne: "1 revisión enviada",
+  peopleSentMany: "{n} revisiones enviadas",
   peopleOffers: "Acepta hasta {max}. Revisa en: {languages}.",
   peopleTrackChairsTitle: "Coordinación de eje",
   peopleTrackChairsIntro:
@@ -113,12 +115,22 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
     "Tiene asignada 1 propuesta de las que gestionas, que perderá a esta persona como revisora.",
   peopleRemoveAssignedMany:
     "Tiene asignadas {n} propuestas de las que gestionas, que perderán a esta persona como revisora.",
+  peopleRemoveKeepOne:
+    "1 propuesta de las que gestionas tiene una revisión suya ya enviada: esa revisión sigue formando parte del expediente de la propuesta, y esta persona sigue apareciendo en ella.",
+  peopleRemoveKeepMany:
+    "{n} propuestas de las que gestionas tienen una revisión suya ya enviada: esas revisiones siguen formando parte del expediente de cada propuesta, y esta persona sigue apareciendo en ellas.",
+  peopleRemoveLoseNone: "No tiene asignada ninguna otra propuesta de las que gestionas.",
+  peopleRemoveLoseOne:
+    "Tiene asignada 1 propuesta más de las que gestionas, que perderá a esta persona como revisora.",
+  peopleRemoveLoseMany:
+    "Tiene asignadas {n} propuestas más de las que gestionas, que perderán a esta persona como revisora.",
+  peopleRemoveDrafts: "Las revisiones que empezó y no envió se descartan.",
   peopleDoRemove: "Sí, quitar",
   peopleRemoved_chair: "{name} ya no preside este congreso.",
   peopleRemoved_reviewer: "{name} ya no revisa en este congreso.",
   peopleRemoved_track_chair: "{name} ya no coordina ningún eje de este congreso.",
   peopleRemoveStale:
-    "No se quitó nada: ha cambiado el número de propuestas asignadas a esta persona. Lee el número nuevo y confirma otra vez.",
+    "No se quitó nada: ha cambiado el número de propuestas asignadas a esta persona, o el de revisiones que ha enviado. Lee los números nuevos y confirma otra vez.",
   peopleRemoveGone:
     "No se quitó nada: esta persona ya no tiene ese rol. La lista se volvió a cargar.",
   peopleUnconfirmed: "El servidor no lo confirmó. Inténtalo de nuevo.",

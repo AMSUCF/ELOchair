@@ -6,6 +6,7 @@ import {
   type Contribution,
   isForwardPhaseMove,
   type Person,
+  type Review,
   type RoleGrant,
   type Submission,
 } from "@elochair/schema";
@@ -19,6 +20,7 @@ import {
   conflicts,
   contributions,
   people,
+  reviews,
   submissions,
 } from "./db/schema";
 import { hashToken, newToken } from "./secrets";
@@ -293,6 +295,39 @@ export async function loadAssignments(db: Db, conferenceId: string): Promise<Ass
     dueAt: isoOrNull(a.dueAt),
     assignedByPersonId: a.assignedByPersonId,
   }));
+}
+
+type ReviewRow = typeof reviews.$inferSelect;
+
+export function toReview(r: ReviewRow): Review {
+  return {
+    id: r.id,
+    conferenceId: r.conferenceId,
+    submissionId: r.submissionId,
+    reviewerId: r.reviewerId,
+    version: r.version,
+    status: r.status as Review["status"],
+    scores: (r.scores ?? {}) as Review["scores"],
+    comments: r.comments,
+    chairNote: r.chairNote,
+    recommendation: r.recommendation as Review["recommendation"],
+    createdAt: iso(r.createdAt),
+    updatedAt: iso(r.updatedAt),
+    sentAt: isoOrNull(r.sentAt),
+  };
+}
+
+/**
+ * A conference's reviews that were sent (spec 03, §1.4): what the chairs' views, their counts
+ * and the guard on the settings are given. A draft is its reviewer's own: it is read only for
+ * that reviewer (services/reviews.ts), and never by this.
+ */
+export async function loadSentReviews(db: Db, conferenceId: string): Promise<Review[]> {
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(and(eq(reviews.conferenceId, conferenceId), eq(reviews.status, "sent")));
+  return rows.map(toReview);
 }
 
 /**

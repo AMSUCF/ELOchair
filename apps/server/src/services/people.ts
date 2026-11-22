@@ -6,6 +6,7 @@ import {
   projectRoleInvitation,
   type RoleInvitationView,
   reviewerPools,
+  sentCount,
   type Viewer,
 } from "@elochair/policy";
 import {
@@ -36,6 +37,7 @@ import {
   findOrCreatePerson,
   getConferenceById,
   grantRole,
+  loadSentReviews,
   loadSubmissionRecords,
   normalizeEmail,
   shareConference,
@@ -145,6 +147,11 @@ export async function loadPeopleRecord(db: Db, conference: ConferenceRow): Promi
     people: new Map(holders.map((p) => [p.id, toPerson(p)])),
     invitations: invitations.map(toRoleInvitation),
     submissions: await loadSubmissionRecords(db, conference),
+    // Which reviews were sent, and nothing of what they say: the page counts them.
+    sentReviews: (await loadSentReviews(db, conference.id)).map((r) => ({
+      submissionId: r.submissionId,
+      reviewerId: r.reviewerId,
+    })),
   };
 }
 
@@ -519,14 +526,20 @@ export async function cancelRoleInvitation(
  * Take a role away from a person at a conference.
  * - A chair is whoever holds the `chair` or the `admin` role, and loses both.
  * - A chair cannot remove their own chair role, so that a conference keeps a chair.
- * - A reviewer's assignments at the conference are all released in the same transaction, with
- *   the reason `role_removed` (each is recorded; spec 03, §1.3), and their reviewer profile
- *   is deleted. The request names the number of assigned proposals the confirmation showed (as
- *   the People page counts them for this chair); when that is no longer the number, nothing is
- *   removed (409 `stale`, with the number as it is now).
+ * - A reviewer's assignments at the conference are released in the same transaction, with the
+ *   reason `role_removed` (each is recorded; spec 03, §1.3), and their reviewer profile is
+ *   deleted. A review they sent stays, and so does the assignment it belongs to: a sent review
+ *   is part of its proposal's record (spec 03, §1.2). Their drafts go with the assignments
+ *   that are released. The request names the two numbers the confirmation showed (as the
+ *   People page counts them for this chair): the proposals assigned to them, and how many of
+ *   those have a sent review. When either is no longer the number, nothing is removed (409
+ *   `stale`, with the numbers as they are now).
  * - The roles lock is taken exclusive, so no chair is assigning this reviewer meanwhile (an
  *   assignment shares it): one made before is released here, and one that comes after finds no
- *   reviewer to assign. Nobody who is not a reviewer is left with an assignment.
+ *   reviewer to assign. Nor is this reviewer sending a review meanwhile (a review's write
+ *   shares the lock too): one sent before is kept here, and one that comes after finds no
+ *   reviewer. Nobody who is not a reviewer is left with an assignment, except beside a review
+ *   they sent.
  *
  * `v.personId` comes from the address and is only ever used to find the role's rows. Whose role
  * it is, is then read from those rows: an id written another way (in capitals) names the same
@@ -536,7 +549,7 @@ export async function removeRole(
   deps: Deps,
   viewer: PersonViewer,
   conference: ConferenceRow,
-  v: { personId: string; role: RemovableRole; assignments?: number },
+  v: { personId: string; role: RemovableRole; assignments?: number; reviews?: number },
 ): Promise<void> {
   const now = deps.now();
   await change(deps, viewer, async (tx) => {
@@ -565,11 +578,18 @@ export async function removeRole(
     if (v.role === "chair") details.removed = held.map((g) => g.role).sort();
     if (v.role === "track_chair") details.tracks = held.flatMap((g) => g.scope);
     if (v.role === "reviewer") {
-      const shown = assignedCount(actor, target, await loadSubmissionRecords(tx, conference));
-      if (v.assignments !== shown) throw new Refusal(409, "stale", { assignments: shown });
+      const records = await loadSubmissionRecords(tx, conference);
+      const shown = {
+        assignments: assignedCount(actor, target, records),
+        reviews: sentCount(actor, target, records, await loadSentReviews(tx, conference.id)),
+      };
+      if (v.assignments !== shown.assignments || (v.reviews ?? 0) !== shown.reviews) {
+        throw new Refusal(409, "stale", shown);
+      }
       // Every assignment the person has here, whoever could see it: each is released and
-      // recorded, with the proposal's id. The audit log is not a page.
-      const released = await releaseAssignments(tx, viewer, {
+      // recorded, with the proposal's id, except those whose review was sent, which stay with
+      // their reviews (releaseAssignments). The audit log is not a page.
+      const { released, kept } = await releaseAssignments(tx, viewer, {
         conferenceId: conference.id,
         reviewerId: target,
         reason: "role_removed",
@@ -585,6 +605,7 @@ export async function removeRole(
         );
       details.pools = held.flatMap((g) => g.scope);
       details.assignments = released;
+      details.reviewsKept = kept;
     }
     await tx.delete(conferenceRoles).where(mine);
     await audit(tx, viewer, {

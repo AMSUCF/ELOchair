@@ -105,6 +105,7 @@ const LABELS: Record<SettingId, MessageKey> = {
   placeholder: "settingsLabel_placeholder",
   "deadlines.submissionsOpen": "deadline_submissionsOpen",
   "deadlines.submissionsClose": "deadline_submissionsClose",
+  "deadlines.reviewsDue": "deadline_reviewsDue",
   "deadlines.notification": "deadline_notification",
   "deadlines.finalMaterials": "deadline_finalMaterials",
   "rules.presenterCap.max": "settingsLabel_rules_presenterCap_max",
@@ -129,8 +130,16 @@ const LABELS: Record<SettingId, MessageKey> = {
   "pool.reviewsPerSubmission": "settingsLabel_pool_reviewsPerSubmission",
   "pool.guidelines": "settingsLabel_pool_guidelines",
   "criterion.label": "settingsLabel_criterion_label",
+  "criterion.description": "settingsLabel_criterion_description",
   "criterion.min": "settingsLabel_criterion_min",
   "criterion.max": "settingsLabel_criterion_max",
+  "form.comments.description": "settingsLabel_form_comments_description",
+  "form.comments.minWords": "settingsLabel_form_comments_minWords",
+  "form.comments.maxWords": "settingsLabel_form_comments_maxWords",
+  "form.chairNote.enabled": "settingsLabel_form_chairNote_enabled",
+  "form.chairNote.description": "settingsLabel_form_chairNote_description",
+  "form.recommendation.enabled": "settingsLabel_form_recommendation_enabled",
+  "form.recommendation.description": "settingsLabel_form_recommendation_description",
   "message.subject": "settingsLabel_message_subject",
   "message.body": "settingsLabel_message_body",
   "agreement.title": "settingsLabel_agreement_title",
@@ -174,15 +183,33 @@ function typed(s: Setting, raw: Raw): unknown {
 }
 
 /**
- * A deadline as typed, or undefined when none of its parts was touched. The offset is never
- * worked out or converted: it is the one stored, or the one the person wrote.
+ * What the three boxes of a deadline show while nothing is typed in them: the stored instant,
+ * as it was written. A deadline that is optional and not set (the day reviews are due) has no
+ * date; its time and its offset start at the end of the day, on the clock the day decisions are
+ * sent is written on, so that typing a date is enough. They are shown, and can be changed.
  */
-function composed(s: Setting, edits: Edits): string | undefined {
+function deadlineBase(s: Setting, config: ConferenceConfig) {
+  if (s.value !== undefined || !s.optional) return parts(s.value);
+  return {
+    date: "",
+    time: "23:59",
+    seconds: "00",
+    offset: parts(config.deadlines.notification).offset,
+  };
+}
+
+/**
+ * A deadline as typed; undefined when none of its parts was touched; null when an optional one
+ * is left without a date, which is how it is taken away. The offset is never worked out or
+ * converted: it is the one shown, stored or written by the person.
+ */
+function composed(s: Setting, config: ConferenceConfig, edits: Edits): string | null | undefined {
   const date = edits[`${s.path}#date`];
   const time = edits[`${s.path}#time`];
   const offset = edits[`${s.path}#offset`];
   if (date === undefined && time === undefined && offset === undefined) return undefined;
-  const base = parts(s.value);
+  const base = deadlineBase(s, config);
+  if (s.optional && String(date ?? base.date).trim() === "") return null;
   const seconds = time === undefined ? base.seconds : "00";
   return `${date ?? base.date}T${time ?? base.time}:${seconds}${String(offset ?? base.offset).trim()}`;
 }
@@ -192,8 +219,8 @@ function build(config: ConferenceConfig, settings: Setting[], edits: Edits): Con
   let next = config;
   for (const s of settings) {
     if (s.kind === "datetime") {
-      const iso = composed(s, edits);
-      if (iso !== undefined) next = withSetting(next, s.path, iso);
+      const iso = composed(s, config, edits);
+      if (iso !== undefined) next = withSetting(next, s.path, iso ?? undefined);
     } else if (edits[s.path] !== undefined) {
       next = withSetting(next, s.path, typed(s, edits[s.path] as Raw));
     }
@@ -445,13 +472,11 @@ function SettingsForm({
         return;
       }
       // A reviewer was assigned between the review and the save, and a value would now show
-      // them the authors of an anonymized proposal: said beside that value, as a review would.
+      // them the authors of an anonymized proposal; or a review was sent, and a value would now
+      // leave it outside its form: said beside that value, as a review of the changes would.
       // (An agreement reworded under its old version is refused the same way; the review has
       // always said so first, so this answer is only ever seen by another client.)
-      if (
-        res.status === 409 &&
-        (res.error === "reviewers_assigned" || res.error === "agreement_version_required")
-      ) {
+      if (res.status === 409 && res.issues.length > 0) {
         showIssues(res.issues);
         setReview(null);
         return;
@@ -749,12 +774,51 @@ function SettingsForm({
                   guidelinesHint,
                 )}
               </fieldset>
-              {pool.criteria.map((criterion) => (
-                <fieldset key={criterion.key}>
-                  <legend>{t("settingsCriterion", { name: text(criterion.label) })}</legend>
-                  {controls(under(`${at}criteria.${criterion.key}.`))}
-                </fieldset>
-              ))}
+              {pool.criteria.map((criterion) => {
+                const mine = under(`${at}criteria.${criterion.key}.`);
+                const described = (s: Setting) => s.id === "criterion.description";
+                const hint = `${fieldId(`${at}criteria.${criterion.key}.description`)}-hint`;
+                return (
+                  <fieldset key={criterion.key}>
+                    <legend>{t("settingsCriterion", { name: text(criterion.label) })}</legend>
+                    {controls(mine.filter((s) => s.id === "criterion.label"))}
+                    <p className="setting-hint" id={hint}>
+                      {t("settingsCriterionDescriptionHint")}
+                    </p>
+                    {controls(mine.filter(described), hint)}
+                    {controls(mine.filter((s) => s.id !== "criterion.label" && !described(s)))}
+                  </fieldset>
+                );
+              })}
+              {/* The fixed part of the committee's form: the chairs word it, and set its limits. */}
+              <fieldset>
+                <legend>{t("settingsFormTitle")}</legend>
+                <p className="setting-hint">{t("settingsFormIntro")}</p>
+                {(
+                  [
+                    ["comments", "reviewCommentsHelp", []],
+                    ["chairNote", "reviewChairNoteHelp", ["form.chairNote.enabled"]],
+                    ["recommendation", null, ["form.recommendation.enabled"]],
+                  ] as const
+                ).map(([part, standard, first]) => {
+                  const mine = under(`${at}form.${part}.`);
+                  const described = (s: Setting) => s.id === `form.${part}.description`;
+                  const leads = (s: Setting) => (first as readonly string[]).includes(s.id);
+                  const hint = `${fieldId(`${at}form.${part}.description`)}-hint`;
+                  return (
+                    <div key={part} className="stack wide">
+                      {controls(mine.filter(leads))}
+                      <p className="setting-hint" id={hint}>
+                        {standard
+                          ? t("settingsFormDescriptionHint", { standard: t(standard) })
+                          : t("settingsFormDescriptionHintNone")}
+                      </p>
+                      {controls(mine.filter(described), hint)}
+                      {controls(mine.filter((s) => !described(s) && !leads(s)))}
+                    </div>
+                  );
+                })}
+              </fieldset>
             </>,
           );
         })}
@@ -1105,9 +1169,12 @@ function Deadline({
 }) {
   const { lang, t } = useT();
   const id = fieldId(s.path);
-  const stored = parts(s.value);
-  const iso = composed(s, edits) ?? String(s.value);
-  const complete = DATETIME.test(iso) && Number.isFinite(Date.parse(iso));
+  const stored = deadlineBase(s, config);
+  const typedNow = composed(s, config, edits);
+  /** An optional deadline that has no date, stored or typed: there is none. */
+  const none = typedNow === null || (typedNow === undefined && s.value === undefined);
+  const iso = typedNow ?? String(s.value);
+  const complete = !none && DATETIME.test(iso) && Number.isFinite(Date.parse(iso));
   const mine = viewerTimeZone();
   const name = s.path.split(".")[1] as keyof ConferenceConfig["deadlines"];
   const invalid = issues.some((i) => i.path === s.path) ? (true as const) : undefined;
@@ -1124,6 +1191,7 @@ function Deadline({
         aria-describedby={describedBy(
           s.path,
           issues,
+          ...(s.optional ? [`${id}-hint`] : []),
           `${id}-when`,
           ...(which === "offset" ? ["settings-offset-hint"] : []),
         )}
@@ -1135,20 +1203,28 @@ function Deadline({
   return (
     <fieldset id={id} tabIndex={-1}>
       <legend>{t(deadlineKey(name))}</legend>
+      {/* The one deadline a conference may do without: the day reviews are due. */}
+      {s.optional && (
+        <p className="setting-hint" id={`${id}-hint`}>
+          {t("settingsReviewsDueHint")}
+        </p>
+      )}
       <div className="trio">
         {part("date", "settingsDeadlineDate", "date")}
         {part("time", "settingsDeadlineTime", "time")}
         {part("offset", "settingsDeadlineOffset", "text")}
       </div>
       <p className="setting-hint" id={`${id}-when`}>
-        {complete
-          ? [
-              `${formatDateTime(iso, lang, config.timezone)} · ${t("confConferenceTime", { tz: config.timezone })}`,
-              ...(mine === config.timezone
-                ? []
-                : [`${formatDateTime(iso, lang, mine)} · ${t("confYourTime", { tz: mine })}`]),
-            ].join(" — ")
-          : t("settingsDeadlineIncomplete")}
+        {none
+          ? t("settingsDeadlineNone")
+          : complete
+            ? [
+                `${formatDateTime(iso, lang, config.timezone)} · ${t("confConferenceTime", { tz: config.timezone })}`,
+                ...(mine === config.timezone
+                  ? []
+                  : [`${formatDateTime(iso, lang, mine)} · ${t("confYourTime", { tz: mine })}`]),
+              ].join(" — ")
+            : t("settingsDeadlineIncomplete")}
       </p>
       <FieldError path={s.path} issues={issues} />
     </fieldset>

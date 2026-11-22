@@ -278,6 +278,25 @@ const SANDBOX_GUIDELINES = {
   },
 } as const;
 
+/**
+ * Made up for the sandbox too, so that what the chairs set for the review form (spec 03, §1.8)
+ * can be seen in development and in the browser tests: what one criterion of the artistic pool
+ * asks, in three languages; the fewest words its comments for the authors may have; and the
+ * day reviews are due, between the day the 2026 call closed and the day its decisions were
+ * sent. That day is long past: it is shown, and locks nothing.
+ */
+const SANDBOX_FORM = {
+  pool: "artistic",
+  criterion: "merit",
+  description: {
+    en: "1 is a work that does not hold together yet; 5 is one you would send a friend to see.",
+    es: "1 es una obra que todavía no se sostiene; 5 es una a la que mandarías a una amistad.",
+    pt: "1 é uma obra que ainda não se sustenta; 5 é uma a que mandaria uma pessoa amiga.",
+  },
+  commentsMinWords: 10,
+  reviewsDue: "2026-03-31T23:59:00-04:00",
+} as const;
+
 export type SandboxSummary = {
   conferenceId: string;
   slug: string;
@@ -304,9 +323,19 @@ export async function seedSandbox(
       slug,
       title: { en: "Sandbox: synthetic ELO 2026-shaped data" },
       placeholder: true,
+      deadlines: { ...base.deadlines, reviewsDue: SANDBOX_FORM.reviewsDue },
       reviewPools: base.reviewPools.map((pool) =>
         pool.key === SANDBOX_GUIDELINES.pool
-          ? { ...pool, guidelines: { ...SANDBOX_GUIDELINES.text } }
+          ? {
+              ...pool,
+              guidelines: { ...SANDBOX_GUIDELINES.text },
+              criteria: pool.criteria.map((criterion) =>
+                criterion.key === SANDBOX_FORM.criterion
+                  ? { ...criterion, description: { ...SANDBOX_FORM.description } }
+                  : criterion,
+              ),
+              form: { comments: { minWords: SANDBOX_FORM.commentsMinWords } },
+            }
           : pool,
       ),
     },
@@ -565,8 +594,11 @@ async function seedCall(
 ): Promise<{ conferenceId: string; slug: string }> {
   const { slug } = opts;
   const t = opts.now.getTime();
-  const at = (ms: number, deadline: keyof ConferenceConfigInput["deadlines"]) =>
-    writtenLike(ms, base.deadlines[deadline]);
+  // The four every call states. (The day reviews are due is the chairs' to set, and optional.)
+  const at = (
+    ms: number,
+    deadline: Exclude<keyof ConferenceConfigInput["deadlines"], "reviewsDue">,
+  ) => writtenLike(ms, base.deadlines[deadline]);
   const date = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   const conf = await saveConference(
     db,
@@ -616,6 +648,123 @@ export function seedOpenCall(
     },
     { ...opts, slug: opts.slug ?? "elo2027-open" },
   );
+}
+
+/**
+ * A conference in review with nothing in it, whose phase is there to be moved: in development,
+ * and by the browser test of the phase control. Reviews are written only while a conference is
+ * in `reviewing` (spec 03, §1.4), so the sandbox, where reviewers work, has to stay there:
+ * nothing moves it, and whatever needs a phase to move moves this one.
+ */
+export async function seedPhaseRoom(
+  db: Db,
+  opts: { slug?: string; chairEmails?: string[] } = {},
+): Promise<{ conferenceId: string; slug: string }> {
+  const slug = opts.slug ?? "phase-room";
+  const conf = await saveConference(
+    db,
+    {
+      ...structuredClone(fixtureCall),
+      slug,
+      placeholder: true,
+      title: {
+        en: "Phase room: an empty conference for trying the phase control",
+        es: "Sala de fases: un congreso vacío para probar el control de fases",
+        pt: "Sala de fases: um congresso vazio para experimentar o controlo de fases",
+      },
+    },
+    "reviewing",
+  );
+  for (const email of opts.chairEmails ?? []) {
+    const [p] = await db.select({ id: people.id }).from(people).where(eq(people.email, email));
+    if (p) await grantRole(db, { conferenceId: conf.id, personId: p.id, role: "chair" });
+  }
+  return { conferenceId: conf.id, slug };
+}
+
+/**
+ * A small conference in review whose chair also reviews: three talks by a fictional author,
+ * each assigned to the chair, who holds the reviewer's role for the committee that reviews
+ * talks. In development, and for the browser test of a chair's own review (a chair reads a
+ * proposal as a chair and reviews it like anyone: spec 03, §1.4), which writes to nothing that
+ * another test reads. Nothing is seeded where the chair's address is not a person yet.
+ */
+export async function seedChairReviews(
+  db: Db,
+  opts: { slug?: string; chairEmail: string },
+): Promise<{ conferenceId: string; slug: string }> {
+  const slug = opts.slug ?? "chair-reviews";
+  const conf = await saveConference(
+    db,
+    {
+      ...structuredClone(fixtureCall),
+      slug,
+      placeholder: true,
+      title: {
+        en: "Chair reviews: a small conference whose chair also reviews",
+        es: "La presidencia revisa: un congreso pequeño cuya presidencia también revisa",
+        pt: "A presidência revê: um congresso pequeno cuja presidência também revê",
+      },
+    },
+    "reviewing",
+  );
+  const [chair] = await db
+    .select({ id: people.id })
+    .from(people)
+    .where(eq(people.email, opts.chairEmail));
+  const type = fixtureCall.submissionTypes.find((t) => t.key === "talk");
+  if (!chair || !type) return { conferenceId: conf.id, slug };
+  const pool = type.reviewPool;
+  await grantRole(db, { conferenceId: conf.id, personId: chair.id, role: "chair" });
+  await grantRole(db, {
+    conferenceId: conf.id,
+    personId: chair.id,
+    role: "reviewer",
+    scope: [pool],
+  });
+  await db
+    .insert(reviewerProfiles)
+    .values({ conferenceId: conf.id, personId: chair.id, pools: [pool], languages: ["en"] });
+  const [author] = await db
+    .insert(people)
+    .values({
+      email: `${slug}-author@example.org`,
+      displayName: "Fictional Author",
+      affiliation: "Institute of Imaginary Letters",
+      languages: ["en"],
+      bios: {},
+    })
+    .returning({ id: people.id });
+  if (!author) return { conferenceId: conf.id, slug };
+  const abstract = Array.from(
+    { length: type.abstract.minWords ?? 50 },
+    (_, i) => ["a", "talk", "made", "up", "for", "testing"][i % 6],
+  ).join(" ");
+  const made = await db
+    .insert(submissions)
+    .values(
+      ["One", "Two", "Three"].map((n) => ({
+        conferenceId: conf.id,
+        ownerPersonId: author.id,
+        typeKey: type.key,
+        language: "en",
+        title: `Fictional talk ${n}, for a chair who reviews`,
+        abstract,
+        participationMode: "in_person",
+        status: "submitted",
+        submittedAt: new Date(Date.UTC(2026, 1, 10)),
+      })),
+    )
+    .returning({ id: submissions.id });
+  await db
+    .insert(contributions)
+    .values(
+      made.map((s) => ({ submissionId: s.id, personId: author.id, role: "lead", position: 0 })),
+    );
+  await db
+    .insert(assignments)
+    .values(made.map((s) => ({ conferenceId: conf.id, reviewerId: chair.id, submissionId: s.id })));
+  return { conferenceId: conf.id, slug };
 }
 
 /**

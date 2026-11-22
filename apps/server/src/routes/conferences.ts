@@ -29,6 +29,7 @@ import {
   type ConferenceRow,
   getConference,
   listConferences,
+  loadSentReviews,
   loadSubmission,
   loadSubmissionRecords,
   lockConference,
@@ -165,6 +166,7 @@ export const conferenceRoutes = new Hono<AppEnv>()
       conference: k,
       records: await loadSubmissionRecords(db, k),
       everAssigned: await everAssigned(db, k.id),
+      sentReviews: await loadSentReviews(db, k.id),
       input,
       base: baseToken(c),
       now: now(),
@@ -196,6 +198,9 @@ export const conferenceRoutes = new Hono<AppEnv>()
         // Read under the conference's row: an assignment shares that row, so none is being
         // made while this is checked (services/assignments.ts).
         everAssigned: await everAssigned(tx, stored.id),
+        // And so does every write of a review (services/reviews.ts): none is being sent while
+        // this checks that the reviews already sent stay within their form.
+        sentReviews: await loadSentReviews(tx, stored.id),
         input: next,
         base,
         now,
@@ -203,9 +208,10 @@ export const conferenceRoutes = new Hono<AppEnv>()
       if (review.stale) throw new Refusal(409, "stale", { token: review.token });
       // What a valid configuration still may not do is named at the value that would do it,
       // as in the review: show the authors of a proposal that has been given a reviewer and is
-      // reviewed anonymized (`reviewers_assigned`), or change what an agreement says under the version
-      // people have accepted (`agreement_version_required`). The answer carries every such
-      // issue, under the code of the first.
+      // reviewed anonymized (`reviewers_assigned`), change what an agreement says under the
+      // version people have accepted (`agreement_version_required`), or leave a review that
+      // was sent outside its form (`reviews_…`). The answer carries every such issue, under
+      // the code of the first.
       const [refused] = review.issues;
       if (refused) throw new Refusal(409, refused.code, { issues: review.issues });
       if (review.blocked) {

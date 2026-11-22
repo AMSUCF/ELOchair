@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   type PersonViewer,
+  reviewsKeptFrom,
   type SubmissionRecord,
   submissionAccess,
   submissionIssues,
@@ -9,10 +10,15 @@ import {
   ConferenceConfig,
   type ConfigChange,
   configChanges,
+  countWords,
   effectiveBlindMode,
   findType,
   isCallOpen,
   keyedPath,
+  type Review,
+  type ReviewPool,
+  reviewersCanRead,
+  reviewPoolFor,
   type SubmissionIssue,
   type SubmissionStatus,
 } from "@elochair/schema";
@@ -22,13 +28,14 @@ import type { ConferenceRow } from "../repo";
 /*
  * Changing a conference's configuration through the app (spec 02, §1.9): what a change would
  * do. Who may make one is the route's to say (any chair, in person: every chair may save any
- * valid configuration); it saves only what a review lets through. Two things a review does not
- * let through although the configuration is valid: showing the authors of an anonymized review
- * that has begun (namesRevealed), and changing what an agreement says under the version people
- * have accepted (agreementsReworded).
+ * valid configuration); it saves only what a review lets through. Three things a review does
+ * not let through although the configuration is valid: showing the authors of an anonymized
+ * review that has begun (namesRevealed), changing what an agreement says under the version
+ * people have accepted (agreementsReworded), and leaving a review that was sent outside its
+ * form (reviewsOutsideForm).
  *
  * Everything here answers in paths, codes, counts and opaque submission IDs: never a name, a
- * title or a word of anyone's text. A problem with the wording of an email names the
+ * title, a score or a word of anyone's text. A problem with the wording of an email names the
  * placeholders it is about ("{link}"): they come from the configuration that was sent in.
  */
 
@@ -59,8 +66,9 @@ export const configToken = (config: ConferenceConfig): string =>
 
 /**
  * A problem with a submitted configuration, by keyed path, with a code a screen can explain:
- * what the schema refuses, what the conference's proposals do not allow (namesRevealed), and
- * what the consent already recorded does not allow (agreementsReworded).
+ * what the schema refuses, what the conference's proposals do not allow (namesRevealed), what
+ * the consent already recorded does not allow (agreementsReworded), and what the reviews
+ * already sent do not allow (reviewsOutsideForm).
  */
 export type ConfigIssue = {
   path: string;
@@ -248,24 +256,222 @@ function agreementsReworded(before: ConferenceConfig, after: ConferenceConfig): 
   });
 }
 
+/** One way a change makes a pool's form narrower, and whether a review falls outside it. */
+type Narrowing = {
+  path: string;
+  code: string;
+  /** Whether what this review holds is outside the form as the change leaves it. */
+  breaks: (review: Review, language: string) => boolean;
+};
+
+/**
+ * How `now` narrows the form that `was` gave a pool's reviewers: a scale with an end moved in,
+ * a criterion that is gone, a limit on the comments that is new or tighter, and a note or a
+ * recommendation taken off the form. Relabelling, describing, widening and putting something on
+ * the form narrow nothing.
+ */
+function narrowings(was: ReviewPool, now: ReviewPool): Narrowing[] {
+  const at = `reviewPools.${now.key}`;
+  const out: Narrowing[] = [];
+  for (const before of was.criteria) {
+    const after = now.criteria.find((c) => c.key === before.key);
+    const score = (r: Review) => r.scores[before.key];
+    if (!after) {
+      out.push({
+        path: `${at}.criteria`,
+        code: "reviews_have_scores",
+        breaks: (r) => score(r) !== undefined,
+      });
+      continue;
+    }
+    if (after.min > before.min) {
+      out.push({
+        path: `${at}.criteria.${before.key}.min`,
+        code: "reviews_below_scale",
+        breaks: (r) => (score(r) ?? after.min) < after.min,
+      });
+    }
+    if (after.max < before.max) {
+      out.push({
+        path: `${at}.criteria.${before.key}.max`,
+        code: "reviews_above_scale",
+        breaks: (r) => (score(r) ?? after.max) > after.max,
+      });
+    }
+  }
+  const { minWords, maxWords } = now.form.comments;
+  if (minWords !== undefined && minWords > (was.form.comments.minWords ?? 0)) {
+    out.push({
+      path: `${at}.form.comments.minWords`,
+      code: "reviews_too_short",
+      breaks: (r, language) => countWords(r.comments, language) < minWords,
+    });
+  }
+  if (maxWords !== undefined && maxWords < (was.form.comments.maxWords ?? Infinity)) {
+    out.push({
+      path: `${at}.form.comments.maxWords`,
+      code: "reviews_too_long",
+      breaks: (r, language) => countWords(r.comments, language) > maxWords,
+    });
+  }
+  if (was.form.chairNote.enabled && !now.form.chairNote.enabled) {
+    out.push({
+      path: `${at}.form.chairNote.enabled`,
+      code: "reviews_have_note",
+      breaks: (r) => r.chairNote.trim() !== "",
+    });
+  }
+  if (was.form.recommendation.enabled && !now.form.recommendation.enabled) {
+    out.push({
+      path: `${at}.form.recommendation.enabled`,
+      code: "reviews_have_recommendation",
+      breaks: (r) => r.recommendation !== null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Sent reviews stay valid, as submitted proposals do (spec 03, §1.8). A change that would leave
+ * a review that was sent outside a scale, outside the comments' word limits, with a score for a
+ * criterion that is gone, or with an answer to a note or a recommendation the form no longer
+ * has, is refused at the value that would do it, with how many reviews it would do it to. So is
+ * giving a format that has sent reviews to another pool: its reviews answered another form.
+ * Drafts never block: they are their reviewers' own, and are not even read here (`reviews` are
+ * the sent ones). Whatever became of a proposal since, a review of it that was sent counts.
+ *
+ * The reviews are weighed only for someone they are not kept from. A chair is never shown a
+ * review of their own proposal, or of one they have a conflict with, nor that one was sent
+ * (reviewsKeptFrom in packages/policy). If this refusal depended on such a review, it would say
+ * so, and what the review holds: a chair could try one end of a scale after another and read
+ * their own scores from what is refused. So the reviews of such a proposal are not read here at
+ * all: not what they hold, and not whether there are any. What is decided for that chair
+ * instead is decided without them, from two things only: the proposal was submitted at some
+ * time, and the conference is in `reviewing` or a later phase, which is when reviews are
+ * written and read. From then on every narrowing of the form of the pool that reviews it is
+ * refused to that chair (`reviews_hidden`, without a number), whatever became of the proposal
+ * since. A chair from whom no review of that pool is kept can make the change.
+ *
+ * Before the conference is in review this refusal is made to nobody, because no review can be
+ * written then. That leaves one case open, on purpose: a conference moved back out of review.
+ * The rule looks at the phase the conference is in now, and nothing here says that it has been
+ * in review before (only the audit log does, which no decision reads). There a chair can
+ * narrow the form under a sent review of their own proposal and is not refused. Nothing tells
+ * them so, and the review keeps what it holds.
+ *
+ * Every other sent review is weighed by what it holds, for any chair and in any phase: also the
+ * review of a proposal that has gone back to a draft or was withdrawn since, which no chair is
+ * shown now. It was sent, and it is counted, once for each value it would be outside of.
+ */
+function reviewsOutsideForm(
+  viewer: PersonViewer,
+  phase: string,
+  before: ConferenceConfig,
+  after: ConferenceConfig,
+  records: SubmissionRecord[],
+  reviews: readonly Review[],
+): ConfigIssue[] {
+  const bySubmission = new Map(records.map((r) => [r.submission.id, r]));
+  /** The proposals whose reviews are kept from the person asking. */
+  const kept = new Set(
+    records.filter((r) => reviewsKeptFrom(viewer, r)).map((r) => r.submission.id),
+  );
+  // From here on, nothing of a review that is kept from them is looked at.
+  const sent = reviews.filter((r) => r.status === "sent" && !kept.has(r.submissionId));
+  const narrowed = new Map<string, Narrowing[]>();
+  const found = new Map<string, { path: string; code: string; n: number; hidden: boolean }>();
+  const count = (path: string, code: string, readable: boolean) => {
+    const key = `${path}:${code}`;
+    const hit = found.get(key) ?? { path, code, n: 0, hidden: false };
+    if (readable) hit.n += 1;
+    else hit.hidden = true;
+    found.set(key, hit);
+  };
+  /** What the change does to the form a format's proposals are reviewed on. */
+  const changeFor = (typeKey: string): { moved: string } | { narrowings: Narrowing[] } | null => {
+    const was = reviewPoolFor(before, typeKey);
+    if (!was) return null;
+    const now = reviewPoolFor(after, typeKey);
+    if (now?.key !== was.key) return { moved: `submissionTypes.${typeKey}.reviewPool` };
+    const list = narrowed.get(was.key) ?? narrowings(was, now);
+    narrowed.set(was.key, list);
+    return { narrowings: list };
+  };
+
+  // The reviews that are not kept from the person asking: weighed, each against what it holds.
+  for (const review of sent) {
+    const record = bySubmission.get(review.submissionId);
+    if (!record) continue;
+    const change = changeFor(record.submission.typeKey);
+    if (!change) continue;
+    if ("moved" in change) count(change.moved, "reviews_sent", true);
+    else {
+      // One review is one review, however many criteria that it scores are removed at once.
+      const outside = new Set<string>();
+      for (const narrowing of change.narrowings) {
+        const key = `${narrowing.path}:${narrowing.code}`;
+        if (outside.has(key) || !narrowing.breaks(review, record.submission.language)) continue;
+        outside.add(key);
+        count(narrowing.path, narrowing.code, true);
+      }
+    }
+  }
+
+  // The proposals whose reviews are kept from them (their own, and those they have a conflict
+  // with): decided without their reviews. It was submitted, and the conference is in review.
+  for (const record of reviewersCanRead(phase) ? records : []) {
+    if (!kept.has(record.submission.id) || record.submission.submittedAt === null) continue;
+    const change = changeFor(record.submission.typeKey);
+    if (!change) continue;
+    if ("moved" in change) count(change.moved, "reviews_sent", false);
+    else for (const narrowing of change.narrowings) count(narrowing.path, narrowing.code, false);
+  }
+
+  return [...found.values()].flatMap((hit) => [
+    ...(hit.n > 0
+      ? [
+          {
+            path: hit.path,
+            code: hit.code,
+            params: { n: hit.n },
+            message: "reviews that were sent would be outside the review form",
+          },
+        ]
+      : []),
+    ...(hit.hidden
+      ? [
+          {
+            path: hit.path,
+            code: "reviews_hidden",
+            message:
+              "the pool reviews a proposal whose reviews are kept from the person asking: another chair makes this change",
+          },
+        ]
+      : []),
+  ]);
+}
+
 /**
  * What saving `input` over the stored configuration would do. Nothing is written. `records` are
  * the conference's submissions as they are now, and `everAssigned` the ids of those that have,
- * or have had, a reviewer (everAssigned in services/assignments.ts); `base` is the token of the
- * configuration the person started from, when they said so. `viewer` decides one thing only:
+ * or have had, a reviewer (everAssigned in services/assignments.ts); `sentReviews` are the
+ * conference's reviews that were sent (loadSentReviews); `base` is the token of the
+ * configuration the person started from, when they said so. `viewer` decides two things only:
  * which of the proposals that block the save are named to them (those they may manage as a
- * chair).
+ * chair), and which sent reviews are weighed for them, the others never being read at all
+ * (reviewsOutsideForm).
  */
 export function reviewConfig(args: {
   viewer: PersonViewer;
   conference: ConferenceRow;
   records: SubmissionRecord[];
   everAssigned: ReadonlySet<string>;
+  sentReviews: readonly Review[];
   input: unknown;
   base: string | null;
   now: Date;
 }): { review: ConfigReview; next: ConferenceConfig | null } {
-  const { viewer, conference, records, everAssigned, input, base, now } = args;
+  const { viewer, conference, records, everAssigned, sentReviews, input, base, now } = args;
   const token = configToken(conference.config);
   const review: ConfigReview = {
     token,
@@ -287,6 +493,7 @@ export function reviewConfig(args: {
   review.issues = [
     ...namesRevealed(before, next, records, everAssigned),
     ...agreementsReworded(before, next),
+    ...reviewsOutsideForm(viewer, conference.phase, before, next, records, sentReviews),
   ];
 
   const byCode: Record<string, number> = {};
@@ -313,11 +520,10 @@ export function reviewConfig(args: {
   review.warnings.callCloses = wasOpen && !willBeOpen;
   review.warnings.pastDeadlines = (
     Object.keys(next.deadlines) as (keyof ConferenceConfig["deadlines"])[]
-  ).filter(
-    (key) =>
-      next.deadlines[key] !== before.deadlines[key] &&
-      Date.parse(next.deadlines[key]) < now.getTime(),
-  );
+  ).filter((key) => {
+    const at = next.deadlines[key];
+    return at !== undefined && at !== before.deadlines[key] && Date.parse(at) < now.getTime();
+  });
 
   review.canSave =
     !review.stale &&

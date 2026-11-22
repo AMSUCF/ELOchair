@@ -1256,17 +1256,20 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await page.unroute(isSearch);
 
   // A chair moves the phase from here, one step at a time, after a confirmation that says what
-  // the phase does. Only the sandbox is moved (other tests depend on the other conferences),
-  // and it is left "In review", as it was seeded.
-  const PHASE = "/api/conferences/sandbox/phase";
+  // the phase does. Only the phase room is moved: an empty conference seeded in review for
+  // this. Other tests depend on the phase of every other conference, the sandbox among them,
+  // whose reviewers write their reviews beside this test (review.spec.ts), which they can only
+  // while it is in review. The room is left "In review", as it was seeded.
+  const ROOM = "phase-room";
+  const PHASE = `/api/conferences/${ROOM}/phase`;
   const phaseNow = async () =>
-    ((await (await page.request.get("/api/conferences/sandbox")).json()) as { phase: string })
+    ((await (await page.request.get(`/api/conferences/${ROOM}`)).json()) as { phase: string })
       .phase;
   const sent: unknown[] = [];
   page.on("request", (r) => {
     if (r.method() === "PUT" && new URL(r.url()).pathname === PHASE) sent.push(r.postDataJSON());
   });
-  await page.goto("/en/c/sandbox/manage");
+  await page.goto(`/en/c/${ROOM}/manage`);
   const phase = page.getByRole("region", { name: "Conference phase" });
   const shows = (name: string) =>
     expect(phase.getByText(`The conference is in the phase “${name}”.`)).toBeVisible();
@@ -1391,7 +1394,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await expect(said).toBeFocused();
   await shows("Decisions in progress");
   await expectAccessible(page);
-  // And back, to leave the sandbox as it was found.
+  // And back, to leave the room as it was found.
   await phase.getByRole("button", { name: "Go back to “In review”" }).click();
   await reason.fill("Left as it was found");
   await takeBack.click();

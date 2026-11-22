@@ -5,6 +5,7 @@ import { LanguageCode } from "./i18n";
 import { hasStrayInvisible } from "./invisible";
 import { LIMITS, ROLE_INVITATIONS } from "./limits";
 import { MAIL_LANGUAGES } from "./messages";
+import { DECLINE_REASONS, RECOMMENDATIONS } from "./reviewForm";
 
 /*
  * What clients may send. Every write input is .strict(): unknown keys (such as "email" on a
@@ -202,7 +203,55 @@ export type RoleInvitationAnswerInput = z.infer<typeof RoleInvitationAnswerInput
  * the removal is refused (409 `stale`) if that is no longer the number, so that what is confirmed
  * is what the question said. Removing a chair or a track chair sends nothing.
  */
-export const RoleRemovalInput = z.object({ assignments: z.int().min(0).optional() }).strict();
+export const RoleRemovalInput = z
+  .object({
+    assignments: z.int().min(0).optional(),
+    /**
+     * How many of those proposals the confirmation said have a review of theirs that was sent:
+     * those reviews and their assignments stay (spec 03, §1.2). Left out, it is none. Refused
+     * the same way (409 `stale`) if it is no longer the number.
+     */
+    reviews: z.int().min(0).optional(),
+  })
+  .strict();
+
+/**
+ * A reviewer saves their review of a proposal (spec 03, §1.4). The proposal is named by the
+ * address, and the reviewer is whoever is signed in: nothing here can name another.
+ * - `version` is the version of the review the form was loaded with, 0 while there is none
+ *   yet. A save on an older version is refused (409 `stale`), as for a proposal.
+ * - `send` false keeps a draft, however incomplete; true sends the review to the chairs, which
+ *   needs everything the form requires. A review that was sent can only be sent again.
+ * - The whole content is sent every time: an answer left out is an answer taken back.
+ * Character caps bound storage; the limits in words are the review form's, and the server's.
+ */
+export const ReviewInput = z
+  .object({
+    version: z.int().min(0),
+    send: z.boolean(),
+    // Any whole number: the scale it must be on is its criterion's, which the settings do not
+    // bound, and is checked against the form (reviewContentIssues).
+    scores: z
+      .record(Key, z.int())
+      .refine((v) => Object.keys(v).length <= 100, "at most 100 scores"),
+    comments: Text(LIMITS.reviewText),
+    chairNote: Text(LIMITS.reviewText),
+    recommendation: z.enum(RECOMMENDATIONS).nullable(),
+  })
+  .strict();
+export type ReviewInput = z.infer<typeof ReviewInput>;
+
+/**
+ * A reviewer says they cannot review a proposal (spec 03, §1.3): why, and a note for the chairs
+ * if they want to add one.
+ */
+export const DeclineReviewInput = z
+  .object({
+    reason: z.enum(DECLINE_REASONS),
+    note: Text(LIMITS.declineNote).optional(),
+  })
+  .strict();
+export type DeclineReviewInput = z.infer<typeof DeclineReviewInput>;
 
 /**
  * A chair assigns one reviewer to one proposal (spec 03, §1.3). The proposal is named by the
