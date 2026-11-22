@@ -24,9 +24,9 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   peopleInviteRole_chair: "Presidencia",
   peopleInviteRoleDoes_chair:
     "Puede hacer todo lo que tú puedes: ver todas las propuestas y a todas las personas que figuran en ellas, cambiar la configuración del congreso, invitar y quitar personas, y pasar el congreso de una fase a la siguiente.",
-  peopleInvitePools: "Grupos de revisión",
+  peopleInvitePools: "Comités",
   peopleInvitePoolsHint:
-    "Elige al menos uno. A esta persona se le podrán asignar propuestas de los formatos que revisan estos grupos.",
+    "Elige al menos uno. A esta persona se le podrán asignar propuestas de los formatos que revisan estos comités.",
   peopleInviteLang: "Idioma del correo",
   peopleInviteSend: "Enviar la invitación",
   peopleInviteLimits:
@@ -34,7 +34,7 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   peopleEmailInvalid: "Escribe una sola dirección de correo válida.",
   peopleNameInvalid:
     "Usa una sola línea de letras o números, como máximo {max} caracteres, sin caracteres de formato ocultos.",
-  peoplePoolsRequired: "Elige al menos un grupo de revisión.",
+  peoplePoolsRequired: "Elige al menos un comité.",
   peopleInvited: "La invitación se envió a {email}.",
   peopleAlreadyInvited:
     "Ya hay una invitación pendiente a esta dirección para este rol. Puedes volver a enviarla desde la lista de invitaciones.",
@@ -46,9 +46,9 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
     "Quienes presiden dirigen el congreso: ven todas las propuestas, cambian la configuración y gestionan esta página. No puedes quitarte tu propio rol, para que el congreso siempre tenga quien lo presida.",
   peopleReviewersTitle: "Quienes revisan",
   peopleReviewersIntro:
-    "Quienes revisan aparecen en cada grupo de revisión al que pertenecen, con el número de propuestas que tienen asignadas. No se cuentan tus propias propuestas ni aquellas con las que tienes un conflicto.",
-  peoplePoolEmpty: "Todavía nadie revisa en este grupo.",
-  peoplePoolGone: "Sin un grupo de revisión actual",
+    "Quienes revisan aparecen en cada comité al que pertenecen, con el número de propuestas que tienen asignadas. No se cuentan tus propias propuestas ni aquellas con las que tienes un conflicto.",
+  peoplePoolEmpty: "Todavía nadie revisa en este comité.",
+  peoplePoolGone: "Sin un comité actual",
   peopleAssignedNone: "Ninguna propuesta asignada",
   peopleAssignedOne: "1 propuesta asignada",
   peopleAssignedMany: "{n} propuestas asignadas",
@@ -81,7 +81,7 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   peopleResendLimited:
     "No se envió. Una invitación se puede volver a enviar una vez por hora, y se aplican los límites diarios: {perInviter} tuyas, {perRecipient} a una misma dirección.",
   peoplePoolsGone:
-    "No se envió: los grupos de revisión de esta invitación ya no forman parte del congreso, así que su enlace no da nada. Cancélala y vuelve a invitar a la persona.",
+    "No se envió: los comités de esta invitación ya no forman parte del congreso, así que su enlace no da nada. Cancélala y vuelve a invitar a la persona.",
   peopleInvitationChanged:
     "No se hizo nada: esta invitación había cambiado entretanto. La lista se volvió a cargar.",
   peopleAskCancel: "¿Cancelar la invitación a {email}?",
@@ -105,7 +105,7 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   peopleRemoveDoes_chair:
     "{name} ya no podrá ver las propuestas desde la presidencia, cambiar la configuración, invitar o quitar personas ni cambiar la fase del congreso. No se le avisa por correo. Las invitaciones que envió siguen como están: puedes cancelar cualquiera en la lista de abajo. Para que vuelva a presidir, envíale una nueva invitación.",
   peopleRemoveDoes_reviewer:
-    "{name} dejará de revisar en este congreso, en todos los grupos de revisión, y ya no verá las propuestas que tenía asignadas. No se le avisa por correo. Para que vuelva a revisar, envíale una nueva invitación.",
+    "{name} dejará de revisar en este congreso, en todos los comités, y ya no verá las propuestas que tenía asignadas. No se le avisa por correo. Para que vuelva a revisar, envíale una nueva invitación.",
   peopleRemoveDoes_track_chair:
     "{name} dejará de gestionar las propuestas de sus ejes. No se le avisa por correo. En esta versión de la aplicación no se puede invitar a nadie a este rol.",
   peopleRemoveAssignedNone: "No tiene asignada ninguna de las propuestas que gestionas.",
@@ -122,11 +122,10 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   peopleRemoveGone:
     "No se quitó nada: esta persona ya no tiene ese rol. La lista se volvió a cargar.",
   peopleUnconfirmed: "El servidor no lo confirmó. Inténtalo de nuevo.",
-  roleInvTitle: "Invitación a un rol",
-  roleInvIntro_reviewer: "Quienes presiden {conference} te invitan a revisar propuestas.",
-  roleInvIntro_chair: "Quienes presiden {conference} te invitan a sumarte a la presidencia.",
-  roleInvConference: "Congreso",
-  roleInvRole: "Rol",
+  roleInvTitle: "Invitación",
+  roleInvTitle_reviewer: "Te invitan a revisar",
+  roleInvTitle_chair: "Te invitan a formar parte de la presidencia",
+  roleInvFrom: "La invitación es de quienes presiden {conference}.",
   roleInvCommittees: "Comités",
   roleInvFor: "Invitación para",
   roleInvMeans_reviewer:

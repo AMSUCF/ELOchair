@@ -45,8 +45,9 @@ const failure = (status: number): State =>
       : { step: "invalid" };
 
 /**
- * The page an invitation to a role links to (spec 03, §1.2). It needs no account. It says which
- * conference, which role and what accepting means, and offers "Accept" and "Decline". Accepting
+ * The page an invitation to a role links to (spec 03, §1.2). It needs no account. Its heading
+ * says the role ("You are invited to review"), and under it which conference, for a reviewer
+ * which committees, and what accepting means. It offers "Accept" and "Decline". Accepting
  * gives the role to the address the invitation was sent to, whoever opened the link, and signs
  * nobody in: the page then offers sign-in with that address.
  */
@@ -198,9 +199,12 @@ export function RoleInvitationPage() {
         ? said(state)
         : t(STATUS[state.step]);
 
+  // The heading says what the invitation is to, once that is known and for as long as it is:
+  // while the link is being read, and when it no longer works, there is no role to name.
+  const invited = state.step === "ready" || state.step === "done" ? state.info.role : null;
   return (
     <>
-      <PageHeading>{t("roleInvTitle")}</PageHeading>
+      <PageHeading>{t(invited ? `roleInvTitle_${invited}` : "roleInvTitle")}</PageHeading>
       {state.step === "ready" && (
         <Answer
           info={state.info}
@@ -287,16 +291,9 @@ function Answer({
   const ids = (...list: (string | false | undefined)[]) => list.filter(Boolean).join(" ");
   return (
     <>
-      <p>{t(`roleInvIntro_${info.role}`, { conference })}</p>
+      {/* The heading says the role, this sentence the conference: neither is said twice. */}
+      <p>{t("roleInvFrom", { conference })}</p>
       <dl className="details invited-to">
-        <div>
-          <dt>{t("roleInvConference")}</dt>
-          <dd>{conference}</dd>
-        </div>
-        <div>
-          <dt>{t("roleInvRole")}</dt>
-          <dd>{t(`peopleInviteRole_${info.role}`)}</dd>
-        </div>
         {reviewer && (
           <div>
             <dt>{t("roleInvCommittees")}</dt>

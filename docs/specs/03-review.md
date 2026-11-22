@@ -32,6 +32,7 @@ Everything below is held to these. They decide what is left out.
   - track chairs, where a conference has any: they can be removed and never added (§1.1);
   - the invitations that are waiting, were declined or have expired, with when they were sent.
   - A site admin holds no role at the conference and is not listed.
+- **A review pool is called a committee** wherever a person reads it on the People page, on the invitation page and in the emails, in the three languages. In the code, the API and the configuration it stays a pool, and so it does on the settings screen.
 - **Who is shown how.** A person who holds a role is shown by their profile: name and address. An invitation that has not been accepted is shown only as the chair typed it (the address, and a name if the chair typed one), never from the invited person's profile. The page is therefore the same whether or not the address has an account (spec 02, §1.2).
 - A chair **invites** one address at a time: the address, an optional name, the role (reviewer or chair), for a reviewer one or more of the conference's review pools, and the language of the email (`en`, `es` or `pt`).
   - The name is for the chairs' own list. It is never mailed and never written to anyone's profile.
@@ -48,7 +49,7 @@ Everything below is held to these. They decide what is left out.
   - It carries no person: not the inviting chair's name, and not the name the chair typed. An invitation to a role has no such value to put into a text, and a text that names one is refused.
   - Once sent, the outbox keeps a copy with the link's token removed.
 - **The link** opens `/:lang/role-invitation#token`. The token travels in the fragment, is stored only as a hash, works once, and expires 30 days after the invitation was last sent.
-  - The page needs no account. It says which conference, which role, for a reviewer which committees, which address was invited, and in a sentence or two what accepting means. It has two actions, Accept and Decline. It never shows the name the chair typed.
+  - The page needs no account. Its heading says the role ("You are invited to review", "You are invited to be a chair"). Under it the page says which conference, for a reviewer which committees, which address was invited, and in a sentence or two what accepting means. It has two actions, Accept and Decline. It never shows the name the chair typed. While the link is being read, and when it no longer works, the heading names no role.
   - **Accept** gives the role to the person the invitation was addressed to, whoever opens the link: a forwarded link cannot give the role to someone else, and nothing in the request can name another person, role or pool. Accepting signs nobody in; the page then offers sign-in with that address.
   - **A reviewer who accepts** says, on the same page, which languages they can review in (`en`, `es`, `pt`; at least one) and the most proposals they are willing to take (a whole number from 1 to 30; 8 unless they say otherwise).
     - These go to `reviewer_profiles` with the invitation's pools, and the role's scope is those pools.
@@ -65,7 +66,7 @@ Everything below is held to these. They decide what is left out.
   - Removing a chair removes both the `chair` and the `admin` role. The invitations that chair sent stay the conference's: the chairs who remain see them in the list and can cancel them, and the confirmation says so.
   - **A chair cannot remove their own chair role**, on the page or through the API (409 `own_role`), so a conference always has a chair. Two chairs removing each other at the same moment cannot both succeed: the second finds that it is no longer a chair.
     - Whose role it is, is read from the role's own rows, never from the id as it was typed in the address: an id in capitals names the same person to the database, and to this rule.
-  - **Every change reads the chair again inside its transaction**, under a lock on the conference's roles: someone removed while their request was on its way invites, sends again, cancels and removes nothing (403).
+  - **Every change reads the chair again inside its transaction**, under a lock on the conference's roles: someone removed while their request was on its way invites, sends again, cancels and removes nothing (403). The same holds for a configuration save and a phase move. Once a removal has committed, nothing that person began as a chair commits afterwards; the rule, and the one order in which locks are taken, are in spec 02, §1.9.
   - A reviewer's pools are not edited after they accept: remove them and invite them again.
 - The server's `grant` command still gives any role, as before.
 - **Audit.** One row per invitation sent, sent again, cancelled, accepted and declined (`role_invitation.sent`, `.resent`, `.cancelled`, `.accepted`, `.declined`), and per role removed (`role.removed`). Each holds IDs, the role, the pools and counts, and nothing else.

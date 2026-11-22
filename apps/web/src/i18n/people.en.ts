@@ -24,9 +24,9 @@ export const peopleEn = {
   peopleInviteRole_chair: "Chair",
   peopleInviteRoleDoes_chair:
     "Can do everything you can: see every proposal and everyone on it, change the conference's settings, invite and remove people, and move the conference from one phase to the next.",
-  peopleInvitePools: "Review pools",
+  peopleInvitePools: "Committees",
   peopleInvitePoolsHint:
-    "Choose at least one. The reviewer can be assigned proposals in the formats these pools review.",
+    "Choose at least one. The reviewer can be assigned proposals in the formats these committees review.",
   peopleInviteLang: "Language of the email",
   peopleInviteSend: "Send the invitation",
   peopleInviteLimits:
@@ -34,7 +34,7 @@ export const peopleEn = {
   peopleEmailInvalid: "Enter one valid email address.",
   peopleNameInvalid:
     "Use one line of letters or digits, at most {max} characters, without hidden formatting characters.",
-  peoplePoolsRequired: "Choose at least one review pool.",
+  peoplePoolsRequired: "Choose at least one committee.",
   peopleInvited: "The invitation was sent to {email}.",
   peopleAlreadyInvited:
     "An invitation to this address for this role is already waiting. You can send it again from the list of invitations.",
@@ -46,9 +46,9 @@ export const peopleEn = {
     "Chairs run the conference: they see every proposal, change the settings and manage this page. You cannot remove your own role, so that the conference always has a chair.",
   peopleReviewersTitle: "Reviewers",
   peopleReviewersIntro:
-    "Reviewers are listed under each review pool they belong to, with the number of proposals assigned to them. Your own proposals, and any you have a conflict with, are not counted.",
-  peoplePoolEmpty: "Nobody reviews for this pool yet.",
-  peoplePoolGone: "Not in a current review pool",
+    "Reviewers are listed under each committee they belong to, with the number of proposals assigned to them. Your own proposals, and any you have a conflict with, are not counted.",
+  peoplePoolEmpty: "Nobody reviews for this committee yet.",
+  peoplePoolGone: "Not in a current committee",
   peopleAssignedNone: "No proposals assigned",
   peopleAssignedOne: "1 proposal assigned",
   peopleAssignedMany: "{n} proposals assigned",
@@ -81,7 +81,7 @@ export const peopleEn = {
   peopleResendLimited:
     "Not sent. An invitation can be sent again once an hour, and the daily limits apply: {perInviter} from you, {perRecipient} to one address.",
   peoplePoolsGone:
-    "Not sent: the review pools of this invitation are no longer part of the conference, so its link gives nothing. Cancel it, and invite the person again.",
+    "Not sent: the committees of this invitation are no longer part of the conference, so its link gives nothing. Cancel it, and invite the person again.",
   peopleInvitationChanged:
     "Nothing was done: this invitation had changed in the meantime. The list was loaded again.",
   peopleAskCancel: "Cancel the invitation to {email}?",
@@ -104,7 +104,7 @@ export const peopleEn = {
   peopleRemoveDoes_chair:
     "{name} will no longer see the proposals as a chair, change the settings, invite or remove people, or move the conference's phase. They are not told by email. Invitations they sent stay as they are: cancel any of them in the list below. To make them a chair again, invite them again.",
   peopleRemoveDoes_reviewer:
-    "{name} will no longer be a reviewer at this conference, in any review pool, and will no longer see the proposals assigned to them. They are not told by email. To make them a reviewer again, invite them again.",
+    "{name} will no longer be a reviewer at this conference, in any committee, and will no longer see the proposals assigned to them. They are not told by email. To make them a reviewer again, invite them again.",
   peopleRemoveDoes_track_chair:
     "{name} will no longer manage the proposals of their tracks. They are not told by email. Nobody can be invited to this role in this version of the app.",
   peopleRemoveAssignedNone: "None of the proposals you manage is assigned to them.",
@@ -121,11 +121,10 @@ export const peopleEn = {
   peopleRemoveGone:
     "Nothing was removed: this person no longer holds that role. The list was loaded again.",
   peopleUnconfirmed: "The server did not confirm this. Please try again.",
-  roleInvTitle: "Invitation to a role",
-  roleInvIntro_reviewer: "The chairs of {conference} invite you to be a reviewer.",
-  roleInvIntro_chair: "The chairs of {conference} invite you to be a chair of the conference.",
-  roleInvConference: "Conference",
-  roleInvRole: "Role",
+  roleInvTitle: "Invitation",
+  roleInvTitle_reviewer: "You are invited to review",
+  roleInvTitle_chair: "You are invited to be a chair",
+  roleInvFrom: "The invitation is from the chairs of {conference}.",
   roleInvCommittees: "Committees",
   roleInvFor: "Invitation for",
   roleInvMeans_reviewer:

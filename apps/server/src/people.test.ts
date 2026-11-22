@@ -2,6 +2,7 @@ import { findLeaks } from "@elochair/policy/testing";
 import { ROLE_INVITATIONS } from "@elochair/schema";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Db } from "./db/client";
 import {
   assignments,
   auditLog,
@@ -19,7 +20,14 @@ import {
 import { fixtureCall, type SandboxSummary, seedSandbox, seedTestCall } from "./fixtures";
 import type { MemoryTransport } from "./mail";
 import { RateLimiter } from "./ratelimit";
-import { createApiToken, getConference, grantRole, loadPersonViewer, saveConference } from "./repo";
+import {
+  createApiToken,
+  getConference,
+  grantRole,
+  loadPersonViewer,
+  lockConference,
+  saveConference,
+} from "./repo";
 import { Refusal } from "./routes/common";
 import { hashToken } from "./secrets";
 import {
@@ -1958,6 +1966,287 @@ describe("removing a role", () => {
   });
 });
 
+/*
+ * RC-github---amsucf-elochair-43-001. A route checks who is asking before its transaction
+ * begins. Here the caller's chair role is removed, by the real removal, at the moment the route
+ * opens its transaction: after its own check, before anything it does. Every write that is
+ * allowed because the caller chairs the conference reads the chair again in there, under the
+ * roles lock, and is refused. The seam is the database handle the app was given: nothing in the
+ * routes knows about it.
+ */
+describe("a chair removed between a route's check and its transaction", () => {
+  const INFLIGHT = "people-inflight";
+  let inflightId: string;
+  let bystanderId: string;
+  let n = 0;
+
+  beforeAll(async () => {
+    ({ conferenceId: inflightId } = await seedTestCall(t.db, { slug: INFLIGHT, now: NOW }));
+    await grantRole(t.db, {
+      conferenceId: inflightId,
+      personId: await personId(t, "people-chair@example.org"),
+      role: "chair",
+    });
+    await person("people-inflight-bystander@example.org", "Bea Bystander");
+    bystanderId = await personId(t, "people-inflight-bystander@example.org");
+    await grantRole(t.db, { conferenceId: inflightId, personId: bystanderId, role: "chair" });
+  }, 120_000);
+
+  /** A chair of the conference who is about to be removed, signed in. */
+  async function victim() {
+    n += 1;
+    const email = `people-inflight-${n}@example.org`;
+    const cookie = await person(email, `Vera Victim ${n}`);
+    const id = await personId(t, email);
+    await grantRole(t.db, { conferenceId: inflightId, personId: id, role: "chair" });
+    return { cookie, id };
+  }
+
+  /**
+   * Run `request` with the victim removed as a chair the moment the route opens its first
+   * transaction. Returns what the route answered, and how many transactions it opened.
+   */
+  async function removedInBetween<T>(victimId: string, request: () => Promise<T>) {
+    const real = t.deps.db;
+    const conference = await getConference(real, INFLIGHT);
+    const remover = await loadPersonViewer(real, await personId(t, "people-chair@example.org"));
+    if (!conference || !remover) throw new Error("no conference or no remover");
+    let opened = 0;
+    t.deps.db = new Proxy(real, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (prop !== "transaction") {
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return async (...args: unknown[]) => {
+          opened += 1;
+          if (opened === 1) {
+            await removeRole({ ...t.deps, db: real }, remover, conference, {
+              personId: victimId,
+              role: "chair",
+            });
+          }
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    try {
+      return { answer: await request(), opened };
+    } finally {
+      t.deps.db = real;
+    }
+  }
+
+  /** Everything a refused request must leave as it was. */
+  const stored = async () => {
+    const settings = await call(t.public, "GET", `/api/conferences/${INFLIGHT}/settings`, {
+      cookie: cookies.chair,
+    });
+    const page = await listed(cookies.chair, INFLIGHT);
+    return {
+      token: settings.json.token as string,
+      phase: settings.json.phase as string,
+      chairs: page.chairs.map((c) => c.personId).sort(),
+      invitations: page.invitations.map((i) => [i.id, i.state, i.sentAt]),
+      mail: (await t.db.select().from(outbox).where(eq(outbox.kind, "role_invitation"))).length,
+    };
+  };
+  const audited = async () =>
+    (
+      await t.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.conferenceId, inflightId))
+        .orderBy(auditLog.id)
+    ).map((r) => [r.action, r.actorPersonId, r.targetId]);
+
+  type Case = {
+    what: string;
+    /** What the victim asks for, as a chair, through the route. */
+    request: (cookie: string) => Promise<{ status: number; json: { error?: string } }>;
+  };
+  const at2 = (rest: string) => `/api/conferences/${INFLIGHT}/${rest}`;
+  let waitingId = "";
+  const cases: Case[] = [
+    {
+      what: "saving the configuration",
+      request: async (cookie) => {
+        const got = await call(t.public, "GET", at2("settings"), { cookie });
+        const config = structuredClone(got.json.config);
+        config.host = "A host nobody was allowed to write";
+        return call(t.public, "PUT", at2("config"), {
+          cookie,
+          ifMatch: got.json.token,
+          body: config,
+        });
+      },
+    },
+    {
+      what: "moving the phase",
+      request: (cookie) =>
+        call(t.public, "PUT", at2("phase"), {
+          cookie,
+          body: { phase: "reviewing", from: "cfp_open" },
+        }),
+    },
+    {
+      what: "moving the phase back, forced with a reason",
+      request: (cookie) =>
+        call(t.public, "PUT", at2("phase"), {
+          cookie,
+          body: { phase: "draft", from: "cfp_open", force: true, reason: "Not mine to move" },
+        }),
+    },
+    {
+      what: "inviting someone",
+      request: (cookie) =>
+        invite(
+          { cookie },
+          { email: "people-inflight-invitee@example.org", role: "chair" },
+          INFLIGHT,
+        ),
+    },
+    {
+      what: "sending an invitation again",
+      request: (cookie) => resend({ cookie }, waitingId, INFLIGHT),
+    },
+    {
+      what: "cancelling an invitation",
+      request: (cookie) => cancel({ cookie }, waitingId, INFLIGHT),
+    },
+    {
+      what: "removing another chair",
+      request: (cookie) => remove({ cookie }, bystanderId, "chair", {}, INFLIGHT),
+    },
+  ];
+
+  it("is refused whatever they asked for, with nothing stored and nothing audited", async () => {
+    const sent = await invite(
+      { cookie: cookies.chair },
+      reviewer("people-inflight-waiting@example.org"),
+      INFLIGHT,
+    );
+    expect(sent.status).toBe(201);
+    waitingId = sent.json.id;
+    for (const { what, request } of cases) {
+      const v = await victim();
+      // Before the removal the same request is theirs to make: the route's own check passes.
+      expect(
+        (await listed(v.cookie, INFLIGHT)).chairs.map((c) => c.personId),
+        what,
+      ).toContain(v.id);
+      const before = { stored: await stored(), audited: await audited() };
+      const { answer, opened } = await removedInBetween(v.id, () => request(v.cookie));
+      expect(answer.status, what).toBe(403);
+      expect(answer.json, what).toEqual({ error: "forbidden" });
+      // The route got as far as its transaction: that is where it was refused.
+      expect(opened, what).toBeGreaterThanOrEqual(1);
+      // All that happened is the removal: nothing of the request was stored or recorded.
+      const chairId = await personId(t, "people-chair@example.org");
+      expect(await audited(), what).toEqual([...before.audited, ["role.removed", chairId, v.id]]);
+      expect(await stored(), what).toEqual({
+        ...before.stored,
+        chairs: before.stored.chairs.filter((id) => id !== v.id),
+      });
+    }
+    expect(await mailTo("people-inflight-invitee@example.org")).toEqual([]);
+    expect((await getConference(t.db, INFLIGHT))?.phase).toBe("cfp_open");
+  });
+
+  it("the same requests succeed for a chair who is not removed, through the same seam", async () => {
+    // The seam alone refuses nothing: with nobody removed, each request does what it asks.
+    const v = await victim();
+    const real = t.deps.db;
+    let opened = 0;
+    t.deps.db = new Proxy(real, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (prop !== "transaction") {
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return (...args: unknown[]) => {
+          opened += 1;
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    try {
+      const statuses: Record<string, number> = {};
+      for (const { what, request } of cases) {
+        if (what.startsWith("moving the phase")) continue;
+        statuses[what] = (await request(v.cookie)).status;
+      }
+      // (Sending again is within the hour: refused by its limit, after the chair was read.)
+      expect(statuses).toEqual({
+        "saving the configuration": 200,
+        "inviting someone": 201,
+        "sending an invitation again": 429,
+        "cancelling an invitation": 204,
+        "removing another chair": 204,
+      });
+      expect(opened).toBeGreaterThanOrEqual(5);
+      // The phase last: there and back, which leaves the call open as the tests above found it.
+      const there = await call(t.public, "PUT", at2("phase"), {
+        cookie: v.cookie,
+        body: { phase: "draft", from: "cfp_open" },
+      });
+      const back = await call(t.public, "PUT", at2("phase"), {
+        cookie: v.cookie,
+        body: { phase: "cfp_open", from: "draft" },
+      });
+      expect([there.status, back.status]).toEqual([200, 200]);
+    } finally {
+      t.deps.db = real;
+    }
+  });
+
+  it("a site admin, who holds no role to remove, is read again like anyone and still passes", async () => {
+    const email = "people-inflight-site-admin@example.org";
+    const cookie = await person(email, "Sasha Siteadmin");
+    await t.db.update(people).set({ siteAdmin: true }).where(eq(people.email, email));
+    const moved = await call(t.public, "PUT", at2("phase"), {
+      cookie,
+      body: { phase: "draft", from: "cfp_open" },
+    });
+    expect(moved.status).toBe(200);
+    // The flag is read inside the transaction too: taken away after the route's check and
+    // before the transaction begins, the request is refused.
+    const real = t.deps.db;
+    let opened = 0;
+    t.deps.db = new Proxy(real, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (prop !== "transaction") {
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return async (...args: unknown[]) => {
+          opened += 1;
+          if (opened === 1) {
+            await real.update(people).set({ siteAdmin: false }).where(eq(people.email, email));
+          }
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    try {
+      const refused = await call(t.public, "PUT", at2("phase"), {
+        cookie,
+        body: { phase: "cfp_open", from: "draft" },
+      });
+      expect(refused.status).toBe(403);
+      expect((await getConference(real, INFLIGHT))?.phase).toBe("draft");
+    } finally {
+      t.deps.db = real;
+    }
+    // Put back by a chair, for whoever reads this conference next.
+    const back = await call(t.public, "PUT", at2("phase"), {
+      cookie: cookies.chair,
+      body: { phase: "cfp_open", from: "draft" },
+    });
+    expect(back.status).toBe(200);
+  });
+});
+
 describe("the audit log", () => {
   it("has one row for each invitation sent, sent again, cancelled, accepted and declined, and each role removed", async () => {
     const email = "people-audited@example.org";
@@ -2221,6 +2510,370 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
           );
         expect(left, `round ${round}`).toHaveLength(1);
       }
+    });
+
+    /*
+     * RC-github---amsucf-elochair-43-001: a chair's removal against the two writes that are a
+     * chair's and are not on the People page, the configuration save and the phase move. The
+     * rule: once the removal has committed, nothing that person began as a chair commits
+     * afterwards. Each is first made to happen in a known order, by holding a lock the first of
+     * the two needs; then they are let loose on each other.
+     */
+    describe("a chair's removal, against a configuration save and a phase move", () => {
+      const slugC = `people-pg-c-${run}`;
+      let idC: string;
+      let remover: string;
+      let victim: string;
+      let victimId: string;
+      const within = <T>(p: Promise<T>, ms: number): Promise<T | "waiting"> =>
+        Promise.race([p, new Promise<"waiting">((r) => setTimeout(() => r("waiting"), ms))]);
+      /** Hold locks in a transaction of its own until `release()`. */
+      function hold(lock: (tx: Db) => Promise<unknown>) {
+        let release = () => {};
+        const gate = new Promise<void>((r) => {
+          release = r;
+        });
+        let taken = () => {};
+        const ready = new Promise<void>((r) => {
+          taken = r;
+        });
+        const done = pg.db.transaction(async (tx) => {
+          await lock(tx as unknown as Db);
+          taken();
+          await gate;
+        });
+        return {
+          ready,
+          release: async () => {
+            release();
+            await done;
+          },
+        };
+      }
+      const conf = (rest: string) => `/api/conferences/${slugC}/${rest}`;
+      const again = () =>
+        grantRole(pg.db, { conferenceId: idC, personId: victimId, role: "chair" });
+      const removing = () =>
+        call(pg.public, "DELETE", at(`/${victimId}/roles/chair`, slugC), {
+          cookie: remover,
+          body: {},
+        });
+      const state = async () => {
+        const got = await call(pg.public, "GET", conf("settings"), { cookie: remover });
+        return { token: got.json.token as string, phase: got.json.phase as string };
+      };
+      /** The last audit row of an action in this conference, by its id: the order things ran in. */
+      const lastAudit = async (action: string) =>
+        (
+          await pg.db
+            .select({ id: auditLog.id })
+            .from(auditLog)
+            .where(and(eq(auditLog.conferenceId, idC), eq(auditLog.action, action)))
+            .orderBy(auditLog.id)
+        ).at(-1)?.id ?? 0;
+
+      type Write = {
+        what: string;
+        audited: string;
+        /** The request, made ready while the victim is still a chair, to send when told. */
+        ready: (label: string) => Promise<() => Promise<{ status: number }>>;
+      };
+      const writes: Write[] = [
+        {
+          what: "a configuration save",
+          audited: "conference.config_updated",
+          ready: async (label) => {
+            const got = await call(pg.public, "GET", conf("settings"), { cookie: victim });
+            const config = structuredClone(got.json.config);
+            config.host = `Universidad Inventada ${label}`;
+            return () =>
+              call(pg.public, "PUT", conf("config"), {
+                cookie: victim,
+                ifMatch: got.json.token,
+                body: config,
+              });
+          },
+        },
+        {
+          what: "a phase move",
+          audited: "conference.phase_changed",
+          ready: async () => {
+            const { phase } = await state();
+            const to = phase === "cfp_open" ? "draft" : "cfp_open";
+            return () =>
+              call(pg.public, "PUT", conf("phase"), {
+                cookie: victim,
+                body: { phase: to, from: phase },
+              });
+          },
+        },
+      ];
+
+      beforeAll(async () => {
+        ({ conferenceId: idC } = await seedTestCall(pg.db, { slug: slugC, now: NOW }));
+        remover = chairs[0] as string;
+        await grantRole(pg.db, {
+          conferenceId: idC,
+          personId: await personId(pg, mail("chair-0")),
+          role: "chair",
+        });
+        victim = await signIn(pg, mail("victim"));
+        victimId = await personId(pg, mail("victim"));
+      }, 120_000);
+
+      for (const write of writes) {
+        it(`${write.what} begun first commits, and the removal waits for it`, async () => {
+          for (let i = 0; i < 4; i++) {
+            await again();
+            const before = await state();
+            const send = await write.ready(`A${i}`);
+            // The write is stopped at the conference's row, which this test holds: it has
+            // been let through as a chair's and has not committed.
+            const holder = hold((tx) => lockConference(tx, idC));
+            await holder.ready;
+            const writing = send();
+            let released = false;
+            try {
+              expect(await within(writing, 300), `round ${i}: the write`).toBe("waiting");
+              const removal = removing();
+              // The removal cannot commit before it: it waits for the roles lock.
+              expect(await within(removal, 500), `round ${i}: the removal`).toBe("waiting");
+              await holder.release();
+              released = true;
+              expect((await writing).status, `round ${i}`).toBe(200);
+              expect((await removal).status, `round ${i}`).toBe(204);
+            } finally {
+              if (!released) await holder.release();
+            }
+            // Stored, and recorded before the removal was.
+            const after = await state();
+            expect(after, `round ${i}`).not.toEqual(before);
+            expect(await lastAudit(write.audited), `round ${i}`).toBeLessThan(
+              await lastAudit("role.removed"),
+            );
+          }
+        }, 120_000);
+
+        it(`${write.what} begun while the removal is under way is refused once it commits`, async () => {
+          for (let i = 0; i < 4; i++) {
+            await again();
+            const before = await state();
+            const recorded = await lastAudit(write.audited);
+            const send = await write.ready(`B${i}`);
+            // The removal is stopped at the role's row, which this test holds: it has the
+            // roles lock and has not committed, so the victim still reads as a chair.
+            const holder = hold((tx) =>
+              tx
+                .select()
+                .from(conferenceRoles)
+                .where(
+                  and(
+                    eq(conferenceRoles.conferenceId, idC),
+                    eq(conferenceRoles.personId, victimId),
+                  ),
+                )
+                .for("update"),
+            );
+            await holder.ready;
+            const removal = removing();
+            let released = false;
+            try {
+              expect(await within(removal, 300), `round ${i}: the removal`).toBe("waiting");
+              const writing = send();
+              // The route's own check lets it in; inside, it waits for the removal.
+              expect(await within(writing, 500), `round ${i}: the write`).toBe("waiting");
+              await holder.release();
+              released = true;
+              expect((await removal).status, `round ${i}`).toBe(204);
+              const refused = await writing;
+              expect(refused.status, `round ${i}`).toBe(403);
+            } finally {
+              if (!released) await holder.release();
+            }
+            // Nothing of it was stored or recorded.
+            expect(await state(), `round ${i}`).toEqual(before);
+            expect(await lastAudit(write.audited), `round ${i}`).toBe(recorded);
+          }
+        }, 120_000);
+
+        it(`${write.what} and the removal let loose on each other: never the write after the removal, never a deadlock`, async () => {
+          const outcomes: Record<string, number> = {};
+          for (let i = 0; i < 30; i++) {
+            await again();
+            const before = await state();
+            const recorded = await lastAudit(write.audited);
+            const send = await write.ready(`C${i}`);
+            // Now one first, now the other, a moment apart or none.
+            const pause = () => new Promise((r) => setTimeout(r, i % 3));
+            const both =
+              i % 2 === 0
+                ? (async () => {
+                    const w = send();
+                    await pause();
+                    return [await w, await removing()] as const;
+                  })()
+                : (async () => {
+                    const r = removing();
+                    await pause();
+                    const w = send();
+                    return [await w, await r] as const;
+                  })();
+            const done = await within(both, 20_000);
+            if (done === "waiting") throw new Error(`round ${i}: still waiting: a deadlock`);
+            const [written, removed] = done;
+            expect(removed.status, `round ${i}`).toBe(204);
+            expect([200, 403], `round ${i}`).toContain(written.status);
+            outcomes[String(written.status)] = (outcomes[String(written.status)] ?? 0) + 1;
+            if (written.status === 200) {
+              // It committed as a chair's: before the removal did.
+              expect(await lastAudit(write.audited), `round ${i}`).toBeGreaterThan(recorded);
+              expect(await lastAudit(write.audited), `round ${i}`).toBeLessThan(
+                await lastAudit("role.removed"),
+              );
+            } else {
+              expect(await state(), `round ${i}`).toEqual(before);
+              expect(await lastAudit(write.audited), `round ${i}`).toBe(recorded);
+            }
+          }
+          // Both things happened among the thirty: the race was a race.
+          expect(Object.keys(outcomes).sort(), JSON.stringify(outcomes)).toEqual(["200", "403"]);
+        }, 120_000);
+      }
+
+      it("saves, phase moves, writes to a proposal, invitations, answers and removals all at once: everything finishes", async () => {
+        // One lock order everywhere (services/roles.ts): whatever runs beside whatever, nothing
+        // waits for the one that waits for it. A deadlock would end a request with an error.
+        const slugD = `people-pg-d-${run}`;
+        const { conferenceId: idD } = await seedTestCall(pg.db, { slug: slugD, now: NOW });
+        const on = (rest: string) => `/api/conferences/${slugD}/${rest}`;
+        // Two chairs who stay, and four who are removed while they are at work.
+        const stay: { cookie: string; id: string }[] = [];
+        const go: { cookie: string; id: string }[] = [];
+        for (let i = 0; i <= 5; i++) {
+          const id = await personId(pg, mail(`chair-${i}`));
+          (i === 0 || i === 5 ? stay : go).push({ cookie: chairs[i] as string, id });
+        }
+        for (const chair of stay) {
+          await grantRole(pg.db, { conferenceId: idD, personId: chair.id, role: "chair" });
+        }
+        const owner = await signIn(pg, mail("d-owner"));
+        const draft = await call(pg.public, "POST", on("submissions"), {
+          cookie: owner,
+          body: { typeKey: "talk", language: "en", participationMode: "in_person" },
+        });
+        expect(draft.status).toBe(201);
+        const moving = (cookie: string, to: string) =>
+          call(pg.public, "PUT", on("phase"), { cookie, body: { phase: to } });
+
+        for (let round = 0; round < 5; round++) {
+          for (const chair of go) {
+            await grantRole(pg.db, { conferenceId: idD, personId: chair.id, role: "chair" });
+          }
+          // The call is open at the start of each round: a proposal can be written to.
+          await moving(remover, "cfp_open");
+          const current = await call(pg.public, "GET", `/api/submissions/${draft.json.id}`, {
+            cookie: owner,
+          });
+          // Invitations waiting for an answer.
+          const tokens: string[] = [];
+          const waiting: string[] = [];
+          for (let i = 0; i < 8; i++) {
+            const email = mail(`d-invitee-${round}-${i}`);
+            const sent = await pgInvite(remover, slugD, {
+              email,
+              role: "reviewer",
+              pools: [POOL_A],
+            });
+            expect(sent.status, `round ${round}`).toBe(201);
+            waiting.push(sent.json.id);
+            tokens.push(await pgToken(email));
+          }
+          const settings = await call(pg.public, "GET", on("settings"), { cookie: remover });
+          const saving = (cookie: string, host: string) => {
+            const config = structuredClone(settings.json.config);
+            config.host = host;
+            return call(pg.public, "PUT", on("config"), {
+              cookie,
+              ifMatch: settings.json.token,
+              body: config,
+            });
+          };
+          const requests: Promise<{ status: number }>[] = [];
+          // Answers by link: six accepted or declined, two cancelled by a chair meanwhile.
+          for (const [i, token] of tokens.entries()) {
+            requests.push(
+              i < 6
+                ? call(pg.public, "POST", "/api/role-invitations/answer", {
+                    body: {
+                      token,
+                      answer: i % 3 === 2 ? "decline" : "accept",
+                      displayName: "Dee Postgres",
+                      languages: ["en"],
+                    },
+                  })
+                : call(pg.public, "POST", at(`/invitations/${waiting[i]}/cancel`, slugD), {
+                    cookie: remover,
+                    body: {},
+                  }),
+            );
+          }
+          // The chairs who stay save, move the phase and invite, several times over.
+          for (const [i, chair] of stay.entries()) {
+            for (let n = 0; n < 3; n++) {
+              requests.push(
+                saving(chair.cookie, `Universidad Inventada ${round}.${i}.${n}`),
+                moving(chair.cookie, (i + n) % 2 ? "draft" : "cfp_open"),
+                pgInvite(chair.cookie, slugD, {
+                  email: mail(`d-late-${round}-${i}-${n}`),
+                  role: "chair",
+                }),
+              );
+            }
+          }
+          // The chairs who go do the same, and are removed while they do; a proposal is edited.
+          for (const [i, chair] of go.entries()) {
+            requests.push(
+              saving(chair.cookie, `Universidad Inventada de Paso ${round}.${i}`),
+              moving(chair.cookie, i % 2 ? "draft" : "cfp_open"),
+              pgInvite(chair.cookie, slugD, { email: mail(`d-gone-${round}-${i}`), role: "chair" }),
+              call(pg.public, "DELETE", at(`/${chair.id}/roles/chair`, slugD), {
+                cookie: remover,
+                body: {},
+              }),
+              call(pg.public, "PATCH", `/api/submissions/${draft.json.id}`, {
+                cookie: owner,
+                body: { version: current.json.version, title: `A busy talk ${round}.${i}` },
+              }),
+            );
+          }
+          const all = await within(Promise.all(requests), 30_000);
+          if (all === "waiting") throw new Error(`round ${round}: still waiting: a deadlock`);
+          expect(all, `round ${round}`).toHaveLength(8 + 18 + 20);
+          // Each was done, or refused for a reason of its own (removed meanwhile, a stale version
+          // or token, a closed call). A deadlock would end one with an error (500) instead.
+          expect(
+            all.map((r) => r.status).filter((x) => x >= 500),
+            `round ${round}`,
+          ).toEqual([]);
+          // The answers by link were all taken, and the chairs who stay did get things done.
+          expect(
+            all.slice(0, 6).map((r) => r.status),
+            `round ${round}`,
+          ).toEqual([200, 200, 200, 200, 200, 200]);
+          expect(
+            all.slice(8, 26).filter((r) => r.status === 200 || r.status === 201).length,
+            `round ${round}`,
+          ).toBeGreaterThan(6);
+          // The chairs who were removed are removed, and those who stay are still there.
+          const left = await pg.db
+            .select()
+            .from(conferenceRoles)
+            .where(and(eq(conferenceRoles.conferenceId, idD), eq(conferenceRoles.role, "chair")));
+          expect(left.map((r) => r.personId).sort(), `round ${round}`).toEqual(
+            stay.map((x) => x.id).sort(),
+          );
+        }
+      }, 120_000);
     });
   },
 );

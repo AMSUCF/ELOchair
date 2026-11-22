@@ -1,6 +1,5 @@
 import {
   assignedCount,
-  canManagePeople,
   invitedPools,
   type PeopleRecord,
   type PersonViewer,
@@ -38,7 +37,6 @@ import {
   findOrCreatePerson,
   getConferenceById,
   grantRole,
-  loadPersonViewer,
   loadSubmissionRecords,
   normalizeEmail,
   shareConference,
@@ -47,6 +45,7 @@ import {
 import { RateLimited, Refusal } from "../routes/common";
 import { hashToken, newToken } from "../secrets";
 import { chairInvitationMessage, reviewerInvitationMessage } from "../templates";
+import { lockRoles, stillChair } from "./roles";
 
 /*
  * People and invitations (spec 03, §1.2): who holds a role at a conference, inviting someone to
@@ -58,6 +57,11 @@ import { chairInvitationMessage, reviewerInvitationMessage } from "../templates"
  * - the emails are counted in a ledger that cancelling cannot empty.
  * And the role is bound to the address: accepting gives it to the person the invitation was
  * sent to, whoever opens the link.
+ *
+ * Locks are taken in the one order of services/roles.ts: the invitation's row, then the
+ * conference's roles lock, then the conference's row, then the locks that count the day's
+ * emails. What a chair does here shares the roles lock and reads the chair again (stillChair);
+ * removing a role and accepting an invitation take it exclusive.
  */
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -163,36 +167,6 @@ async function change<T>(deps: Deps, actor: Viewer, fn: (tx: Db) => Promise<T>):
 
 const advisoryLock = (tx: Db, key: string) =>
   tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}::text, 0))`);
-
-/**
- * One at a time, for a conference: accepting an invitation and removing a role both change who
- * holds a role, and each decides on what it reads. Held until the transaction ends.
- */
-const lockRoles = (tx: Db, conferenceId: string) => advisoryLock(tx, `people:${conferenceId}`);
-
-/**
- * The person acting, read again inside the transaction: still a chair of the conference, or
- * 403. The route checked it before the transaction began, and a chair may have been removed
- * since. `exclusive` is for a change to who holds a role; the others share the conference's
- * roles lock, so that they do not wait for one another, and a removal waits for them. Whoever
- * passes is therefore still a chair when their change commits.
- */
-async function stillChair(
-  tx: Db,
-  viewer: PersonViewer,
-  conferenceId: string,
-  mode: "shared" | "exclusive" = "shared",
-): Promise<PersonViewer> {
-  if (mode === "exclusive") await lockRoles(tx, conferenceId);
-  else {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock_shared(hashtextextended(${`people:${conferenceId}`}::text, 0))`,
-    );
-  }
-  const actor = await loadPersonViewer(tx, viewer.personId);
-  if (!actor || !canManagePeople(actor, conferenceId)) throw new Refusal(403, "forbidden");
-  return actor;
-}
 
 type InvitationLimit = "per_inviter" | "per_recipient";
 
@@ -321,18 +295,21 @@ const unknownPools = (conference: ConferenceRow, pools: readonly string[]) =>
 export async function inviteToRole(
   deps: Deps,
   viewer: PersonViewer,
-  conference: ConferenceRow,
+  k: ConferenceRow,
   input: RoleInvitationInput,
 ): Promise<{ id: string }> {
   const now = deps.now();
   const origin = new URL(deps.env.APP_ORIGIN).origin;
   const email = normalizeEmail(input.email);
-  if (unknownPools(conference, input.pools).length) {
-    const issues: PeopleIssue[] = [{ path: "pools", code: "unknown_pool" }];
-    throw new Refusal(422, "invalid", { issues });
-  }
   return change(deps, viewer, async (tx) => {
-    await stillChair(tx, viewer, conference.id);
+    await stillChair(tx, viewer, k.id);
+    // The configuration as it is when this commits says which pools there are.
+    const conference = await shareConference(tx, k.id);
+    if (!conference) throw new Refusal(404, "not_found");
+    if (unknownPools(conference, input.pools).length) {
+      const issues: PeopleIssue[] = [{ path: "pools", code: "unknown_pool" }];
+      throw new Refusal(422, "invalid", { issues });
+    }
     const budget = await invitationBudget(tx, { inviterId: viewer.personId, email, now });
     await refuseSecond(tx, {
       conferenceId: conference.id,
@@ -430,14 +407,17 @@ async function lockInvitation(
 export async function resendRoleInvitation(
   deps: Deps,
   viewer: PersonViewer,
-  conference: ConferenceRow,
+  k: ConferenceRow,
   invitationId: string,
 ): Promise<void> {
   const now = deps.now();
   const origin = new URL(deps.env.APP_ORIGIN).origin;
   await change(deps, viewer, async (tx) => {
-    const row = await lockInvitation(tx, conference, invitationId);
-    await stillChair(tx, viewer, conference.id);
+    const row = await lockInvitation(tx, k, invitationId);
+    await stillChair(tx, viewer, k.id);
+    // The configuration as it is when this commits says which of its pools there still are.
+    const conference = await shareConference(tx, k.id);
+    if (!conference) throw new Refusal(404, "not_found");
     const inv = toRoleInvitation(row);
     const state = roleInvitationState(inv, now);
     if (state !== "waiting" && state !== "expired") throw new Refusal(409, "not_waiting");
@@ -681,6 +661,9 @@ export async function answerRoleInvitation(
         .set({ answer, answeredAt: now })
         .where(eq(roleInvitations.id, row.id));
 
+    // Accepting changes who holds a role: the roles lock, exclusive, and before the
+    // conference's row (the one lock order, services/roles.ts). Declining changes no role.
+    if (input.answer === "accept") await lockRoles(tx, row.conferenceId, "exclusive");
     // The configuration as it is when this commits says which pools there are.
     const conference = await shareConference(tx, row.conferenceId);
     if (!conference) throw dead();
@@ -715,7 +698,6 @@ export async function answerRoleInvitation(
     }
     if (issues.length) throw new Refusal(422, "invalid", { issues });
 
-    await lockRoles(tx, conference.id);
     if (inv.role === "chair") {
       await tx
         .insert(conferenceRoles)

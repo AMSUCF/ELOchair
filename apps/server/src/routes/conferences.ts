@@ -36,6 +36,7 @@ import {
   writeConfig,
 } from "../repo";
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
+import { stillChair } from "../services/roles";
 import { configToken, reviewConfig } from "../services/settings";
 import {
   COUNTED_STATUSES,
@@ -62,6 +63,10 @@ const visible = (viewer: Viewer, k: ConferenceRow) => k.phase !== "draft" || can
  * but never reconfigure it, move it or give anyone a role. It is for the conference's chairs,
  * who are one group with its admins and the site admins (isConferenceChair). Track chairs and
  * reviewers are refused.
+ *
+ * This is the check before the transaction. A route that then writes reads the chair again
+ * inside its transaction, under the conference's roles lock (stillChair, services/roles.ts): a
+ * chair removed in between changes nothing.
  */
 export async function chairInPerson(
   c: Context<AppEnv>,
@@ -168,10 +173,13 @@ export const conferenceRoutes = new Hono<AppEnv>()
     // are at that moment: submitted work stays valid, or nothing is saved (spec 02, §1.9).
     const warnings = await deps.db.transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
+      // Still a chair, read under the roles lock, which comes before the conference's row (the
+      // one lock order, services/roles.ts): someone removed since the check above saves nothing.
+      const actor = await stillChair(tx, viewer, k.id);
       const stored = await lockConference(tx, k.id);
       if (!stored) throw new Refusal(404, "not_found");
       const { review } = reviewConfig({
-        viewer,
+        viewer: actor,
         conference: stored,
         records: await loadSubmissionRecords(tx, stored),
         input: next,
@@ -308,6 +316,9 @@ export const conferenceRoutes = new Hono<AppEnv>()
     // two chairs moving it at once cannot combine into a backward move nobody forced.
     await deps.db.transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
+      // Still a chair, read under the roles lock, before movePhase() takes the conference's
+      // row: someone removed since the check above moves nothing.
+      await stillChair(tx, viewer, k.id);
       const moved = await movePhase(tx, k.id, {
         to: input.phase,
         from: input.from,
