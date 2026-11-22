@@ -1690,10 +1690,11 @@ describe("sent reviews stay valid when the settings change", () => {
   });
 
   it("a chair learns nothing of the reviews of their own proposal from what the settings refuse", async () => {
-    // The author-chair's own talk is reviewed by this committee, and the conference is in
+    // The author-chair's own talk is reviewed by this committee, and the conference has been in
     // review. Whatever narrows the committee's form is refused to them from then on, whether or
     // not a review of their talk exists and whatever one holds: the answer is made without
-    // their talk's reviews, from the phase and from the talk having been submitted.
+    // their talk's reviews, from the talk having been submitted and the conference having been
+    // in review, whichever phase it is in now.
     const hidden = (path: string) => ({
       path,
       code: "reviews_hidden",
@@ -1758,12 +1759,8 @@ describe("sent reviews stay valid when the settings change", () => {
      * The answers in every state the talk and the conference can be in afterwards: as it is,
      * withdrawn, back in a draft, and with the conference moved back out of review. If any of
      * them depended on whether a review exists, it would differ between the three times this is
-     * asked: with no review, with one, and with another one.
-     *
-     * In the first three the conference is in review, and the answers are the refusals. In the
-     * last it is not, and nothing is refused for their talk's sake, whether or not a review of it
-     * was sent while it was: the rule looks at the phase the conference is in now (spec 02,
-     * §1.9 names this case).
+     * asked: with no review, with one, and with another one. And none of them differs from the
+     * others: a conference forced back out of review has still been in review.
      */
     const inEveryState = async () => {
       const out = [await answers()];
@@ -1783,11 +1780,8 @@ describe("sent reviews stay valid when the settings change", () => {
     };
     // Before any review of their talk exists.
     const before = await answers();
-    const everywhere = await inEveryState();
-    expect(everywhere.slice(0, 3)).toEqual([before, before, before]);
-    for (const issues of everywhere[3] ?? [[]]) {
-      expect(issues.filter((issue) => issue.code === "reviews_hidden")).toEqual([]);
-    }
+    const everywhere = [before, before, before, before];
+    expect(await inEveryState()).toEqual(everywhere);
     for (const [i, [what, , path]] of probes.entries()) {
       // No number, and nothing of the review they may read (the other talk's) that the change
       // does not put outside the form.
@@ -1976,10 +1970,146 @@ describe("sent reviews stay valid when the settings change", () => {
     }
     await grantRole(t.db, { conferenceId: o.conferenceId, personId: ids.chair, role: "chair" });
 
-    // Moved back out of review, nothing is refused for the talk's sake any more, whether or not
-    // a review of it was sent meanwhile: the one case the guard leaves open (spec 02, §1.9).
+    // Forced back out of review, it has still been in review: the two are refused as before,
+    // and the chair from whom nothing is kept is refused nothing, as before.
     expect((await movePhase(o, cookies.chair, "cfp_open", "reviewing", true)).status).toBe(200);
-    for (const who of everyone) await free(who, "moved back out of review");
+    for (const who of ["authorChair", "conflictedChair"] as const) {
+      const refused = await reviewOf(o, cookies[who], narrow);
+      expect(refused.canSave, who).toBe(false);
+      expect(refused.issues, who).toEqual(hiddenAt);
+    }
+    await free("chair", "forced back out of review");
+  });
+
+  /*
+   * The sequence of review concerns RC-github---amsucf-elochair-46-001 and -003, step by step:
+   * in review, a review of a chair's own proposal is sent; that chair forces the conference back
+   * to `cfp_open` and narrows the committee's form under it; then moves forward again. Before
+   * the conference's row recorded that it has been in review, the narrowing was saved and left
+   * the sent review outside its form.
+   */
+  it("a forced step back out of review opens nothing: a chair still cannot narrow the form under a sent review of their own proposal", async () => {
+    const g = await world(t, "review-guard-back");
+    for (const who of ["chair", "authorChair"] as const) {
+      await grantRole(t.db, { conferenceId: g.conferenceId, personId: ids[who], role: "chair" });
+    }
+    for (const who of ["r1", "r2"] as const) await reviewer(g, mail(who), [POOL_A]);
+    const own = await proposal(
+      g,
+      cookies.authorChair,
+      "A chair's talk, reviewed, then stepped back",
+    );
+    const other = await proposal(g, cookies.stranger, "Another talk, reviewed beside it");
+    await closeCall(g);
+    expect((await assign(g, cookies.chair, own, ids.r2)).status).toBe(204);
+    expect((await assign(g, cookies.chair, other, ids.r1)).status).toBe(204);
+    expect((await movePhase(g, cookies.chair, "reviewing", "cfp_open")).status).toBe(200);
+    // The review of the chair's own talk: top scores, forty words, a note, a recommendation.
+    const theirs: Content = {
+      scores: Object.fromEntries(CRITERIA_A.map((key) => [key, 5])),
+      comments: words(40, "ink"),
+      chairNote: text("a note on a chair's own talk"),
+      recommendation: "accept",
+    };
+    expect((await saveReview(t, { cookie: cookies.r2 }, own, 0, true, theirs)).status).toBe(200);
+    // The other talk's: threes, ten words, no note.
+    const others: Content = {
+      scores: Object.fromEntries(CRITERIA_A.map((key) => [key, 3])),
+      comments: words(10, "ink"),
+      chairNote: "",
+      recommendation: "unsure",
+    };
+    expect((await saveReview(t, { cookie: cookies.r1 }, other, 0, true, others)).status).toBe(200);
+
+    // The author-chair forces the conference back to `cfp_open`, with a reason, as any chair may.
+    const back = await movePhase(g, cookies.authorChair, "cfp_open", "reviewing", true);
+    expect(back.status, JSON.stringify(back.json)).toBe(200);
+    const [row] = await t.db.select().from(conferences).where(eq(conferences.id, g.conferenceId));
+    expect(row?.phase).toBe("cfp_open");
+    expect(row?.reviewBeganAt).not.toBeNull();
+
+    // Each change that would leave the review of their talk outside its form is refused to
+    // them, in the review of the changes and in the save, without a number; nothing is stored.
+    const narrowings: [string, (c: ConferenceConfig) => void, string][] = [
+      [
+        "a largest score below the one given",
+        (c) => {
+          criterionIn(c, POOL_A, fit).max = 4;
+        },
+        at2(`criteria.${fit}.max`),
+      ],
+      [
+        "a most number of words below the forty written",
+        (c) => {
+          poolIn(c, POOL_A).form.comments.maxWords = 20;
+        },
+        at2("form.comments.maxWords"),
+      ],
+      [
+        "the note taken off the form",
+        (c) => {
+          poolIn(c, POOL_A).form.chairNote.enabled = false;
+        },
+        at2("form.chairNote.enabled"),
+      ],
+      [
+        "the recommendation taken off the form",
+        (c) => {
+          poolIn(c, POOL_A).form.recommendation.enabled = false;
+        },
+        at2("form.recommendation.enabled"),
+      ],
+    ];
+    const asked = async () => {
+      const out = [];
+      for (const [what, change, path] of narrowings) {
+        const shown = await reviewOf(g, cookies.authorChair, change);
+        expect(shown.canSave, what).toBe(false);
+        expect(
+          shown.issues.filter((issue) => issue.code === "reviews_hidden"),
+          what,
+        ).toEqual([{ path, code: "reviews_hidden", message: expect.any(String) }]);
+        const { config, token } = await stored(g, cookies.authorChair);
+        change(config);
+        const saved = await saveConfig(g, cookies.authorChair, config, token);
+        // The save answers with the same issues, under the code of the first: where the other
+        // talk's review, which is theirs to read, is outside too, that one comes first, counted.
+        expect(saved.status, what).toBe(409);
+        expect(saved.json.issues, what).toEqual(shown.issues);
+        expect(saved.json.error, what).toBe(shown.issues[0]?.code);
+        expect(findLeaks(saved.json, [theirs.chairNote]), what).toEqual([]);
+        expect((await stored(g, cookies.authorChair)).token, what).toBe(token);
+        out.push([shown.issues, saved.json]);
+      }
+      return out;
+    };
+    const withTheReview = await asked();
+
+    // A chair from whom nothing is kept is judged, in this phase as in any, by what the sent
+    // reviews hold: the fives are above a largest score of 4, and one review is.
+    const counted = await reviewOf(g, cookies.chair, (c) => {
+      criterionIn(c, POOL_A, fit).max = 4;
+    });
+    expect(counted.issues).toEqual(one(at2(`criteria.${fit}.max`), "reviews_above_scale", 1));
+    // And what leaves every sent review inside is theirs to save.
+    const { config, token } = await stored(g, cookies.chair);
+    poolIn(config, POOL_A).form.comments.minWords = 10;
+    poolIn(config, POOL_A).form.comments.maxWords = 40;
+    expect((await saveConfig(g, cookies.chair, config, token)).status).toBe(200);
+
+    // Forward again, the review is as it was sent, and inside the form that is stored: sent
+    // again as it is, it is taken.
+    expect((await movePhase(g, cookies.chair, "reviewing", "cfp_open")).status).toBe(200);
+    const again = await saveReview(t, { cookie: cookies.r2 }, own, 1, true, theirs);
+    expect(again.status, JSON.stringify(again.json)).toBe(200);
+
+    // None of the refusals said that the review exists: stepped back once more and with the
+    // review gone, they are the same to the letter.
+    expect((await movePhase(g, cookies.chair, "cfp_open", "reviewing", true)).status).toBe(200);
+    await t.db.delete(reviews).where(eq(reviews.submissionId, own));
+    // (The form now has the two word limits the other chair saved, which change no refusal.)
+    const withoutIt = await asked();
+    expect(withoutIt.map(([issues]) => issues)).toEqual(withTheReview.map(([issues]) => issues));
   });
 
   it("the day reviews are due is set between the day the call closes and the day decisions are sent", async () => {

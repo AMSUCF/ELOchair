@@ -1,5 +1,5 @@
 {
-  "id": "fbfe814e-ebde-4eeb-b96b-03cde293522d",
+  "id": "0fe100c9-ee2d-4492-b468-07ba95a15cf3",
   "prevId": "3d9f0415-1e4a-40cd-a36a-f78257a00923",
   "version": "7",
   "dialect": "postgresql",
@@ -732,6 +732,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "review_began_at": {
+          "name": "review_began_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

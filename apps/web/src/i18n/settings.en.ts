@@ -269,7 +269,7 @@ export const settingsEn = {
   issue_settings_reviews_sent:
     "Reviews were already sent for proposals in this format: {n}. They answered the form of the committee that reviews it now.",
   issue_settings_reviews_hidden:
-    "This committee reviews a proposal of your own, or one you have a conflict with, and the conference is in review or past it. Whether that proposal has reviews, and what they hold, is not yours to know, so narrowing the form they are written on is not yours to do. A chair who has no proposal of their own before this committee, and no conflict with one, can make this change. If there is no such chair, invite one on the People page.",
+    "A proposal of your own, or one you have a conflict with, was submitted for this committee, and the conference has been in review. Whether that proposal has reviews, and what they hold, is not yours to know, so narrowing the form they are written on is not yours to do. A chair who has no proposal of their own before this committee, and no conflict with one, can make this change. If there is no such chair, invite one on the People page.",
   issue_settings_dates_order: "The last day must not be before the first day.",
   issue_settings_final_before_conference:
     "Final materials must be due before the conference starts.",

@@ -273,7 +273,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_reviews_sent:
     "Já foram enviadas revisões de propostas neste formato: {n}. Responderam ao formulário da comissão que o revê agora.",
   issue_settings_reviews_hidden:
-    "Esta comissão revê uma proposta sua, ou uma com que tem um conflito, e o congresso está em revisão ou já a passou. Se essa proposta tem revisões, e o que dizem, não lhe cabe saber, por isso também não lhe cabe restringir o formulário em que são escritas. Pode fazer esta alteração uma pessoa da presidência que não tenha uma proposta sua perante esta comissão nem um conflito com alguma. Se não houver nenhuma, convide uma na página Pessoas.",
+    "Foi submetida a esta comissão uma proposta sua, ou uma com que tem um conflito, e o congresso já esteve em revisão. Se essa proposta tem revisões, e o que dizem, não lhe cabe saber, por isso também não lhe cabe restringir o formulário em que são escritas. Pode fazer esta alteração uma pessoa da presidência que não tenha uma proposta sua perante esta comissão nem um conflito com alguma. Se não houver nenhuma, convide uma na página Pessoas.",
   issue_settings_dates_order: "O último dia não pode ser anterior ao primeiro.",
   issue_settings_final_before_conference:
     "Os materiais finais têm de ser entregues antes de o congresso começar.",

@@ -332,6 +332,15 @@ function narrowings(was: ReviewPool, now: ReviewPool): Narrowing[] {
 }
 
 /**
+ * Whether reviews of the conference's proposals can have been written: it has been in a phase
+ * in which its reviewers can read. The mark on its row says so durably (repo.ts sets it,
+ * wherever a conference gets a phase, and nothing clears it); the phase it is in now covers a
+ * row the mark has not reached. A fact every chair of the conference knows.
+ */
+export const reviewHasBegun = (conference: Pick<ConferenceRow, "phase" | "reviewBeganAt">) =>
+  conference.reviewBeganAt !== null || reviewersCanRead(conference.phase);
+
+/**
  * Sent reviews stay valid, as submitted proposals do (spec 03, §1.8). A change that would leave
  * a review that was sent outside a scale, outside the comments' word limits, with a score for a
  * criterion that is gone, or with an answer to a note or a recommendation the form no longer
@@ -347,25 +356,30 @@ function narrowings(was: ReviewPool, now: ReviewPool): Narrowing[] {
  * their own scores from what is refused. So the reviews of such a proposal are not read here at
  * all: not what they hold, and not whether there are any. What is decided for that chair
  * instead is decided without them, from two things only: the proposal was submitted at some
- * time, and the conference is in `reviewing` or a later phase, which is when reviews are
- * written and read. From then on every narrowing of the form of the pool that reviews it is
- * refused to that chair (`reviews_hidden`, without a number), whatever became of the proposal
- * since. A chair from whom no review of that pool is kept can make the change.
- *
- * Before the conference is in review this refusal is made to nobody, because no review can be
- * written then. That leaves one case open, on purpose: a conference moved back out of review.
- * The rule looks at the phase the conference is in now, and nothing here says that it has been
- * in review before (only the audit log does, which no decision reads). There a chair can
- * narrow the form under a sent review of their own proposal and is not refused. Nothing tells
- * them so, and the review keeps what it holds.
+ * time, and the conference has been in review (reviewHasBegun: the mark on its row, which a
+ * move back out of review does not clear). From then on, and for good, every narrowing of the
+ * form of the pool that reviews it is refused to that chair (`reviews_hidden`, without a
+ * number), whatever became of the proposal since and whichever phase the conference is in. A
+ * chair from whom no review of that pool is kept can make the change. Until the conference has
+ * been in review this refusal is made to nobody: no review can have been written.
  *
  * Every other sent review is weighed by what it holds, for any chair and in any phase: also the
  * review of a proposal that has gone back to a draft or was withdrawn since, which no chair is
  * shown now. It was sent, and it is counted, once for each value it would be outside of.
+ *
+ * What the refusal tells a chair, exactly (spec 02, §1.9 has it in full). That at least one
+ * proposal kept from them was submitted at some time for a format the pool reviews, and, where
+ * the change gives a format to another pool, that it was of that format: never how many, and
+ * never which proposal. Of their own proposals they know that. Of the proposals they have a
+ * conflict with they can already work out nearly all of it: the overview on "Manage
+ * submissions" counts every proposal that is not a draft by format, kept ones included
+ * (services/reports.ts), beside a list of the ones they are shown. What the refusal adds is
+ * one case: that a proposal they have a conflict with which was submitted, and has since gone
+ * back to a draft, exists for a format of this pool.
  */
 function reviewsOutsideForm(
   viewer: PersonViewer,
-  phase: string,
+  conference: Pick<ConferenceRow, "phase" | "reviewBeganAt">,
   before: ConferenceConfig,
   after: ConferenceConfig,
   records: SubmissionRecord[],
@@ -418,8 +432,9 @@ function reviewsOutsideForm(
   }
 
   // The proposals whose reviews are kept from them (their own, and those they have a conflict
-  // with): decided without their reviews. It was submitted, and the conference is in review.
-  for (const record of reviewersCanRead(phase) ? records : []) {
+  // with): decided without their reviews. It was submitted, and the conference has been in
+  // review, whichever phase it is in now.
+  for (const record of reviewHasBegun(conference) ? records : []) {
     if (!kept.has(record.submission.id) || record.submission.submittedAt === null) continue;
     const change = changeFor(record.submission.typeKey);
     if (!change) continue;
@@ -493,7 +508,7 @@ export function reviewConfig(args: {
   review.issues = [
     ...namesRevealed(before, next, records, everAssigned),
     ...agreementsReworded(before, next),
-    ...reviewsOutsideForm(viewer, conference.phase, before, next, records, sentReviews),
+    ...reviewsOutsideForm(viewer, conference, before, next, records, sentReviews),
   ];
 
   const byCode: Record<string, number> = {};

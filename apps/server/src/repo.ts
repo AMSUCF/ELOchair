@@ -1,6 +1,7 @@
 import type { PersonViewer, SubmissionRecord, Tier } from "@elochair/policy";
 import {
   type Assignment,
+  CONFERENCE_PHASES,
   ConferenceConfig,
   type Conflict,
   type Contribution,
@@ -8,9 +9,10 @@ import {
   type Person,
   type Review,
   type RoleGrant,
+  reviewersCanRead,
   type Submission,
 } from "@elochair/schema";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "./db/client";
 import {
   apiTokens,
@@ -34,39 +36,82 @@ export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const iso = (d: Date) => d.toISOString();
 const isoOrNull = (d: Date | null) => (d ? d.toISOString() : null);
 
-export type ConferenceRow = { id: string; slug: string; phase: string; config: ConferenceConfig };
+export type ConferenceRow = {
+  id: string;
+  slug: string;
+  phase: string;
+  config: ConferenceConfig;
+  /**
+   * When the conference was first found in a phase in which reviewers can read; null if it
+   * never was. Set once and never cleared (see "The mark that review has begun" below).
+   */
+  reviewBeganAt: string | null;
+};
+
+type ConferenceDbRow = typeof conferences.$inferSelect;
+
+/** A conference's row as a record. `config` is given where it was validated already. */
+const toConference = (row: ConferenceDbRow, config?: ConferenceConfig): ConferenceRow => ({
+  id: row.id,
+  slug: row.slug,
+  phase: row.phase,
+  config: config ?? ConferenceConfig.parse(row.config),
+  reviewBeganAt: isoOrNull(row.reviewBeganAt),
+});
 
 export async function getConference(db: Db, slug: string): Promise<ConferenceRow | null> {
   const [row] = await db.select().from(conferences).where(eq(conferences.slug, slug));
-  if (!row) return null;
-  return {
-    id: row.id,
-    slug: row.slug,
-    phase: row.phase,
-    config: ConferenceConfig.parse(row.config),
-  };
+  return row ? toConference(row) : null;
 }
 
 /** A conference by its id, without a lock (lockConference and shareConference take one). */
 export async function getConferenceById(db: Db, id: string): Promise<ConferenceRow | null> {
   const [row] = await db.select().from(conferences).where(eq(conferences.id, id));
-  if (!row) return null;
-  return {
-    id: row.id,
-    slug: row.slug,
-    phase: row.phase,
-    config: ConferenceConfig.parse(row.config),
-  };
+  return row ? toConference(row) : null;
 }
 
 export async function listConferences(db: Db): Promise<ConferenceRow[]> {
   const rows = await db.select().from(conferences).orderBy(conferences.slug);
-  return rows.map((r) => ({
-    id: r.id,
-    slug: r.slug,
-    phase: r.phase,
-    config: ConferenceConfig.parse(r.config),
-  }));
+  return rows.map((r) => toConference(r));
+}
+
+/*
+ * The mark that review has begun (`conferences.review_began_at`).
+ *
+ * Reviews are written while a conference is in `reviewing`, and stay when it leaves that phase,
+ * also backwards: a chair can force a conference back to `cfp_open`. So whether reviews may
+ * exist cannot be read from the phase a conference is in now. The mark says it durably: it is
+ * set the first time the conference is found in a phase in which its reviewers can read
+ * (reviewersCanRead: `reviewing` or a later one), and is never cleared. The guard on the review
+ * form's settings decides by it (reviewsOutsideForm in services/settings.ts), where it may not
+ * look at the reviews themselves. It is a fact every chair knows, and reveals nothing.
+ *
+ * Everything that gives a conference a phase sets it, and nothing else writes `phase`:
+ * - createConferenceIfMissing and saveConference, for a conference created in such a phase, or
+ *   put into one (saveConference with a phase, which only fixtures and new conferences pass);
+ * - movePhase, which every move through the API and the CLI goes through, when the conference
+ *   moves into such a phase, and also when it moves out of one with the mark still empty (a
+ *   conference that was in review before this column existed, or under an earlier version of
+ *   the app, which does not set it);
+ * - markReviewBegun, once at every start of the server: a conference found in such a phase
+ *   without the mark gets it, before any request is served.
+ */
+
+/** The phases in which reviewers can read, as the database is asked for them. */
+const REVIEW_PHASES = CONFERENCE_PHASES.filter(reviewersCanRead);
+
+/**
+ * At the start of the server: every conference that is in a phase in which reviewers can read,
+ * and has no mark yet, gets it. Returns how many did. These are the conferences that reached
+ * review before the column existed, or while an earlier version of the app was running.
+ */
+export async function markReviewBegun(db: Db, now: Date): Promise<number> {
+  const marked = await db
+    .update(conferences)
+    .set({ reviewBeganAt: now })
+    .where(and(isNull(conferences.reviewBeganAt), inArray(conferences.phase, REVIEW_PHASES)))
+    .returning({ id: conferences.id });
+  return marked.length;
 }
 
 /** Create a conference only if its slug is new. Returns null when it already exists. */
@@ -78,16 +123,26 @@ export async function createConferenceIfMissing(
   const config = ConferenceConfig.parse(input);
   const [row] = await db
     .insert(conferences)
-    .values({ slug: config.slug, config, phase })
+    .values({
+      slug: config.slug,
+      config,
+      phase,
+      // Created in review, or past it: it has been in review from its first moment.
+      ...(reviewersCanRead(phase) ? { reviewBeganAt: new Date() } : {}),
+    })
     .onConflictDoNothing({ target: conferences.slug })
     .returning();
-  return row ? { id: row.id, slug: row.slug, phase: row.phase, config } : null;
+  return row ? toConference(row, config) : null;
 }
 
 /**
  * Create or replace a conference's configuration (validated first). `phase` is written as is,
  * also over an existing conference's phase, without the forward-only check: only fixtures and
  * new conferences pass it. To move an existing conference, use movePhase().
+ *
+ * With a phase, the mark that review has begun is kept in step: set for a conference created in
+ * a phase in which reviewers can read, and for an existing one that is put into such a phase or
+ * taken out of one with the mark still empty. A mark that is there stays as it is.
  */
 export async function saveConference(
   db: Db,
@@ -95,16 +150,36 @@ export async function saveConference(
   phase?: string,
 ): Promise<ConferenceRow> {
   const config = ConferenceConfig.parse(input);
+  const now = new Date();
+  const into = phase !== undefined && reviewersCanRead(phase);
   const [row] = await db
     .insert(conferences)
-    .values({ slug: config.slug, config, ...(phase ? { phase } : {}) })
+    .values({
+      slug: config.slug,
+      config,
+      ...(phase ? { phase } : {}),
+      ...(into ? { reviewBeganAt: now } : {}),
+    })
     .onConflictDoUpdate({
       target: conferences.slug,
-      set: { config, updatedAt: new Date(), ...(phase ? { phase } : {}) },
+      set: {
+        config,
+        updatedAt: now,
+        ...(phase
+          ? {
+              phase,
+              // In an upsert, `conferences.phase` on the right-hand side is the phase the row
+              // holds before this write.
+              reviewBeganAt: into
+                ? sql`coalesce(${conferences.reviewBeganAt}, ${now.toISOString()}::timestamptz)`
+                : sql`coalesce(${conferences.reviewBeganAt}, case when ${inArray(conferences.phase, REVIEW_PHASES)} then ${now.toISOString()}::timestamptz end)`,
+            }
+          : {}),
+      },
     })
     .returning();
   if (!row) throw new Error("failed to save conference");
-  return { id: row.id, slug: row.slug, phase: row.phase, config };
+  return toConference(row, config);
 }
 
 /**
@@ -117,13 +192,7 @@ export async function lockConference(tx: Db, conferenceId: string): Promise<Conf
     .from(conferences)
     .where(eq(conferences.id, conferenceId))
     .for("update");
-  if (!row) return null;
-  return {
-    id: row.id,
-    slug: row.slug,
-    phase: row.phase,
-    config: ConferenceConfig.parse(row.config),
-  };
+  return row ? toConference(row) : null;
 }
 
 /**
@@ -139,13 +208,7 @@ export async function shareConference(tx: Db, conferenceId: string): Promise<Con
     .from(conferences)
     .where(eq(conferences.id, conferenceId))
     .for("share");
-  if (!row) return null;
-  return {
-    id: row.id,
-    slug: row.slug,
-    phase: row.phase,
-    config: ConferenceConfig.parse(row.config),
-  };
+  return row ? toConference(row) : null;
 }
 
 /** Replace a conference's configuration. Run it under lockConference(), after the checks. */
@@ -191,6 +254,10 @@ export type PhaseMoveResult =
  * updates it only while it still holds that phase. The caller audits the move in the same
  * transaction. Every phase change (API and CLI) goes through here.
  *
+ * It also sets the mark that review has begun, where the conference has none yet: when it moves
+ * into a phase in which reviewers can read, and when it moves out of one (it was in review
+ * before anything marked it). A forced move back never clears the mark.
+ *
  * `move.from` is the phase the caller believes the conference is in. When it is given and is no
  * longer true, nothing moves: a step confirmed on a page that is out of date must not become a
  * jump of several phases, forced or not.
@@ -201,19 +268,22 @@ export async function movePhase(
   move: { to: string; from?: string; force?: boolean; reason?: string | null; now: Date },
 ): Promise<PhaseMoveResult> {
   const [row] = await tx
-    .select({ phase: conferences.phase })
+    .select({ phase: conferences.phase, reviewBeganAt: conferences.reviewBeganAt })
     .from(conferences)
     .where(eq(conferences.id, conferenceId))
     .for("update");
   if (!row) return { ok: false, code: "not_found" };
   const from = row.phase;
+  // Read under the row's lock, so two moves at once cannot both find it empty.
+  const begins =
+    row.reviewBeganAt === null && (reviewersCanRead(move.to) || reviewersCanRead(from));
   if (move.from !== undefined && move.from !== from) return { ok: false, code: "stale", from };
   if (!phaseMoveAllowed(from, move.to, move.force, move.reason)) {
     return { ok: false, code: "phase_backwards", from };
   }
   const updated = await tx
     .update(conferences)
-    .set({ phase: move.to, updatedAt: move.now })
+    .set({ phase: move.to, updatedAt: move.now, ...(begins ? { reviewBeganAt: move.now } : {}) })
     .where(and(eq(conferences.id, conferenceId), eq(conferences.phase, from)))
     .returning({ id: conferences.id });
   return updated.length ? { ok: true, from } : { ok: false, code: "stale", from };
@@ -442,12 +512,7 @@ export async function loadSubmission(
   if (!row) return null;
   const [k] = await db.select().from(conferences).where(eq(conferences.id, row.conferenceId));
   if (!k) return null;
-  const conference = {
-    id: k.id,
-    slug: k.slug,
-    phase: k.phase,
-    config: ConferenceConfig.parse(k.config),
-  };
+  const conference = toConference(k);
   const [rec] = await loadSubmissionRecords(db, conference, { submissionId });
   return rec ? { conference, rec } : null;
 }

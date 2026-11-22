@@ -276,7 +276,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   issue_settings_reviews_sent:
     "Ya se enviaron revisiones de propuestas en este formato: {n}. Respondieron al formulario del comité que lo revisa ahora.",
   issue_settings_reviews_hidden:
-    "Este comité revisa una propuesta tuya, o una con la que tienes un conflicto, y el congreso está en revisión o ya la ha pasado. Si esa propuesta tiene revisiones, y lo que dicen, no te corresponde saberlo, así que tampoco te corresponde restringir el formulario en el que se escriben. Puede hacer este cambio una persona de la presidencia que no tenga una propuesta propia ante este comité ni un conflicto con alguna. Si no hay ninguna, invita a una en la página Personas.",
+    "Se envió a este comité una propuesta tuya, o una con la que tienes un conflicto, y el congreso ya ha estado en revisión. Si esa propuesta tiene revisiones, y lo que dicen, no te corresponde saberlo, así que tampoco te corresponde restringir el formulario en el que se escriben. Puede hacer este cambio una persona de la presidencia que no tenga una propuesta propia ante este comité ni un conflicto con alguna. Si no hay ninguna, invita a una en la página Personas.",
   issue_settings_dates_order: "El último día no puede ser anterior al primero.",
   issue_settings_final_before_conference:
     "Los materiales finales deben entregarse antes de que empiece el congreso.",

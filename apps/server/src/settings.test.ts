@@ -1245,6 +1245,7 @@ describe("a review never carries anyone's words (house rule 2)", () => {
     slug: "leak-call",
     phase: "cfp_open",
     config,
+    reviewBeganAt: null,
   };
   const chair: PersonViewer = {
     kind: "person",

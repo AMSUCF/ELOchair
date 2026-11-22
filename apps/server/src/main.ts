@@ -6,7 +6,7 @@ import { makeDeps } from "./deps";
 import { loadEnv } from "./env";
 import { seedChairReviews, seedOpenCall, seedPhaseRoom, seedSandbox } from "./fixtures";
 import { deliverPending } from "./mail";
-import { createConferenceIfMissing, getConference } from "./repo";
+import { createConferenceIfMissing, getConference, markReviewBegun } from "./repo";
 
 const env = loadEnv();
 const dataDir = env.DATA_DIR ?? (env.DATABASE_URL ? undefined : ".data/pglite");
@@ -16,6 +16,10 @@ const database = openDatabase({
   migrationsDir: env.MIGRATIONS_DIR,
 });
 if (env.MIGRATE_ON_START || !env.DATABASE_URL) await database.migrate();
+// A conference that is in review, or past it, and was never marked as having been (it got
+// there before the mark existed, or under an earlier version of the app) is marked now, before
+// any request is served: the guard on the review form's settings decides by the mark.
+await markReviewBegun(database.db, new Date());
 
 if (env.SEED_ON_START) {
   await createConferenceIfMissing(database.db, conferences.elo2026, "archived");

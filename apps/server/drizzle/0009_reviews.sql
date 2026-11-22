@@ -19,6 +19,7 @@ CREATE TABLE "reviews" (
 );
 --> statement-breakpoint
 ALTER TABLE "assignment_releases" ADD COLUMN "note" text;--> statement-breakpoint
+ALTER TABLE "conferences" ADD COLUMN "review_began_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "reviews" ADD CONSTRAINT "reviews_conference_id_conferences_id_fk" FOREIGN KEY ("conference_id") REFERENCES "public"."conferences"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reviews" ADD CONSTRAINT "reviews_submission_id_submissions_id_fk" FOREIGN KEY ("submission_id") REFERENCES "public"."submissions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reviews" ADD CONSTRAINT "reviews_reviewer_id_people_id_fk" FOREIGN KEY ("reviewer_id") REFERENCES "public"."people"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

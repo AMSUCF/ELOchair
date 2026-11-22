@@ -48,6 +48,14 @@ export const conferences = pgTable(
     config: jsonb("config").notNull(),
     createdAt: created(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
+    /**
+     * When the conference was first found in a phase in which its reviewers can read
+     * (`reviewing` or a later one). Set once, by whatever gives a conference its phase
+     * (repo.ts), and never cleared: a conference that is moved back out of review has still been
+     * in review, and reviews of its proposals may have been sent. It says nothing that the
+     * chairs do not know. Null for a conference that has never been in such a phase.
+     */
+    reviewBeganAt: ts("review_began_at"),
   },
   (t) => [
     check(
