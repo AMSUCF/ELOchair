@@ -2843,11 +2843,18 @@ test.describe("conference settings", () => {
       form.getByRole("group", { name: "When proposals are assigned to you" }),
     ).toHaveCount(0);
     await expect(form.getByRole("checkbox")).toHaveCount(0);
-    await expect(
-      form.getByText(
-        "Invitations and sign-in emails are always sent: without them you could not take part.",
-      ),
-    ).toBeVisible();
+    // What cannot be turned off is said once, under the heading: not again for each of the
+    // four conferences this chair has.
+    const always = emails.getByText(
+      "Invitations and sign-in emails are always sent: without them you could not take part.",
+    );
+    await expect(always).toHaveCount(1);
+    await expect(always).toBeVisible();
+    await expect(emails.locator("form")).toHaveCount(4);
+    await expect(emails.locator("> *").nth(1)).toHaveText(
+      "Invitations and sign-in emails are always sent: without them you could not take part.",
+    );
+    await expect(form.getByText("Invitations and sign-in emails")).toHaveCount(0);
     const title = room.conference.title.en ?? "";
     const save = form.getByRole("button", { name: `Save email choices for ${title}` });
     for (const label of await notices.locator("label").all()) await expectTouchTarget(label);

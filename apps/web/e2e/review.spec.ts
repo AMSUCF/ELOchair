@@ -894,12 +894,12 @@ test.describe("a reviewer's screens", () => {
       name: "Remind me 3 days before reviews are due",
     });
     await expect(reminder).toBeChecked({ checked: here.reviewer.reminder });
-    // What cannot be turned off is said, and why.
-    await expect(
-      emails.getByText(
-        "Invitations and sign-in emails are always sent: without them you could not take part.",
-      ),
-    ).toBeVisible();
+    // What cannot be turned off is said, and why: once, right under the heading.
+    await expect(emails.locator("> *").first()).toHaveText("Emails about reviewing");
+    await expect(emails.locator("> *").nth(1)).toHaveText(
+      "Invitations and sign-in emails are always sent: without them you could not take part.",
+    );
+    await expect(emails.getByText("Invitations and sign-in emails")).toHaveCount(1);
     // The chairs' notices are not a reviewer's to choose: they are not on the page.
     await expect(emails.getByRole("group", { name: /^As a chair/ })).toHaveCount(0);
     const save = emails.getByRole("button", { name: `Save email choices for ${title}` });

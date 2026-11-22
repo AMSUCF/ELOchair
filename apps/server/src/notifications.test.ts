@@ -1,10 +1,15 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { findLeaks } from "@elochair/policy/testing";
 import type { ConferenceConfig } from "@elochair/schema";
 import { and, desc, eq, gt, inArray, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { runCli } from "./cli";
 import {
   auditLog,
   conferenceRoles,
+  conferences,
   conflicts,
   notificationChoices,
   notifications,
@@ -1481,6 +1486,183 @@ describe("what an email may carry", () => {
     }
     expect((await settings()).token).toBe(before.token);
     expect((await save(undefined)).status).toBe(200);
+  });
+});
+
+/*
+ * Going back a version (spec 02, §1.9). A later version of the app may have stored the wording
+ * of an email this version does not send; after a roll-back the conference must still load.
+ * So that wording is left out where a stored configuration is read (readStoredConfig, in
+ * repo.ts's toConference, the one place), and only there: whatever comes in is still refused.
+ */
+describe("a stored configuration that holds an email this version does not know", () => {
+  /** An email this version sends, reworded; and one it has never heard of, as stored by a later one. */
+  const KNOWN = { new_assignments: { subject: { en: "{count} for you at {conference}" } } };
+  const LATER = {
+    decision_sent: {
+      subject: { en: "{conference}: a decision on your proposal" },
+      body: { en: "{outcome}\n\n{comments}\n\n{link}" },
+    },
+  };
+  const row = async (w: World) => {
+    const [found] = await t.db.select().from(conferences).where(eq(conferences.id, w.conferenceId));
+    if (!found) throw new Error("no conference");
+    return found.config as Record<string, unknown> & { messages?: unknown };
+  };
+  /** Written straight to the row, as another version of the app left it: no route stores it. */
+  const store = async (w: World, messages: unknown) => {
+    const { messages: _now, ...rest } = await row(w);
+    await t.db
+      .update(conferences)
+      .set({ config: messages === undefined ? rest : { ...rest, messages } })
+      .where(eq(conferences.id, w.conferenceId));
+  };
+  const settings = async (w: World) =>
+    (await call(t.public, "GET", at(w, "/settings"), { cookie: w.chair.cookie })).json as {
+      config: ConferenceConfig;
+      token: string;
+    };
+  const send = async (w: World, method: "PUT" | "POST", rest: string, config: unknown) =>
+    call(t.public, method, at(w, rest), {
+      cookie: w.chair.cookie,
+      ifMatch: (await settings(w)).token,
+      body: config,
+    });
+
+  it("loads: the conference's page, the list of conferences and the chairs' settings are served, without that email", async () => {
+    const w = await world();
+    await store(w, { ...KNOWN, ...LATER });
+    const page = await call(t.public, "GET", at(w));
+    expect(page.status).toBe(200);
+    expect(page.json.config.messages).toEqual(KNOWN);
+    const list = await call(t.public, "GET", "/api/conferences");
+    expect(list.status).toBe(200);
+    expect(list.json.conferences.map((k: { slug: string }) => k.slug)).toContain(w.slug);
+    expect((await settings(w)).config.messages).toEqual(KNOWN);
+    // Everything else in it applies: it is the configuration without that one email.
+    await store(w, KNOWN);
+    expect((await call(t.public, "GET", at(w))).json).toEqual(page.json);
+    // Where that email was all the wording there was, the conference has none of its own.
+    await store(w, LATER);
+    const bare = await call(t.public, "GET", at(w));
+    expect(bare.status).toBe(200);
+    expect(bare.json.config).not.toHaveProperty("messages");
+    // Reading changes nothing in the database: the later version finds its wording again.
+    expect((await row(w)).messages).toEqual(LATER);
+  });
+
+  it("sends the email it does know in the chairs' words", async () => {
+    const w = await world();
+    const r = await reviewer(w);
+    const id = await talk(w);
+    await inReview(w);
+    await chosen(r, w, { assignments: "each" });
+    await store(w, { ...KNOWN, ...LATER });
+    await assigned(w, id, r);
+    expect(await job(w)).toMatchObject({ emails: 1 });
+    const [mail] = await mailTo(r);
+    expect(mail?.subject).toBe("1 for you at Test call");
+    // The text was not reworded: it is the standard one.
+    expect(mail?.text).toContain("The chairs of Test call have assigned proposals to you");
+    expect(JSON.stringify(mail)).not.toContain("decision");
+  });
+
+  it("still refuses the same wording when it comes in: the settings save, the review of a change, and import-config", async () => {
+    const w = await world();
+    const { config } = await settings(w);
+    const incoming = { ...config, messages: { ...KNOWN, ...LATER } };
+    const saved = await send(w, "PUT", "/config", incoming);
+    expect(saved.status).toBe(400);
+    expect(saved.json.error).toBe("invalid");
+    const reviewed = await send(w, "POST", "/config/preview", incoming);
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.json.canSave).toBe(false);
+    expect(reviewed.json.issues).toMatchObject([{ path: "messages" }]);
+    // The server's own command reads a file through the same schema.
+    const dir = await mkdtemp(join(tmpdir(), "elochair-stored-config-"));
+    try {
+      const file = join(dir, "later.json");
+      await writeFile(file, JSON.stringify(incoming));
+      const out = { log: () => {}, error: () => {}, table: () => {} };
+      const cli = runCli(["import-config", file], {
+        db: t.db,
+        env: { NODE_ENV: "development" },
+        migrate: async () => {},
+        user: "tester",
+        out,
+      });
+      await expect(cli).rejects.toThrow(/Unrecognized key/);
+      // The email it does know is taken, by all three.
+      await writeFile(file, JSON.stringify({ ...config, messages: KNOWN }));
+      expect(
+        await runCli(["import-config", file], {
+          db: t.db,
+          env: { NODE_ENV: "development" },
+          migrate: async () => {},
+          user: "tester",
+          out,
+        }),
+      ).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+    expect((await row(w)).messages).toEqual(KNOWN);
+  });
+
+  it("is not written back by a settings save: this version stores the configuration as it read it", async () => {
+    const w = await world();
+    await store(w, { ...KNOWN, ...LATER });
+    // A save that changes nothing writes nothing: what was left out is still stored.
+    const { config } = await settings(w);
+    expect((await send(w, "PUT", "/config", config)).status).toBe(200);
+    expect((await row(w)).messages).toEqual({ ...KNOWN, ...LATER });
+    // A save that changes something stores what the chair's screen showed, and no more.
+    const changed = await send(w, "PUT", "/config", { ...config, host: "Another host" });
+    expect(changed.status).toBe(200);
+    const after = await row(w);
+    expect(after.host).toBe("Another host");
+    expect(after.messages).toEqual(KNOWN);
+    // What the save is recorded as having changed is the host, and nothing about an email.
+    const [audited] = await t.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.conferenceId, w.conferenceId),
+          eq(auditLog.action, "conference.config_updated"),
+        ),
+      );
+    const details = (audited?.details ?? {}) as { changes?: { path: string }[] };
+    expect(details.changes?.map((c) => c.path)).toEqual(["host"]);
+  });
+
+  it("still refuses on read what it refused before: an unknown part or language of an email it sends, a text it cannot send, and messages with nothing in them", async () => {
+    const w = await world();
+    const cases: [string, unknown][] = [
+      ["an unknown part", { invitation: { footer: { en: "Bye." } } }],
+      ["a language mail is not written in", { draft_deleted: { body: { fr: "Oubliez." } } }],
+      ["a text without its link", { invitation: { body: { en: "You are invited." } } }],
+      ["another email's placeholder", { draft_deleted: { body: { en: "Gone: {title}" } } }],
+      ["nothing in it", {}],
+    ];
+    try {
+      for (const [what, messages] of cases) {
+        // On its own, and beside an email this version does not know: that one is left out,
+        // and excuses nothing else.
+        for (const stored of [messages, { ...(messages as object), ...LATER }]) {
+          if (what === "nothing in it" && stored !== messages) continue;
+          await store(w, stored);
+          const page = await call(t.public, "GET", at(w));
+          expect(page.status, what).toBe(400);
+          expect(page.json.error, what).toBe("invalid");
+          expect((await call(t.public, "GET", "/api/conferences")).status, what).toBe(400);
+        }
+      }
+    } finally {
+      await store(w, undefined);
+    }
+    expect((await call(t.public, "GET", at(w))).status).toBe(200);
+    expect((await call(t.public, "GET", "/api/conferences")).status).toBe(200);
   });
 });
 

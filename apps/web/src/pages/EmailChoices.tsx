@@ -14,7 +14,8 @@ import { Localized, useHashTarget } from "../ui";
  * them, at each conference where they review or chair. A reviewer chooses how they are told of
  * new assignments and whether they are reminded before reviews are due; a chair chooses how
  * they are told of what happens in the review. Each part is shown only to someone it applies
- * to, and nothing at all to someone who neither reviews nor chairs anywhere.
+ * to, and nothing at all to someone who neither reviews nor chairs anywhere. What cannot be
+ * turned off (invitations, the sign-in email) is said once, under the heading.
  *
  * Every one of these emails links here ("#emails"): the heading takes focus when it does.
  */
@@ -34,6 +35,8 @@ export function EmailChoicesSection({ conferences }: { conferences: EmailChoices
       <h2 id="emails" tabIndex={-1}>
         {t("emailsTitle")}
       </h2>
+      {/* Said once, for every conference below: what no choice here turns off. */}
+      <p className="meta">{t("emailsAlways")}</p>
       {conferences.map((k) => (
         <ConferenceChoices key={k.conference.slug} initial={k} />
       ))}
@@ -159,7 +162,6 @@ function ConferenceChoices({ initial }: { initial: EmailChoices }) {
           onChange={changed(setNotices)}
         />
       )}
-      <p className="meta">{t("emailsAlways")}</p>
       <p className="actions">
         <button
           type="submit"

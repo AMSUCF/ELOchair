@@ -210,7 +210,7 @@ The reviewer's part, from the invitation (§1.2) to the last review, is three sc
   - a chair, notices about reviewing (the two to chairs, together): each one, one summary a day (unless they choose otherwise), or none. A summary is one email for each of the two kinds, and the page says so.
   - Each part is shown only to someone it applies to: the first two to someone who holds the reviewer's role at that conference, the third to someone who holds the `chair` or the `admin` role there. A site admin who holds no role there is not written to. Nothing is shown for an archived conference.
   - Saving is one press for a conference, and the page says that it is saved. A choice is the person's own: no chair sets it for them, and no agent sees or changes it.
-- Invitations and the sign-in email cannot be turned off: without them the person could not take part. The page says so. (Decisions, when they are built, cannot be turned off either.)
+- Invitations and the sign-in email cannot be turned off: without them the person could not take part. The page says so once, under the section's heading, whatever the number of conferences below it. (Decisions, when they are built, cannot be turned off either.)
 - **What is recorded, and when.** What happens is written down when it happens, in the same transaction as what caused it, as a notification for each person to be told: who, which conference, which proposal, what kind, when. No email is made then, and no choice is read.
   - A proposal is **assigned**: one for the reviewer.
   - A reviewer **gives a proposal back**: one for each person who holds the `chair` or the `admin` role at the conference, with the reason.
@@ -319,6 +319,20 @@ Built in step 6, the emails (§1.7):
   - `notifications`: one row for each person to be told of one thing. `conference_id`, `person_id` and `submission_id` (all three cascade), `kind` (`assigned`, `declined`, `reviews_complete`), `reason` (for `declined`: `conflict`, `expertise` or `time`), `created_at`, `status` (`pending`, then `sent` or `dropped`) and `done_at` (set exactly when it is no longer pending). IDs, enumerations and times: nothing a person typed.
   - `review_reminders`: one row for a conference at most (cascade), written with its reminders: `reviews_due` (the day it was for, which is what keeps that day from being announced twice) and `sent_at`.
   - The version before reads and writes none of the three: run on the same database, it sends none of these emails, and what happens meanwhile is not recorded.
+- **Going back a version.**
+  - **To the version before this step** (the reviewer's screens, or any earlier one): it does not know the four messages above, and refuses the stored configuration of a conference whose chairs reworded one of them (400 on that conference's pages and on the list of conferences). Before going back, put those four emails back to the standard text on the settings screen, or take them out of the stored configuration:
+    ```sql
+    update conferences
+       set config = case
+         when (config->'messages') - array['new_assignments','review_reminder','reviewer_declined','reviews_complete'] = '{}'::jsonb
+           then config - 'messages'
+         else jsonb_set(config, '{messages}',
+           (config->'messages') - array['new_assignments','review_reminder','reviewer_declined','reviews_complete'])
+       end
+     where config->'messages' ?| array['new_assignments','review_reminder','reviewer_declined','reviews_complete'];
+    ```
+    A settings save under that version also stores the configuration as it reads it, so `rules.reviewReminderDays` is dropped: the reminder is three days before again until a chair sets the number again.
+  - **From this version on, to this version or a later one:** nothing has to be done first. A stored configuration is read through `readStoredConfig` (spec 02, §1.9): the wording of an email that the running version does not know is left out, and the conference loads. A settings save under the older version does not write that wording back; the email is in its standard text when the newer version returns. This covers an email that a later step adds under a new key. It does not cover a new placeholder, part or language for an email that exists already: an older version refuses a text that uses one, as it always has.
 - Schema: `NOTICE_FREQUENCIES`, `NOTIFICATION_KINDS`, `NotificationChoices` and its defaults, the input `NotificationChoicesInput`, the constants `REVIEW_EMAILS` (8:00, three days, at most thirty), and Zod-free in `notifications.ts`: `hourOnDay`, `dailyHourAtOrBefore`, `reviewReminderDays` and `reviewReminderWindow`. In `messages.ts`: the app's words for the three reasons (`DECLINE_REASON_WORDS`) and the sentence about the day reviews are due (`reviewsDueSentence`).
 - Policy, in `packages/policy` (`notifications.ts`): `emailRoles` (whose these emails are), `projectEmailChoices()` (a person's own choices, for "Your account"), `notificationHolds` (whether something still holds when the email is made), `noticesWait` (whether what waits is left for now, asked before anything of a proposal is read), `planNotices` (what is made of what waits: emails that are a number and reasons, and what is dropped) and `unsentReviews` (what the reminder counts).
 - Server: `services/notifications.ts` records (`recordNotifications`) and holds the job (`runNotifications`), which `main.ts` runs on its mail timer, every half minute, before it delivers the outbox.

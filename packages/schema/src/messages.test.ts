@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ConferenceConfig, type ConferenceConfigInput, ContributionRole } from "./config";
+import {
+  ConferenceConfig,
+  type ConferenceConfigInput,
+  ContributionRole,
+  readStoredConfig,
+  withoutUnknownEmails,
+} from "./config";
 import { LIMITS, ROLE_INVITATIONS } from "./limits";
 import {
   ANSWER_WORDS,
@@ -1411,5 +1417,117 @@ describe("a conference's own wording in its configuration", () => {
       { path: "messages.invitation.body.en", params: { code: "message_invisible" } },
       { path: "messages.draft_deleted" },
     ]);
+  });
+});
+
+/*
+ * Reading a configuration back from where it was stored (readStoredConfig). A later version of
+ * the app may have stored the wording of an email this version does not send: after a
+ * roll-back the conference must still load. Nothing else about reading is any more lenient
+ * than saving, and nothing about saving changes.
+ */
+describe("a stored configuration that holds an email this version does not know", () => {
+  /** An email a later version might add, as that version would have stored its wording. */
+  const LATER = {
+    decision_sent: {
+      subject: { en: "{conference}: a decision on your proposal" },
+      body: { en: "{outcome}\n\n{comments}\n\n{link}" },
+    },
+  };
+  const KNOWN = { draft_deleted: { body: { es: "Olvídalo: {conference}." } } };
+  const stored = (messages: unknown) => ({ ...input, messages });
+  const refusedOnRead = (candidate: unknown) => {
+    try {
+      readStoredConfig(candidate);
+      return [];
+    } catch (err) {
+      return (err as { issues: { path: (string | number)[] }[] }).issues.map((issue) =>
+        issue.path.join("."),
+      );
+    }
+  };
+
+  it("loads without it, and with everything else the configuration holds", () => {
+    const read = readStoredConfig(stored({ ...KNOWN, ...LATER }));
+    expect(read.messages).toEqual(KNOWN);
+    // Everything else is what reading the configuration without that email gives.
+    expect(read).toEqual(ConferenceConfig.parse(stored(KNOWN)));
+    // Whatever the unknown email holds: it is not this version's to judge.
+    for (const anything of [{}, null, "text", 5, { footer: { fr: "\u202E" } }]) {
+      expect(readStoredConfig(stored({ ...KNOWN, made_up: anything })).messages).toEqual(KNOWN);
+    }
+  });
+
+  it("holds no messages at all where that email was the only wording stored", () => {
+    const read = readStoredConfig(stored(LATER));
+    expect(read).not.toHaveProperty("messages");
+    expect(read).toEqual(ConferenceConfig.parse(input));
+    // Stored with nothing in it to begin with is still refused: only what was left out counts.
+    expect(refusedOnRead(stored({}))).toEqual(["messages"]);
+  });
+
+  it("is still refused when it comes in: only reading leaves it out", () => {
+    for (const messages of [LATER, { ...KNOWN, ...LATER }]) {
+      const parsed = ConferenceConfig.safeParse(stored(messages));
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues.map((issue) => issue.path.join("."))).toEqual(["messages"]);
+    }
+  });
+
+  it("leaves out nothing else, and changes nothing where every email is known", () => {
+    const plain = stored(KNOWN);
+    // The very same object where there is nothing to leave out.
+    expect(withoutUnknownEmails(plain)).toBe(plain);
+    expect(withoutUnknownEmails(input)).toBe(input);
+    for (const odd of [null, undefined, "text", 5, [], { messages: [] }, { messages: "x" }]) {
+      expect(withoutUnknownEmails(odd)).toBe(odd);
+    }
+    // Only keys of `messages` itself are looked at, and what is handed in is not changed.
+    const both = stored({ ...KNOWN, ...LATER });
+    const before = JSON.stringify(both);
+    expect(withoutUnknownEmails(both)).toEqual(plain);
+    expect(JSON.stringify(both)).toBe(before);
+    // Every email this version sends is known to it.
+    const every = Object.fromEntries(MESSAGE_KEYS.map((key) => [key, {}]));
+    expect(withoutUnknownEmails({ messages: every })).toEqual({ messages: every });
+  });
+
+  it("refuses on reading whatever is refused on saving, everywhere else", () => {
+    const cases: [string, unknown, string[]][] = [
+      [
+        "an unknown part of an email it sends",
+        { invitation: { footer: { en: "Bye." } } },
+        ["messages.invitation"],
+      ],
+      [
+        "a language the app does not write mail in",
+        { draft_deleted: { body: { fr: "Oubliez." } } },
+        ["messages.draft_deleted.body"],
+      ],
+      [
+        "a text without a placeholder it must hold",
+        { invitation: { body: { en: "You are invited." } } },
+        ["messages.invitation.body.en"],
+      ],
+      [
+        "a placeholder the email does not have",
+        { draft_deleted: { body: { en: "Gone: {title}" } } },
+        ["messages.draft_deleted.body.en"],
+      ],
+      ["an email with nothing written", { draft_deleted: {} }, ["messages.draft_deleted"]],
+    ];
+    for (const [what, messages, paths] of cases) {
+      // On its own, and beside an email this version does not know: leaving that one out
+      // excuses nothing else.
+      for (const candidate of [stored(messages), stored({ ...(messages as object), ...LATER })]) {
+        expect(refusedOnRead(candidate), what).toEqual(paths);
+        expect(ConferenceConfig.safeParse(stored(messages)).success, what).toBe(false);
+      }
+    }
+    // And outside the emails: a configuration that is not one is not read.
+    expect(refusedOnRead({ ...input, messages: LATER, timezone: "Nowhere/At_All" })).toEqual([
+      "timezone",
+    ]);
+    expect(refusedOnRead({ ...input, messages: LATER, reviewPools: [] })).toContain("reviewPools");
   });
 });

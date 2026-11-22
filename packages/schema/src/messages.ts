@@ -46,6 +46,12 @@ export function mailLanguagesFor(mainLanguage: string): MailLang[] {
  * The messages, by key. Keys are stored in configurations and in the audit log: one is never
  * renamed or reused. A stored configuration is read through the schema, so removing a key or a
  * placeholder would make a conference that uses it unreadable.
+ *
+ * Adding a key is safe to take back. The wording of an email this version does not know (one a
+ * later version added, found after the app was rolled back) is left out when a stored
+ * configuration is read, so the conference loads: readStoredConfig in config.ts. A new
+ * placeholder, part or language of an email that exists already has no such way back: an
+ * earlier version refuses a text that uses one.
  */
 export const MESSAGE_KEYS = [
   "invitation",
