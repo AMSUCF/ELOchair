@@ -88,7 +88,7 @@ async function setName(page: Page, name: string) {
 
 async function start(page: Page, format: string) {
   await page.goto(`/en/c/${CALL}`);
-  await page.getByRole("link", { name: "Submit a proposal" }).click();
+  await page.getByRole("link", { name: "Start a proposal" }).click();
   await page.getByRole("radio", { name: new RegExp(format) }).check();
   await page.getByRole("radio", { name: "In person" }).check();
   await page.getByRole("button", { name: /^Start a / }).click();
@@ -231,7 +231,9 @@ test("submit a talk from a phone: word count, self-identification, co-author, ag
   await signIn(page, request, owner);
   await setName(page, "Ana Testing Owner");
   await page.goto(`/en/c/${CALL}`);
-  await expect(page.getByText(/^Submissions are open until/)).toBeVisible();
+  // The call's page invites: it says the call is open, and when proposals are due.
+  await expect(page.locator(".hero-eyebrow")).toContainText("Call for proposals");
+  await expect(page.getByText("Proposals due")).toBeVisible();
   await expectAccessibleInBothThemes(page);
   await start(page, "Paper");
   await expectAccessible(page);
@@ -411,7 +413,7 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await signIn(page, request, "e2e-workshop@example.org");
   await setName(page, "Wanda Workshop");
   await page.goto(`/en/c/${CALL}`);
-  await page.getByRole("link", { name: "Submit a proposal" }).click();
+  await page.getByRole("link", { name: "Start a proposal" }).click();
   // The seven formats submitted here are offered; the one taken by email is not.
   await expect(page.getByRole("radio")).toHaveCount(7 + 3); // formats, and how you take part
   await expect(

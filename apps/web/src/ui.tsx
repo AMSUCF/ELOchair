@@ -7,7 +7,9 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { type Lang, type MessageKey, translate, useT } from "./i18n";
 import { statusKey } from "./labels";
 
@@ -26,10 +28,12 @@ export function PageHeading({
   children,
   title,
   focusOnMount = false,
+  className,
 }: {
   children: ReactNode;
   title?: string;
   focusOnMount?: boolean;
+  className?: string;
 }) {
   const { t } = useT();
   const ref = useRef<HTMLHeadingElement>(null);
@@ -52,7 +56,7 @@ export function PageHeading({
   });
 
   return (
-    <h1 ref={ref} tabIndex={-1}>
+    <h1 ref={ref} tabIndex={-1} className={className}>
       {children}
     </h1>
   );
@@ -78,31 +82,70 @@ export const partnerLang = (lang: Lang): Lang => (lang === "en" ? "es" : "en");
 /**
  * The second language of a pair, shown after the first in a lighter weight and accent colour.
  * It is decoration: hidden from assistive technology, so a heading is not read out twice.
+ * `below` puts it on a line of its own under what it echoes, without the slash: for a sentence
+ * or the label of a button, which "one / other" on one line would make hard to read.
  */
-export function Echo({ text, lang }: { text: string; lang: string }) {
+export function Echo({
+  text,
+  lang,
+  below = false,
+}: {
+  text: string;
+  lang: string;
+  below?: boolean;
+}) {
   return (
-    <span className="echo" lang={lang} aria-hidden="true">
+    <span className={below ? "echo echo-below" : "echo"} lang={lang} aria-hidden="true">
       {text}
     </span>
   );
 }
 
 /** Configuration text in the partner language, as an echo; nothing if it has none of its own. */
-export function LocalizedEcho({ text }: { text: Record<string, string> }) {
+export function LocalizedEcho({
+  text,
+  below = false,
+}: {
+  text: Record<string, string>;
+  below?: boolean;
+}) {
   const { lang } = useT();
   const partner = partnerLang(lang);
   const echo = text[partner];
   if (!echo || echo === localizeWithLang(text, lang).text) return null;
-  return <Echo text={echo} lang={partner} />;
+  return <Echo text={echo} lang={partner} below={below} />;
 }
 
-/** A numbered section heading with its echo: "Key dates / Fechas clave ........ 02". */
+/**
+ * An interface text with its echo under it, as one block: "Start a proposal" over "Iniciar
+ * propuesta". `mark` is a sign after the text (an arrow); it is not read out. `more` is read
+ * out and not shown: what tells this link from others with the same text on the page.
+ */
+export function Pair({ k, mark, more }: { k: MessageKey; mark?: string; more?: string }) {
+  const { lang, t } = useT();
+  const partner = partnerLang(lang);
+  return (
+    <span className="pair">
+      <span className="pair-text">
+        {t(k)}
+        {more && <span className="visually-hidden"> {more}</span>}
+      </span>
+      {mark && <span aria-hidden="true"> {mark}</span>}
+      <Echo text={translate(partner, k)} lang={partner} below />
+    </span>
+  );
+}
+
+/**
+ * A numbered section heading with its echo: "Key dates / Fechas clave ........ 02". A link to
+ * its id ("#deadlines") lands on it: it can take focus, though it is no tab stop.
+ */
 export function SectionHeading({ id, k, number }: { id: string; k: MessageKey; number?: string }) {
   const { lang, t } = useT();
   const partner = partnerLang(lang);
   return (
     <div className="section-head">
-      <h2 id={id}>
+      <h2 id={id} tabIndex={-1}>
         {t(k)}
         <Echo text={translate(partner, k)} lang={partner} />
       </h2>
@@ -118,6 +161,26 @@ export function SectionHeading({ id, k, number }: { id: string; k: MessageKey; n
 /** A mono micro-label above a block ("DATES", "VENUE"). */
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <p className="eyebrow">{children}</p>;
+}
+
+/** The id of the place in the footer where a page puts a link of its own (Shell in App.tsx). */
+export const FOOTER_SLOT = "footer-slot";
+
+/**
+ * A link to another site that a page adds to the footer, beside the app's own: the website of
+ * the conference the page is about. The footer belongs to the shell, so the link is drawn into
+ * its slot once the page is there.
+ */
+export function FooterLink({ href, k }: { href: string; k: MessageKey }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSlot(document.getElementById(FOOTER_SLOT)), []);
+  if (!slot) return null;
+  return createPortal(
+    <a className="paired" href={href} rel="noreferrer">
+      <Pair k={k} mark="↗" />
+    </a>,
+    slot,
+  );
 }
 
 /** The content sheet, for pages that render a hero above it (see Shell in App.tsx). */

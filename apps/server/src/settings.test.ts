@@ -364,6 +364,112 @@ describe("what a chair may change", () => {
     );
   });
 
+  it("saves the invitation's texts and the wording of a way to contribute, and audits each value", async () => {
+    // The fixture call with an invitation of its own, in made-up words.
+    const slug = "settings-inviting";
+    const inviting = await saveConference(
+      t.db,
+      {
+        ...fixtureCall,
+        slug,
+        invitation: { en: "Bring what you made." },
+        contributionGroups: [
+          {
+            key: "spoken",
+            name: { en: "Speaking" },
+            summary: { en: "Panels and talks." },
+            formats: ["panel", "talk"],
+          },
+        ],
+      },
+      "cfp_open",
+    );
+    await grantRole(t.db, {
+      conferenceId: inviting.id,
+      personId: await personId(t, "settings-chair@example.org"),
+      role: "chair",
+    });
+    const distinction = {
+      en: "The Test Society's first meeting on the coast",
+      es: "El primer encuentro de la Sociedad de Prueba en la costa",
+    };
+    const { config, token } = await edited(
+      "chair",
+      (c) => {
+        c.distinction = distinction;
+        c.invitation = { en: "Bring what you made.\nWe will listen.", es: "Trae lo que hiciste." };
+        const group = c.contributionGroups[0];
+        if (!group) throw new Error("the conference has a way to contribute");
+        group.name.es = "Hablar";
+        group.summary.en = "Panels, and talks of every length.";
+      },
+      slug,
+    );
+    // Named in the order of the configuration.
+    const changes = [
+      { path: "distinction.en", after: distinction.en },
+      { path: "distinction.es", after: distinction.es },
+      {
+        path: "invitation.en",
+        before: "Bring what you made.",
+        after: "Bring what you made.\nWe will listen.",
+      },
+      { path: "invitation.es", after: "Trae lo que hiciste." },
+      { path: "contributionGroups.spoken.name.es", after: "Hablar" },
+      {
+        path: "contributionGroups.spoken.summary.en",
+        before: "Panels and talks.",
+        after: "Panels, and talks of every length.",
+      },
+    ];
+    expect((await preview("chair", config, token)).json).toMatchObject({
+      changes,
+      issues: [],
+      blocked: null,
+      canSave: true,
+    });
+    const res = await save("chair", config, token);
+    expect(res.status).toBe(200);
+
+    // Stored as written: the front page and the conference's page read them from here.
+    const open = await call(t.public, "GET", `/api/conferences/${slug}`);
+    expect(open.json.config).toMatchObject({
+      distinction,
+      invitation: { en: "Bring what you made.\nWe will listen.", es: "Trae lo que hiciste." },
+      contributionGroups: [
+        {
+          key: "spoken",
+          name: { en: "Speaking", es: "Hablar" },
+          summary: { en: "Panels, and talks of every length." },
+          formats: ["panel", "talk"],
+        },
+      ],
+    });
+    const entry = (await configAudit(inviting.id)).at(-1);
+    expect(entry?.actorKind).toBe("human");
+    expect(entry?.details).toEqual({ draftsAffected: 0, changes });
+
+    // Which formats a way to contribute leads to is no setting of the screen, but a save is
+    // held to it all the same: a format the call does not offer is refused, and named.
+    const regrouped = await edited(
+      "chair",
+      (c) => {
+        const group = c.contributionGroups[0];
+        if (!group) throw new Error("the conference has a way to contribute");
+        group.formats = ["panel", "poster"];
+      },
+      slug,
+    );
+    const refused = await preview("chair", regrouped.config, regrouped.token);
+    expect(refused.json.canSave).toBe(false);
+    expect(refused.json.issues).toMatchObject([
+      { path: "contributionGroups.spoken.formats.1", code: "invalid" },
+    ]);
+    expect(refused.json.issues).toHaveLength(1);
+    expect((await save("chair", regrouped.config, regrouped.token)).status).toBe(400);
+    expect((await settings("chair", slug)).json.token).toBe(res.json.token);
+  });
+
   it("saves every kind of change that used to be an admin's, and audits each one", async () => {
     const cases: [string, (c: Config) => void, string[]][] = [
       [

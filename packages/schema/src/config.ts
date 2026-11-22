@@ -278,6 +278,16 @@ const ConferenceConfigShape = z.object({
   year: z.int().min(1999),
   title: LocalizedText,
   theme: LocalizedText,
+  /**
+   * What sets this edition apart, in one line ("the society's first meeting on the island").
+   * Shown with the dates and the place where the conference invites people to its call.
+   */
+  distinction: LocalizedText.optional(),
+  /**
+   * The invitation: a short paragraph that says what work the call welcomes. The front page and
+   * the conference's own page lead with it. Like every text of a configuration it is public.
+   */
+  invitation: LocalizedText.optional(),
   host: z.string().min(1),
   location: LocalizedText,
   modality: Modality,
@@ -318,6 +328,22 @@ const ConferenceConfigShape = z.object({
   otherFormats: z
     .array(z.object({ key: Key, name: LocalizedText, description: LocalizedText }))
     .default([]),
+  /**
+   * Ways to contribute: the call's formats in a few named groups ("Talks", "Art"), each with a
+   * line that says what is in it. The invitation shows them, and each leads to its formats on
+   * the conference page. `formats` are keys of formats the call offers, submitted here or not,
+   * in the order to show them; a format is in one group at most, and may be in none.
+   */
+  contributionGroups: z
+    .array(
+      z.object({
+        key: Key,
+        name: LocalizedText,
+        summary: LocalizedText,
+        formats: z.array(Key).min(1),
+      }),
+    )
+    .default([]),
   /** True while the content is a stand-in (e.g. dates not yet announced). The UI says so. */
   placeholder: z.boolean().default(false),
   /** The conference's own wording of the emails the app sends. Absent: the standard texts. */
@@ -352,6 +378,8 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
 
   text(["title"], c.title);
   text(["theme"], c.theme);
+  text(["distinction"], c.distinction);
+  text(["invitation"], c.invitation);
   text(["location"], c.location);
   for (const [i, t] of c.tracks.entries()) text(["tracks", i, "name"], t.name);
   for (const [i, t] of c.topics.entries()) text(["topics", i, "label"], t.label);
@@ -398,6 +426,25 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
     }
     text(["otherFormats", i, "name"], f.name);
     text(["otherFormats", i, "description"], f.description);
+  });
+
+  // A group names formats the call offers, and no format twice: one that is in two groups,
+  // or twice in one, would be listed twice among the ways to contribute.
+  unique(
+    ["contributionGroups"],
+    c.contributionGroups.map((g) => g.key),
+  );
+  const offered = new Set([...typeKeys, ...c.otherFormats.map((f) => f.key)]);
+  const grouped = new Set<string>();
+  c.contributionGroups.forEach((g, i) => {
+    text(["contributionGroups", i, "name"], g.name);
+    text(["contributionGroups", i, "summary"], g.summary);
+    g.formats.forEach((key, j) => {
+      const at = ["contributionGroups", i, "formats", j];
+      if (!offered.has(key)) issue(at, `unknown format "${key}"`);
+      else if (grouped.has(key)) issue(at, `"${key}" is already in a group`);
+      grouped.add(key);
+    });
   });
 
   c.reviewPools.forEach((p, i) => {

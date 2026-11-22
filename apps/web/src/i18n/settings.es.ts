@@ -18,6 +18,10 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsSectionEmails: "Correos",
   settingsSectionAgreements: "Acuerdos",
   settingsSectionOther: "Formatos que no se envían aquí",
+  settingsSectionWays: "Formas de participar",
+  settingsWaysIntro:
+    "La página de inicio y la página del congreso las muestran bajo «Formas de participar», cada una con un enlace a sus formatos. Para añadir o quitar una, o pasar un formato a otra, hay que importar una configuración.",
+  settingsWayFormats: "Lleva a estos formatos: {formats}.",
   settingsSectionTracks: "Líneas temáticas",
   settingsSectionTopics: "Temas",
   settingsField: "Campo: {name}",
@@ -32,6 +36,12 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsCriterion: "Criterio: {name}",
   settingsLabel_title: "Título",
   settingsLabel_theme: "Tema",
+  settingsLabel_distinction: "Lo que distingue a esta edición",
+  settingsLabel_invitation: "Invitación",
+  settingsDistinctionHint:
+    "Opcional. Una línea que se muestra junto a las fechas y el lugar, en la página de inicio y al comienzo de la página del congreso.",
+  settingsInvitationHint:
+    "Opcional. Un párrafo breve que dice qué trabajos acoge la convocatoria. La página de inicio y la página del congreso empiezan con él, en el idioma de quien lee si lo has escrito en él y, si no, en el idioma principal del congreso.",
   settingsLabel_host: "Institución anfitriona",
   settingsLabel_location: "Lugar",
   settingsLabel_modality: "Cómo se participa",
@@ -150,6 +160,8 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Versión nueva de {agreements}. Todas las personas que envíen una propuesta o confirmen una invitación a partir de ahora aceptan la versión nueva. Lo que ya se aceptó sigue registrado con la anterior. No se envía ningún correo, y las propuestas ya enviadas no se ven afectadas. Quien tenga abierta ahora mismo una propuesta o una invitación tiene que volver a cargar la página antes de poder aceptar.",
   settingsLabel_other_name: "Nombre",
   settingsLabel_other_description: "Descripción",
+  settingsLabel_group_name: "Nombre",
+  settingsLabel_group_summary: "Qué incluye",
   settingsLabel_track_name: "Nombre",
   settingsLabel_topic_label: "Nombre",
   settingsInLanguage: "{label} ({language})",

@@ -1,7 +1,7 @@
 import type { LocalizedText } from "@elochair/schema";
 import { Link } from "react-router";
 import type { MySubmission } from "../api";
-import { formatDateTime } from "../format";
+import { deadlineText } from "../format";
 import { useT } from "../i18n";
 import { statusKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
@@ -96,9 +96,7 @@ function Row({ item }: { item: Item }) {
       </p>
       {k.callOpen && s.status === "draft" && (
         <p className="meta">
-          {t("editDeadline", {
-            date: `${formatDateTime(k.submissionsClose, lang, k.timezone)} (${k.timezone})`,
-          })}
+          {t("editDeadline", { date: deadlineText(k.submissionsClose, lang, k.timezone, t) })}
         </p>
       )}
     </li>

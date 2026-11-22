@@ -23,7 +23,7 @@ import {
   type ReviewerSubmission,
   type Role,
 } from "../api";
-import { formatDateTime, hasMinimum, numberLimits, viewerTimeZone } from "../format";
+import { deadlineText, hasMinimum, numberLimits, ownTime } from "../format";
 import {
   cleanName,
   describedBy,
@@ -181,11 +181,10 @@ function Deadline({ config, open }: { config: ConferenceConfig; open: boolean })
   // Display only: whether the call is open is the server's answer (`open`), never this clock.
   const close = Date.parse(config.deadlines.submissionsClose);
   const hours = open ? Math.floor((close - Date.now()) / 3_600_000) : -1;
-  const at = `${formatDateTime(config.deadlines.submissionsClose, lang, config.timezone)} (${config.timezone})`;
-  const mine =
-    viewerTimeZone() !== config.timezone
-      ? ` · ${formatDateTime(config.deadlines.submissionsClose, lang, viewerTimeZone())}`
-      : "";
+  // As the call states it, then on the visitor's own clock where that says something else.
+  const at = deadlineText(config.deadlines.submissionsClose, lang, config.timezone, t);
+  const own = ownTime(config.deadlines.submissionsClose, lang, config.timezone);
+  const mine = own ? ` · ${own}` : "";
   return (
     <p className="meta">
       {hours >= 0 && hours < 72 ? `${t("editDeadlineSoon", { hours })} ` : ""}

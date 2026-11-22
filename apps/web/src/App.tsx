@@ -23,7 +23,7 @@ import { SignInPage } from "./pages/SignIn";
 import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
-import { FocusPending, PageHeading } from "./ui";
+import { FOOTER_SLOT, FocusPending, PageHeading } from "./ui";
 
 export function App() {
   return (
@@ -141,14 +141,20 @@ function Shell() {
   const location = useLocation();
   const focusPending = useRef(false);
   const lastKey = useRef(location.key);
-  // slug is only set on /c/:slug routes; dressed is undefined on home and for a plain conference.
+  const lastPage = useRef(location.pathname + location.search);
+  // slug is only set on /c/:slug routes; dressed is undefined for a plain conference, and on
+  // home, which says itself whose identity it wears while it is an invitation (Home.tsx).
   const dressed = slug ? dressedAs(slug) : undefined;
 
   // A route change (not the first load) asks the next page heading to take focus, so screen
   // reader and keyboard users land on the new content. Set during render, before child effects.
+  // A move to another part of the same page ("#formats") is not a new page: the page takes
+  // people to that part itself, and its heading stays out of it.
   if (lastKey.current !== location.key) {
+    const page = location.pathname + location.search;
+    if (page !== lastPage.current || !location.hash) focusPending.current = true;
     lastKey.current = location.key;
-    focusPending.current = true;
+    lastPage.current = page;
   }
 
   useEffect(() => {
@@ -222,6 +228,8 @@ function Shell() {
               <a href="https://eliterature.org" rel="noreferrer">
                 {t("footerOrg")}
               </a>
+              {/* A conference's page adds the link to its own site here (FooterLink in ui.tsx). */}
+              <span className="footer-slot" id={FOOTER_SLOT} />
             </p>
           </div>
         </footer>

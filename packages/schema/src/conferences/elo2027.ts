@@ -15,6 +15,11 @@ import type { ConferenceConfigInput } from "../config";
  * Not from the call, and still stand-ins: the day submissions open, the notification and
  * final-materials dates, and the agreements.
  *
+ * The invitation, the line about Latin America and the ways to contribute are the wording of
+ * the design preview (docs/design/visitor-preview/copy.js), in English and Spanish. It was
+ * checked against the conference site's source on 2026-11-16; the invitation is new copy based
+ * on the call's theme statement, not a quotation. Each group holds the formats its line names.
+ *
  * The Spanish theme is the call's own wording. The other Spanish text and all the Portuguese
  * are machine-drafted and need review by native speakers.
  */
@@ -27,6 +32,16 @@ export const elo2027: ConferenceConfigInput = {
     en: "Ecologies of Attention",
     es: "Ecologías de la atención",
     pt: "Ecologias da atenção",
+  },
+  distinction: {
+    en: "ELO’s first conference in Latin America",
+    es: "Primer congreso de ELO en América Latina",
+    pt: "Primeiro congresso da ELO na América Latina",
+  },
+  invitation: {
+    en: "We invite work that engages attention as a political, ecological and poetic condition, and the practices through which electronic literature trains, reshapes and resists the overload that keeps it fragmented.",
+    es: "Invitamos propuestas que aborden la atención como condición política, ecológica y poética, y las prácticas con las que la literatura electrónica la entrena, la transforma y resiste la sobrecarga que la mantiene fragmentada.",
+    pt: "Convidamos propostas que abordem a atenção como condição política, ecológica e poética, e as práticas com que a literatura eletrónica a treina, a transforma e resiste à sobrecarga que a mantém fragmentada.",
   },
   host: "Universidad del Norte",
   location: {
@@ -408,6 +423,40 @@ export const elo2027: ConferenceConfigInput = {
         es: "Una visión para curar un conjunto de obras de e-lit existentes, o convocar obras nuevas, en torno a Ecologías de la atención. La capacidad para apoyar curadurías invitadas es limitada. Las propuestas se envían por correo, no aquí: la dirección de contacto se anunciará en el sitio de la conferencia.",
         pt: "Uma visão para a curadoria de um conjunto de obras de e-lit existentes, ou para convocar obras novas, em torno de Ecologias da atenção. A capacidade para apoiar curadorias convidadas é limitada. As propostas enviam-se por email, não aqui: o endereço de contacto será anunciado no site da conferência.",
       },
+    },
+  ],
+  // The ways to contribute, as the invitation groups them. Curatorial pitches are in none:
+  // the invitation's lines do not name them, and they are not submitted here.
+  contributionGroups: [
+    {
+      key: "ideas",
+      name: { en: "Talks & ideas", es: "Charlas e ideas", pt: "Comunicações e ideias" },
+      summary: {
+        en: "Papers, lightning talks, panels and artist talks.",
+        es: "Ponencias, charlas relámpago, paneles y charlas de artista.",
+        pt: "Comunicações, comunicações relâmpago, painéis e conversas de artista.",
+      },
+      formats: ["talk", "lightning", "panel", "artist_talk"],
+    },
+    {
+      key: "art",
+      name: { en: "Art & performance", es: "Arte y performance", pt: "Arte e performance" },
+      summary: {
+        en: "Readings, performances and exhibition works.",
+        es: "Lecturas, performances y obras para la exposición.",
+        pt: "Leituras, performances e obras para a exposição.",
+      },
+      formats: ["performance", "exhibition"],
+    },
+    {
+      key: "workshops",
+      name: { en: "Workshops", es: "Talleres", pt: "Oficinas" },
+      summary: {
+        en: "Hands-on sessions for interaction and discussion.",
+        es: "Sesiones prácticas de interacción y diálogo.",
+        pt: "Sessões práticas de interação e diálogo.",
+      },
+      formats: ["workshop"],
     },
   ],
 };
