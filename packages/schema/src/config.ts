@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LanguageCode, LocalizedText } from "./i18n";
-import { LIMITS } from "./limits";
+import { LIMITS, REVIEW_EMAILS } from "./limits";
 import {
   MAIL_LANGUAGES,
   MESSAGE_KEYS,
@@ -360,6 +360,12 @@ const ConferenceConfigShape = z.object({
       .nullable(),
     /** Whether contributors are asked for a bio, and how long it may be. Missing: not asked. */
     bio: z.object({ requested: z.boolean(), maxWords: z.int().positive() }).optional(),
+    /**
+     * How many days before the day reviews are due (`deadlines.reviewsDue`) reviewers are
+     * reminded of what they have not sent (spec 03, §1.7). Left out: three
+     * (REVIEW_EMAILS.reminderDays). It means nothing while no such day is set.
+     */
+    reviewReminderDays: z.int().min(1).max(REVIEW_EMAILS.maxReminderDays).optional(),
   }),
   agreements: z.array(Agreement).default([]),
   tracks: z.array(z.object({ key: Key, name: LocalizedText })).default([]),

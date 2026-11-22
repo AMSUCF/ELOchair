@@ -5,6 +5,7 @@ import type {
   ContributionRole,
   ContributionStatus,
   LocalizedText,
+  NoticeFrequency,
   Recommendation,
   SelfIdKind,
   SubmissionIssue,
@@ -91,6 +92,17 @@ export type Me =
       }[];
     }
   | { kind: "agent"; tier: "M" | "C"; conference: string | null };
+
+/**
+ * A person's own choices about the emails of the review phase at one conference (spec 03,
+ * §1.7): each part is there only for the role it belongs to.
+ */
+export type EmailChoices = {
+  view: "email_choices";
+  conference: { slug: string; title: LocalizedText; defaultLanguage: string };
+  reviewer: { assignments: NoticeFrequency; reminder: boolean; reminderDays: number } | null;
+  chair: { notices: NoticeFrequency } | null;
+};
 
 export type Role = ContributionRole;
 

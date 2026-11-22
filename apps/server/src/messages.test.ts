@@ -1,6 +1,7 @@
 import {
   ConferenceConfig,
   type ContributionRole,
+  type DeclineReason,
   type MailMessageKey,
   MESSAGES,
 } from "@elochair/schema";
@@ -19,8 +20,12 @@ import {
   draftDeletedMessage,
   invitationMessage,
   invitationWithdrawnMessage,
+  newAssignmentsMessage,
   receivedMessage,
+  reviewerDeclinedMessage,
   reviewerInvitationMessage,
+  reviewReminderMessage,
+  reviewsCompleteMessage,
   type Wording,
   withdrawnMessage,
 } from "./templates";
@@ -35,9 +40,16 @@ import { call, makeTestApp, ORIGIN, personId, signIn, type TestApp } from "./tes
 
 const TO = "reader@example.org";
 
-/** One of the eight functions, called with a captured case's input. */
+/** One of the twelve functions, called with a captured case's input. */
 function send(wording: Wording, c: MessageBefore): MailMessage {
   const v = (name: string) => c.input[name] ?? "";
+  /** What the four emails of the review phase have in common. */
+  const reviewPhase = () => ({
+    conference: v("conference"),
+    count: Number(v("count")),
+    link: v("link"),
+    choices: v("choices"),
+  });
   const calls: Record<MailMessageKey, () => MailMessage> = {
     invitation: () =>
       invitationMessage(wording, c.lang, TO, {
@@ -84,6 +96,21 @@ function send(wording: Wording, c: MessageBefore): MailMessage {
         conference: v("conference"),
         link: v("link"),
       }),
+    new_assignments: () =>
+      newAssignmentsMessage(wording, c.lang, TO, {
+        ...reviewPhase(),
+        // The day reviews are due as the caller formatted it, or none (messages.before.ts).
+        deadline: c.input.deadline ?? null,
+      }),
+    review_reminder: () =>
+      reviewReminderMessage(wording, c.lang, TO, { ...reviewPhase(), deadline: v("deadline") }),
+    reviewer_declined: () =>
+      reviewerDeclinedMessage(wording, c.lang, TO, {
+        ...reviewPhase(),
+        // The reasons it was called with, " | " between them.
+        reasons: v("reasons").split(" | ") as DeclineReason[],
+      }),
+    reviews_complete: () => reviewsCompleteMessage(wording, c.lang, TO, reviewPhase()),
   };
   return calls[c.key]();
 }
@@ -908,7 +935,14 @@ describe("chairs change the wording, and people are sent it", () => {
       "wording-cochair@example.org",
     ];
     const sent = (await Promise.all(everyone.map(kinds))).flat();
-    expect([...new Set(sent)].sort()).toEqual(Object.keys(MESSAGES).sort());
+    // (The four emails of the review phase are made by a job, not by a route: they are sent in
+    // a conference's own words in notifications.test.ts.)
+    const byJob = ["new_assignments", "review_reminder", "reviewer_declined", "reviews_complete"];
+    expect([...new Set(sent)].sort()).toEqual(
+      Object.keys(MESSAGES)
+        .filter((key) => !byJob.includes(key))
+        .sort(),
+    );
 
     // Back to a conference that has written nothing.
     expect((await save(worded(undefined))).status).toBe(200);

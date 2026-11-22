@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import * as conferences from "./conferences";
 import { ConferenceConfig, type ConferenceConfigInput } from "./config";
+import { REVIEW_EMAILS } from "./limits";
 import { MAIL_LANGUAGES, MESSAGE_KEYS, MESSAGES } from "./messages";
+import { reviewReminderDays, reviewReminderWindow } from "./notifications";
 import {
   configChanges,
   keyedPath,
@@ -337,8 +339,11 @@ describe("the settings of a configuration", () => {
   });
 
   it("has no setting for a rule the conference does not have", () => {
-    expect(paths(settings).filter((p) => p.startsWith("rules."))).toEqual([]);
-    expect(paths(stageOneSettings(fuller)).filter((p) => p.startsWith("rules."))).toEqual([
+    // The days before the reminder are no such rule: an optional number, offered set or not.
+    const rules = (list: Setting[]) =>
+      paths(list).filter((p) => p.startsWith("rules.") && p !== "rules.reviewReminderDays");
+    expect(rules(settings)).toEqual([]);
+    expect(rules(stageOneSettings(fuller))).toEqual([
       "rules.presenterCap.max",
       "rules.bio.maxWords",
     ]);
@@ -646,6 +651,28 @@ describe("the review settings", () => {
     ]);
     expect(ConferenceConfig.parse(set).deadlines.reviewsDue).toBe("2031-03-15T23:59:00-05:00");
     expect(configChanges(config, withSetting(set, "deadlines.reviewsDue", undefined))).toEqual([]);
+  });
+
+  it("offers the days before the reminder right after the day reviews are due, set or not", () => {
+    const days = settings.find((s) => s.path === "rules.reviewReminderDays");
+    expect(days).toEqual({
+      path: "rules.reviewReminderDays",
+      id: "rules.reviewReminderDays",
+      kind: "int",
+      optional: true,
+      value: undefined,
+    });
+    // It is kept among the rules, and offered beside the day it counts back from.
+    const order = paths(settings);
+    expect(order.indexOf("rules.reviewReminderDays")).toBe(
+      order.indexOf("deadlines.reviewsDue") + 1,
+    );
+    const set = withSetting(config, "rules.reviewReminderDays", 5);
+    expect(configChanges(config, set)).toEqual([{ path: "rules.reviewReminderDays", after: 5 }]);
+    expect(ConferenceConfig.parse(set).rules.reviewReminderDays).toBe(5);
+    expect(configChanges(config, withSetting(set, "rules.reviewReminderDays", undefined))).toEqual(
+      [],
+    );
   });
 
   it("does not offer a format's own blind mode, or the pool that reviews it", () => {
@@ -1322,6 +1349,36 @@ describe("the day reviews are due in the schema", () => {
     for (const bad of ["2031-03-15", "2031-03-15T23:59:00", "soon", 5, null]) {
       expect(due(bad), `${bad}`).toEqual([{ path: "deadlines.reviewsDue" }]);
     }
+  });
+});
+
+describe("the days before the reminder in the schema", () => {
+  const days = (reviewReminderDays: unknown) =>
+    ConferenceConfig.safeParse({ ...input, rules: { ...input.rules, reviewReminderDays } });
+
+  it("is optional, and three where the chairs set none", () => {
+    expect(config.rules).not.toHaveProperty("reviewReminderDays");
+    expect(REVIEW_EMAILS.reminderDays).toBe(3);
+    expect(reviewReminderDays(config)).toBe(3);
+    const set = days(7);
+    expect(set.success && reviewReminderDays(set.data)).toBe(7);
+  });
+
+  it("is a whole number of days from 1 to 30", () => {
+    for (const good of [1, 3, 30]) expect(days(good).success, `${good}`).toBe(true);
+    for (const bad of [0, -1, 31, 2.5, "3", null]) {
+      const parsed = days(bad);
+      expect(parsed.success, `${bad}`).toBe(false);
+      expect(parsed.error?.issues.map((i) => i.path.join("."))).toEqual([
+        "rules.reviewReminderDays",
+      ]);
+    }
+  });
+
+  it("needs no day reviews are due: without one it means nothing, and is kept", () => {
+    const parsed = days(5);
+    expect(parsed.success && parsed.data.deadlines.reviewsDue).toBeUndefined();
+    expect(parsed.success && reviewReminderWindow(parsed.data)).toBeNull();
   });
 });
 

@@ -44,3 +44,20 @@ export const ROLE_INVITATIONS = {
   maxLoad: 30,
   defaultLoad: 8,
 } as const;
+
+/**
+ * The emails of the review phase (spec 03, §1.7): when a summary goes out, and how long before
+ * the day reviews are due the reminder does. Zod-free, so that the pages can say the same
+ * numbers the server goes by.
+ */
+export const REVIEW_EMAILS = {
+  /**
+   * The hour of the conference's own clock at which "one summary a day" is sent, and at which
+   * the reminder goes out on its day.
+   */
+  dailyHour: 8,
+  /** Days before the day reviews are due that the reminder goes out, unless the chairs say. */
+  reminderDays: 3,
+  /** The most days the chairs may set. */
+  maxReminderDays: 30,
+} as const;

@@ -107,6 +107,14 @@ legend {
   accent-color: var(--accent);
 }
 
+/* A choice that stands alone, outside a group: its own box, as a group has one. */
+.choice.boxed {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  background: var(--surface);
+}
+
 .word-count {
   margin: 0;
   color: var(--muted);

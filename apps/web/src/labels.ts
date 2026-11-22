@@ -38,18 +38,33 @@ export const ownModeKey = (b: BlindMode): MessageKey => `settingsPoolOwnMode_${b
 export const emailNameKey = (k: MailMessageKey): MessageKey => `settingsEmail_${k}`;
 /** The sentence that says when that email is sent, and to whom. */
 export const emailWhenKey = (k: MailMessageKey): MessageKey => `settingsEmailWhen_${k}`;
+/** What "{count}" counts, in each of the emails of the review phase. */
+const COUNTED: Partial<Record<MailMessageKey, MessageKey>> = {
+  new_assignments: "settingsEmailPlaceholder_count_new_assignments",
+  review_reminder: "settingsEmailPlaceholder_count_review_reminder",
+  reviewer_declined: "settingsEmailPlaceholder_count_reviewer_declined",
+  reviews_complete: "settingsEmailPlaceholder_count_reviews_complete",
+};
+
 /**
  * What a placeholder of an email stands for. An invitation's link is not a proposal's, and the
- * link of an invitation to a role is another again.
+ * link of an invitation to a role is another again. In the emails of the review phase the link
+ * leads to a reviewer's list or to the chairs' Assignments page, and the number counts what
+ * that email is about.
  */
-export const placeholderKey = (k: MailMessageKey, name: MessagePlaceholder): MessageKey =>
-  name !== "link"
-    ? `settingsEmailPlaceholder_${name}`
-    : k === "invitation"
-      ? "settingsEmailPlaceholder_invitationLink"
-      : k === "reviewer_invitation" || k === "chair_invitation"
-        ? "settingsEmailPlaceholder_roleInvitationLink"
-        : "settingsEmailPlaceholder_link";
+export const placeholderKey = (k: MailMessageKey, name: MessagePlaceholder): MessageKey => {
+  const forReviewer = k === "new_assignments" || k === "review_reminder";
+  const forChair = k === "reviewer_declined" || k === "reviews_complete";
+  if (name === "count") return COUNTED[k] ?? "settingsEmailPlaceholder_count";
+  if (name !== "link") return `settingsEmailPlaceholder_${name}`;
+  if (k === "invitation") return "settingsEmailPlaceholder_invitationLink";
+  if (k === "reviewer_invitation" || k === "chair_invitation") {
+    return "settingsEmailPlaceholder_roleInvitationLink";
+  }
+  if (forReviewer) return "settingsEmailPlaceholder_reviewsLink";
+  if (forChair) return "settingsEmailPlaceholder_assignmentsLink";
+  return "settingsEmailPlaceholder_link";
+};
 export const selfIdKey = (k: SelfIdKind): MessageKey => `selfId_${k}`;
 export const conferenceRoleKey = (r: ConferenceRole): MessageKey => `role_${r}`;
 export const deadlineKey = (d: keyof ConferenceConfig["deadlines"]): MessageKey => `deadline_${d}`;

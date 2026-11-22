@@ -12,6 +12,7 @@ import { type PreviewSource, sampleValues } from "./emailPreview";
 
 /** What a preview reads of a small made-up conference in two languages. */
 const config: PreviewSource = {
+  slug: "made-up-2031",
   title: { en: "Made-up meeting", es: "Encuentro inventado" },
   defaultLanguage: "en",
   timezone: "America/Bogota",
@@ -80,6 +81,44 @@ describe("the made-up values an email is previewed with", () => {
         "https://chair.example.org/pt/role-invitation#token=…",
       );
     }
+  });
+
+  it("show the emails of the review phase with a number, the real addresses, and the day the chairs set", () => {
+    const due = "2031-03-28T23:59:00-05:00";
+    const set = { ...config, deadlines: { ...config.deadlines, reviewsDue: due } };
+    for (const key of ["new_assignments", "review_reminder"] as const) {
+      const values = sampleValues(key, "es", set, ORIGIN);
+      expect(values.count).toBe("3");
+      // These addresses hold no secret and are the same for everyone: they are the real ones.
+      expect(values.link).toBe("https://chair.example.org/es/reviews");
+      expect(values.choices).toBe("https://chair.example.org/es/me#emails");
+    }
+    for (const key of ["reviewer_declined", "reviews_complete"] as const) {
+      const values = sampleValues(key, "pt", set, ORIGIN);
+      expect(values.link).toBe("https://chair.example.org/pt/c/made-up-2031/assignments");
+      expect(values.choices).toBe("https://chair.example.org/pt/me#emails");
+    }
+    // The words the server supplies are the server's own, in the language of the email.
+    expect(
+      (["en", "es", "pt"] as const).map(
+        (lang) => sampleValues("reviewer_declined", lang, set, ORIGIN).reason,
+      ),
+    ).toEqual(["no time", "falta de tiempo", "falta de tempo"]);
+    // The day reviews are due is the conference's own, once the chairs have set one: both
+    // emails to a reviewer say it in the same sentence.
+    const when = formatDeadline(due, "America/Bogota", "en");
+    for (const key of ["new_assignments", "review_reminder"] as const) {
+      expect(sampleValues(key, "en", set, ORIGIN).due).toBe(`Reviews are due by ${when}.`);
+      // Until then the preview says that no day is set, as the email about a new assignment
+      // will. (A reminder is only ever sent once there is one.)
+      expect(sampleValues(key, "en", config, ORIGIN).due).toBe(
+        "The chairs have not set a day when reviews are due.",
+      );
+    }
+    // The receipt's deadline is still the close of the call, whatever day reviews are due.
+    expect(sampleValues("submission_received", "en", set, ORIGIN).deadline).toBe(
+      formatDeadline("2031-02-14T23:59:00-12:00", "America/Bogota", "en"),
+    );
   });
 
   it("name the conference's own review pools as a reviewer's committees", () => {

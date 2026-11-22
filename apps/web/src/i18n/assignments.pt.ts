@@ -11,7 +11,11 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   reviewersHow_double: "de forma anónima: sem os nomes das pessoas autoras",
   reviewersHow_single: "com os nomes e as instituições das pessoas autoras",
   reviewersHow_open: "com os nomes, as instituições e as biografias das pessoas autoras",
-  reviewersNoMail: "Não é enviado nenhum email quando atribui ou retira alguém.",
+  reviewersMail_before:
+    "Essa pessoa é avisada por email quando estiver, com a frequência que tiver escolhido. Não é enviado nenhum email quando retira alguém.",
+  reviewersMail_now:
+    "Essa pessoa é avisada por email, com a frequência que tiver escolhido. Não é enviado nenhum email quando retira alguém.",
+  reviewersMail_after: "Não é enviado nenhum email: o congresso já não está em revisão.",
   reviewersReviewsIntro:
     "Uma revisão aparece aqui quando quem a escreveu a envia, com o seu nome. Às pessoas autoras nunca é dito quem reviu.",
   reviewersCount: "Pessoas atribuídas para a rever: {n} de {needed}.",
@@ -79,7 +83,7 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   reviewersFullDoes:
     "{name} disse que aceitaria no máximo {max} propostas, e tem {n}. Esse número é o que ofereceu, não um limite: pode atribuir-lha na mesma.",
   reviewersDoAssign: "Sim, atribuir",
-  reviewersAssigned: "{name} já revê esta proposta. Não foi enviado nenhum email.",
+  reviewersAssigned: "{name} já revê esta proposta.",
   reviewersNowFull:
     "Ainda por atribuir: {name} já tem o número de propostas que disse aceitar. Leia os números e confirme.",
   reviewersNotOffered:
@@ -95,7 +99,7 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   assignmentsTitle: "Atribuições",
   assignmentsNoAccess: "Só quem preside a este congresso pode ver quem revê as suas propostas.",
   assignmentsIntro:
-    "Todas as propostas que podem ser atribuídas a alguém para as rever, sob a comissão que as revê. Primeiro aparecem as que ainda precisam de alguém, e depois as que ainda esperam revisões. Para atribuir ou retirar uma pessoa, ou para ler as revisões enviadas, abra a proposta. Nada é atribuído automaticamente, e não é enviado nenhum email.",
+    "Todas as propostas que podem ser atribuídas a alguém para as rever, sob a comissão que as revê. Primeiro aparecem as que ainda precisam de alguém, e depois as que ainda esperam revisões. Para atribuir ou retirar uma pessoa, ou para ler as revisões enviadas, abra a proposta. Nada é atribuído automaticamente.",
   assignmentsCallOpen:
     "A chamada ainda não fechou, por isso ainda não é possível atribuir ninguém. São mostradas as propostas submetidas até agora.",
   assignmentsExcludedOne: "Não aparece 1 proposta: é sua, ou tem um conflito com ela.",

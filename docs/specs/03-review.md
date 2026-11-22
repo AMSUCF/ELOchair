@@ -93,7 +93,7 @@ Everything below is held to these. They decide what is left out.
   - Someone already assigned to it is not offered either: 409 `already_assigned`.
   - **A reviewer who has reached their number** is still offered, listed after the others with a line that says so. Assigning them asks first, in place: the number is what they offered, not a lock. The server holds to that too: without `confirmedFull` in the request it assigns nobody who is full (409 `reviewer_full`, with their numbers as that chair may know them), so nobody goes over their number unasked because a page was out of date.
 - **The proposal's page**, as a chair is given it, gains a **Reviewers** section, for a chair of the conference:
-  - a sentence that says what assigning does: the reviewer will be able to read the proposal once the conference is in review (or, once it is, from then on), anonymized or with the authors' names as its format is reviewed; and that nobody is emailed when a reviewer is assigned or removed. (Emails about assignments come with step 6; the page promises none.)
+  - a sentence that says what assigning does: the reviewer will be able to read the proposal once the conference is in review (or, once it is, from then on), anonymized or with the authors' names as its format is reviewed; and a second that says who is told by email (§1.7): a reviewer who is assigned, as often as they have chosen, once the conference is in review, and nobody when a reviewer is removed. Once the conference has left review it says that nobody is emailed.
   - how many reviewers the proposal has against how many its pool asks for (`reviewsPerSubmission`), and the pool's name;
   - the reviewers assigned, each with when, whether their review is sent and when, and each sent review in full (§1.4);
   - **Remove from this proposal**, which asks first, in place, and says what will happen, the discarding of a draft included. It is not offered for a reviewer whose review is sent, and a sentence says why: a sent review is part of the proposal's record (409 `review_sent` if asked for all the same);
@@ -116,7 +116,7 @@ Everything below is held to these. They decide what is left out.
 - A reviewer can say **"I cannot review this proposal"**, on a page of its own that says what doing so does, with a reason and an optional note for the chairs (at most 2,000 characters). The reasons: a conflict of interest (or they know whose work it is), outside what they can judge, or no time.
   - It releases the assignment through the same function as every release, with that reason, the note, and the reviewer as the one who released it. Their draft goes with it.
   - With a conflict as the reason, a conflict between that reviewer and the proposal is recorded (`conflicts`: kind `declared`, declared by the reviewer), so that the policy never gives them the proposal again and no chair is offered them for it. With the other two a chair can assign them again.
-  - The proposal leaves their list, and they get of it what a stranger gets (404). (A chair who also reviews still reads it as a chair, unless the reason was a conflict; the page says so before they tell the chairs.) The chairs who manage it see who said so, why, and the note, on its page. Nobody is emailed in this version: the notice to chairs comes with the emails (§1.7).
+  - The proposal leaves their list, and they get of it what a stranger gets (404). (A chair who also reviews still reads it as a chair, unless the reason was a conflict; the page says so before they tell the chairs.) The chairs who manage it see who said so, why, and the note, on its page; and they are told by email that a proposal was given back, with the reason in the app's words and never the note (§1.7). The page says so before the reviewer tells them.
   - It is offered while the conference is in `reviewing` and until their review is sent. After that it is refused (409 `review_sent`): they change the review, or write to the chairs.
 - An **Assignments** page (`/:lang/c/:slug/assignments`, linked from "Manage submissions") is for the conference's chairs, in person. By pool, it lists every proposal that takes reviewers (status `submitted`) with its format, how many reviewers it has of those the pool asks for, how many reviews of it were sent, and the reviewers' names. Those still short of reviewers come first and are marked ("Needs 2 more"); then those that have their reviewers and fewer sent reviews than the pool asks for; then the rest. Each pool has a line of totals: how many proposals, how many are still short, and how many still wait for reviews. Drafts are counted nowhere.
   - Each proposal links to its page, where assigning happens. The page assigns nothing and suggests nothing.
@@ -130,10 +130,11 @@ Everything below is held to these. They decide what is left out.
   - A reviewer's own writes (§1.4) take the same three locks in the same order, and read the reviewer again under the roles lock. So a chair removing a reviewer from a proposal waits for a review of it that is being sent, and then finds it sent; a role's removal runs wholly before a review (which then finds no reviewer) or wholly after it (and keeps it); and a save of the settings never misses a review sent at the same moment.
   - Two chairs assigning one reviewer to two different proposals at the same moment can take that reviewer one past their number without the question being asked. The number is not a lock.
 - **Audit.** One row per assignment made (`assignment.made`) and per release (`assignment.released`), on the submission, with the reviewer's id, and for a release its reason and whether a draft was discarded with it. A conflict a reviewer declares has a row of its own (`conflict.declared`). Never a name or a text: the reviewer's note is in the record of the release, and nowhere in the audit log.
+- **Email.** An assignment that is made, and a proposal that is given back, are recorded in the same transaction as things people are to be told of (§1.7). Neither writes an email itself.
 - There is no automatic or suggested assignment in this version, and no assignment in bulk.
 
 ### 1.4 Reviews
-The reviewer's part, from the invitation (§1.2) to the last review, is three screens: a list, a proposal with its form, and their email choices (§1.7). The first two, with "I cannot review this proposal" (§1.3), are built.
+The reviewer's part, from the invitation (§1.2) to the last review, is three screens: a list, a proposal with its form, and their email choices (§1.7). All three are built, with "I cannot review this proposal" (§1.3).
 
 - **"My reviews"** (`/:lang/reviews`) is the list. The main menu offers it to people who hold a reviewer's role somewhere, and to nobody else. For each conference where they review and reviewers can read (the phase is `reviewing` or later) it shows:
   - the committees they review for;
@@ -160,7 +161,7 @@ The reviewer's part, from the invitation (§1.2) to the last review, is three sc
 - **A sent review is part of the proposal's record.** Its reviewer is not removed from the proposal by a chair, does not give the proposal back, and keeps the assignment when their reviewer's role is removed (§1.2, §1.3). A review goes with its proposal: when an owner deletes a draft proposal, its reviews go with it.
 - **The form is the chairs' to word** (§1.8): every limit and every description a reviewer meets on it is a setting. The screens show the standard wording until a chair writes their own.
 - **Audit.** One row per save, on the submission: `review.draft_saved`, `review.sent`, `review.changed`, each with the review's id and its version. Never a score, a recommendation or a word of a review.
-- Nobody is emailed about any of this in this version.
+- **Email.** The review that gives a proposal as many sent reviews as its committee asks for is recorded, in the same transaction, as something the chairs are to be told of (§1.7). Nothing else here leads to an email: not a draft, not a review that is changed, and nothing to the authors.
 
 ### 1.5 Anonymity
 - **What a reviewer sees of a proposal** is the existing reviewer projection: the format's blind mode decides whether authors are named. For ELO 2027 the scientific committee reviews anonymized and the artistic committee sees names.
@@ -192,23 +193,62 @@ The reviewer's part, from the invitation (§1.2) to the last review, is three sc
 
 ### 1.7 Email
 - **The whole list of messages:**
-  - to a person: the invitation to be a reviewer or a chair
-  - to a reviewer: new assignments; one reminder before reviews are due, listing what they have not sent yet (three days before, unless the chairs set another number)
+  - to a person: the invitation to be a reviewer or a chair (§1.2)
+  - to a reviewer: new assignments; one reminder before reviews are due
   - to chairs: a reviewer cannot review a proposal; a proposal has all its reviews
-  - to authors: the decision, with the comments for them
-- **Each person chooses** how much they get, on "Your account", per conference:
-  - new assignments: each one, a daily summary (the default), or none
-  - reminders: on (the default) or off
-  - chairs' notices: each one, a daily summary (the default), or none
-- Invitations, decisions and the sign-in email cannot be turned off: without them the person cannot act.
-- Every message says why it was sent and links to those choices.
+  - to authors: the decision, with the comments for them (step 7; not built)
+- **The four emails of the review phase** are messages like every other (`new_assignments`, `review_reminder`, `reviewer_declined`, `reviews_complete`): standard texts in English, Spanish and Portuguese, which the chairs reword on the settings screen (§1.8). Each goes to one person, in the first of the three languages their profile lists.
+  - **New assignments**, to a reviewer: how many proposals were assigned to them, the day reviews are due (or that the chairs have set none), and a link to "My reviews".
+  - **The reminder**, to a reviewer: the day reviews are due, how many of their reviews are not sent, and the same link.
+  - **A proposal given back**, to a chair: how many proposals, the reason in the app's own words (a conflict of interest, outside what they can judge, no time; where there are several, each reason that was given, once), and a link to the Assignments page. Who gave it back, and their note, are on the proposal's page and never in an email.
+  - **A proposal has all its reviews**, to a chair: how many proposals, and the link to the Assignments page.
+  - **What none of them carries:** a proposal's title, an author, a reviewer's name, a word of a review or of a note. A number, the conference's title, a day, a reason out of three and two links are all there is to put in, and a text that names anything else is refused (§1.8). One text serves an email about one proposal and a summary of several: it says how many.
+  - **Every one says why the person got it, in one line, and links to their choices** (`/:lang/me#emails`). Both links are required in a text, stand apart from what is around them, and stay out of the subject.
+- **Each person chooses** how much they get, on "Your account", for each conference where it applies:
+  - a reviewer, when proposals are assigned to them: an email for each one, one summary a day (which is what holds for someone who has chosen nothing), or no email;
+  - a reviewer, the reminder: on (unless they turn it off) or off;
+  - a chair, notices about reviewing (the two to chairs, together): each one, one summary a day (unless they choose otherwise), or none. A summary is one email for each of the two kinds, and the page says so.
+  - Each part is shown only to someone it applies to: the first two to someone who holds the reviewer's role at that conference, the third to someone who holds the `chair` or the `admin` role there. A site admin who holds no role there is not written to. Nothing is shown for an archived conference.
+  - Saving is one press for a conference, and the page says that it is saved. A choice is the person's own: no chair sets it for them, and no agent sees or changes it.
+- Invitations and the sign-in email cannot be turned off: without them the person could not take part. The page says so. (Decisions, when they are built, cannot be turned off either.)
+- **What is recorded, and when.** What happens is written down when it happens, in the same transaction as what caused it, as a notification for each person to be told: who, which conference, which proposal, what kind, when. No email is made then, and no choice is read.
+  - A proposal is **assigned**: one for the reviewer.
+  - A reviewer **gives a proposal back**: one for each person who holds the `chair` or the `admin` role at the conference, with the reason.
+  - A proposal **has all its reviews**: one for each of the same people, when a review is sent for the first time and the proposal then has exactly as many sent reviews as its committee asks for (`reviewsPerSubmission`). A sent review that is changed adds none, and neither does one more review after the number was reached. (So a proposal that already had the number when the chairs lowered it to that is never announced: the Assignments page shows it.)
+  - **Nobody is told of what they did themselves:** a chair who assigns a proposal to themself, a chair who also reviews and gives one back, and a chair whose own review is the one that gives a proposal its number, get no notification of it.
+- **One job makes the emails**, in the server, each time its mail timer turns (every half minute), before the outbox is delivered. For each person and each kind of thing waiting for them at a conference it goes by their choice as it is then:
+  - **each one:** an email for each proposal, at that run;
+  - **one summary a day:** one email that counts everything that has gathered, once the conference's clock (its time zone) has passed 8:00 since the oldest of them was recorded: from 8:00 on, at the next run;
+  - **none:** nothing; what waited is marked as answered by no email.
+  - What it makes goes to the outbox, and is delivered as every other email is.
+  - While everything at a conference waits, the job reads nothing of its proposals.
+- **The reminder** is decided by the same job: from 8:00 in the conference's time zone on the day that is three days before the day reviews are due, or the chairs' own number of days (`rules.reviewReminderDays`, 1 to 30, set beside that day on the settings screen). Both days are days of the conference's own calendar. It goes to every reviewer of the conference who then has reviews that are not sent (a draft is not sent) and has not turned it off.
+  - No reminder where no day is set, while the conference is not in `reviewing`, and once the day has passed.
+  - It is decided once for all of a conference's reviewers together, and remembered for the conference with the day it was for: someone who is given a proposal after it went out is not reminded of that day (the email about the new assignment says the day), and neither is someone who turns the reminder on afterwards. Where nobody had anything left to send, it is decided all the same.
+  - **A day the chairs set afterwards is another day.** If they move the day reviews are due, reviewers are reminded of the new day in its turn; at once, where it is already less than that number of days away. So a day that was typed wrong and put right is not the only one reviewers hear of, and a deadline that is extended is announced.
+- **Twice, or not at all.** The job may run twice, and may miss a run.
+  - A notification is answered once: its mark and the email in the outbox are written in one transaction, on rows that run holds, so a second run finds it answered.
+  - The reminder goes out once for a conference and a day: the row that remembers it is written with the reminders, and a second run finds the day in it.
+  - A summary whose hour passed while the server was down goes out at the next run; so does the reminder, until the day reviews are due.
+  - One conference that cannot be read does not keep the others waiting.
+- **What is no longer true when the email is made** is not said. Each notification is asked again, by the policy (`notificationHolds`):
+  - A **new assignment** counts only while the person reviews that proposal and reviews can be written: the role, the committee, an assignment that stands, no conflict, a proposal reviewers still read, the conference in `reviewing`. Someone a chair removed from the proposal, or whose reviewer's role was removed, gets no email about it, and a summary counts what is still assigned.
+    - **Before the conference is in review** a new assignment waits: the reviewer could not open the proposal yet. Once the chairs move the conference into review, what waited is sent at the next run (for a summary, once 8:00 has passed since it was assigned). The sentence a chair confirms when moving a conference into review says that reviewers are emailed.
+    - **Once the conference has left review**, what was never announced is dropped, and so is an assignment made after it: reviews are read then, not written. The Reviewers section says, by where the conference stands, whether a reviewer who is assigned is told by email.
+    - A proposal the reviewer has already sent their review of is still counted: it was newly assigned.
+  - A **notice to a chair** counts only while the person holds the `chair` or the `admin` role and manages that proposal as a chair (`canManageReviewers`): never their own proposal, and never one they have a conflict with, whether that was so when it happened or has become so since. For such a proposal they get no email, and it is in no number they are sent. Nothing else is asked again: a proposal that was given back and has another reviewer by now was still given back.
+  - **What is counted is proposals.** One that was assigned to the same person twice meanwhile is one new assignment; one that two reviewers gave back is one proposal given back, with both their reasons.
+  - What no longer holds is marked as answered by no email, and where nothing is left there is no email at all.
+  - The job takes none of the locks of §1.3: what it reads may be a moment old.
+- **Privacy.** An email goes to one person about their own work at a conference. Reviewers are never named to authors or to each other, and here to nobody: no email names a person. Authors get none of these. Agents get nothing.
+- **Audit.** A change of choices is one row (`person.email_choices_changed`, with the values chosen: enumerations and a yes or no). What the job does is one row for each person and kind it answers (`notifications.answered`, with the kind and three numbers, and nobody named: who was written to is in the outbox) and one for a conference's reminder (`review_reminder.sent`, with how many were reminded and the day). Never an address or a text.
 - All mail goes through the outbox, as now.
 
 ### 1.8 What chairs can edit
 A second part of the settings screen, with the same flow as the first (spec 02, §1.9): change, review every change, save, recorded.
 
 - **Review**, for each pool: its name, whether authors are named to reviewers, reviews per proposal, and the reviewer guidelines (a text per language).
-- **The day reviews are due**, among the deadlines: optional; when set, after the day the call closes and before the day decisions are sent. (How many days before it the reminder goes out comes with the reminder, §1.7.)
+- **The day reviews are due**, among the deadlines: optional; when set, after the day the call closes and before the day decisions are sent. Right after it, **how many days before that day reviewers are reminded** (§1.7): optional, a whole number from 1 to 30, and three where it is left empty. Its hint says when the reminder goes out, and that moving the day reminds reviewers again.
 - **The review form**, for each pool. Every number and every description a reviewer meets on the form is a setting:
   - each criterion: its label, an optional description (what it asks, or what its lowest and highest scores mean), and its smallest and largest score
   - the comments for the authors: the description under the field (in place of the standard one), and its fewest and most words (both optional)
@@ -217,6 +257,7 @@ A second part of the settings screen, with the same flow as the first (spec 02, 
   - Labels and descriptions are texts per language. A description left empty is the app's standard wording, in its three languages, which the settings screen quotes. The names of the three fixed fields and of the three recommendations are the app's own, in its three languages, so that every screen and every export means the same thing by them.
   - A form as the app words it has comments without a word limit, a note and a recommendation: that is what a configuration that says nothing holds.
 - **Emails**: for every message in §1.7 and in spec 02, the subject and the body per language, with a fixed set of named placeholders such as `{title}` and `{deadline}`, a preview with sample data, and "back to the default text". The sign-in email is fixed.
+  - Each of the four emails of the review phase has its section, with a line that says when it is sent and to whom, and the placeholders it has: `{count}`, `{conference}`, the link `{link}` and the link to the reader's choices `{choices}` in all four; `{due}` (a sentence that says when reviews are due, or that no day is set) in the two to a reviewer; `{reason}` in a proposal given back, with the app's words for the three reasons listed in each language. The hour and the number of days in those lines are the server's own (`REVIEW_EMAILS`).
 - **Agreements**: title, text, link and version.
 - **Guardrails**, each refused in the review step with the reason beside the value:
   - naming authors to a pool that reviewed anonymized, once that pool has an assignment
@@ -234,7 +275,7 @@ Shapes start in `packages/schema` (house rule 1). Additions, all optional so tha
 - `reviewPools[].guidelines`: text per language.
 - `deadlines.reviewsDue`: a date and time, after `submissionsClose` and before `notification`.
 - `messages`: by message key, a subject and a body per language. An absent key means the default text, which lives with the code in three languages.
-- Tables: `reviews` (built: below), `notification_choices` (person, conference, the three choices above).
+- Tables: `reviews` and `notification_choices` (person, conference, the three choices of §1.7), both built: below.
 - Projections: a review as its reviewer and as a chair sees it (built: below), and as an author sees it (with decisions).
 
 Built in step 4 (§1.2):
@@ -269,6 +310,19 @@ Built in step 6, the screens (§1.4, §1.5, §1.8):
 - Schema: `Review`, `ReviewStatus`, `ReviewFormConfig`, the inputs `ReviewInput` and `DeclineReviewInput`, and Zod-free in `reviewForm.ts`: `RECOMMENDATIONS`, `DECLINE_REASONS`, `reviewIssues` (what keeps a review from being sent), `reviewContentIssues` (what a draft may not hold), `fitReview`, `scaleChoices` (a scale as a row of choices, or nothing for one too wide for that).
 - Policy, in `packages/policy` (`reviews.ts`): `canWriteReview`, `isReviewerOf` (a reviewer, or a chair who is assigned as one), `reviewsKeptFrom` (whose reviews a person is never shown, whatever their role: the guard on the settings reads none of them), and the projections `projectOwnReview()` (a reviewer's own review) and `projectMyReviews()` (the rows of their list). The chair's view of a proposal's reviews is part of `projectProposalReviewers()` (`assigned[].review`, `otherReviews`, `declined`), and `projectAssignments()` and `projectPeople()` count sent reviews.
 
+Built in step 6, the emails (§1.7):
+
+- Configuration, optional, so that a stored configuration reads as before: `rules.reviewReminderDays`, a whole number from 1 to 30. It is kept among the rules and offered among the deadlines: every reader of `deadlines` takes each of them for an instant.
+- Messages: `new_assignments` and `review_reminder` (both `{count}`, `{conference}`, `{due}`, `{link}`, `{choices}`), `reviewer_declined` (`{count}`, `{reason}`, `{conference}`, `{link}`, `{choices}`) and `reviews_complete` (`{count}`, `{conference}`, `{link}`, `{choices}`). In all four `{link}` and `{choices}` are required and stay out of the subject, and none has a placeholder for a name a person typed.
+- Tables, all three new (migration `0010_review_emails`, which changes no existing table):
+  - `notification_choices`: one row for a person and a conference at most (both cascade), with `assignments` and `chair_notices` (`each`, `daily` or `none`; `daily` unless said otherwise) and `reminder` (true unless said otherwise). No row means the defaults. The row stays when a role goes, and is read only while the role is held.
+  - `notifications`: one row for each person to be told of one thing. `conference_id`, `person_id` and `submission_id` (all three cascade), `kind` (`assigned`, `declined`, `reviews_complete`), `reason` (for `declined`: `conflict`, `expertise` or `time`), `created_at`, `status` (`pending`, then `sent` or `dropped`) and `done_at` (set exactly when it is no longer pending). IDs, enumerations and times: nothing a person typed.
+  - `review_reminders`: one row for a conference at most (cascade), written with its reminders: `reviews_due` (the day it was for, which is what keeps that day from being announced twice) and `sent_at`.
+  - The version before reads and writes none of the three: run on the same database, it sends none of these emails, and what happens meanwhile is not recorded.
+- Schema: `NOTICE_FREQUENCIES`, `NOTIFICATION_KINDS`, `NotificationChoices` and its defaults, the input `NotificationChoicesInput`, the constants `REVIEW_EMAILS` (8:00, three days, at most thirty), and Zod-free in `notifications.ts`: `hourOnDay`, `dailyHourAtOrBefore`, `reviewReminderDays` and `reviewReminderWindow`. In `messages.ts`: the app's words for the three reasons (`DECLINE_REASON_WORDS`) and the sentence about the day reviews are due (`reviewsDueSentence`).
+- Policy, in `packages/policy` (`notifications.ts`): `emailRoles` (whose these emails are), `projectEmailChoices()` (a person's own choices, for "Your account"), `notificationHolds` (whether something still holds when the email is made), `noticesWait` (whether what waits is left for now, asked before anything of a proposal is read), `planNotices` (what is made of what waits: emails that are a number and reasons, and what is dropped) and `unsentReviews` (what the reminder counts).
+- Server: `services/notifications.ts` records (`recordNotifications`) and holds the job (`runNotifications`), which `main.ts` runs on its mail timer, every half minute, before it delivers the outbox.
+
 Routes are written into this section as each part is built, in the form of spec 02, §2.2.
 
 | Route | Who | Notes |
@@ -290,12 +344,14 @@ Routes are written into this section as each part is built, in the form of spec 
 | `GET /api/submissions/:id/review` | the proposal's reviewer (human) | `projectOwnReview()`: their own review, or that it is not started; `open` while the conference is in `reviewing`; 404 for everyone else |
 | `PUT /api/submissions/:id/review` | the proposal's reviewer (human), in `reviewing` | `{version, send, scores, comments, chairNote, recommendation}`; the review as it stands; 404 for everyone else; 409 `not_reviewing`, `stale` (with `version`) or `already_sent`; 422 with issues |
 | `POST /api/submissions/:id/review/decline` | the proposal's reviewer (human), in `reviewing` | "I cannot review this": `{reason, note?}`; 204; 404 for everyone else; 409 `not_reviewing` or `review_sent` |
+| `GET /api/me/notifications` | signed in (human) | `{conferences}`: `projectEmailChoices()` for each conference where the person reviews or chairs and that is not archived; empty for someone who does neither anywhere; 401 for an agent, as for the public |
+| `PUT /api/me/notifications/:slug` | signed in (human) who reviews or chairs there | `{assignments?, reminder?, chairNotices?}`, at least one; what is left out stays as it is; the choices as they are afterwards; 404 `not_found` where none of these emails is the person's (no role there, an archived conference, no such conference); 403 `forbidden` for a choice of a role they do not hold there; 403 `agents_read_only` for an agent |
 
-"Chair or admin (human)" is as in spec 02, §2.2: a chair, an admin or a site admin, in person. A draft conference the caller cannot see answers 404; everyone else is refused with 403, an agent included, whatever its tier. The routes that change something count toward the person's 60 writes a minute. "Who manages the proposal" is §1.3: the chair is given it as a chair, so not their own, and not one they have a conflict with. "The proposal's reviewer" is §1.4 (`isReviewerOf`): the person `submissionAccess` gives a reviewer's view of it, or a chair who is given it as a chair and is assigned to it as a reviewer of its committee. Whoever is not is answered before any lock is taken. An agent that writes a review is refused as every agent's write is (403 `agents_read_only`); the public must sign in (401).
+"Chair or admin (human)" is as in spec 02, §2.2: a chair, an admin or a site admin, in person. A draft conference the caller cannot see answers 404; everyone else is refused with 403, an agent included, whatever its tier. The routes that change something count toward the person's 60 writes a minute, a change of email choices included. "Who manages the proposal" is §1.3: the chair is given it as a chair, so not their own, and not one they have a conflict with. "The proposal's reviewer" is §1.4 (`isReviewerOf`): the person `submissionAccess` gives a reviewer's view of it, or a chair who is given it as a chair and is assigned to it as a reviewer of its committee. Whoever is not is answered before any lock is taken. An agent that writes a review is refused as every agent's write is (403 `agents_read_only`); the public must sign in (401).
 
 ## 3. Order of work
 
-Each step is one pull request that leaves the app usable. Steps 1 to 4 are done (#35, #38, #39, #40, #43), and so is step 5, with the pull request that brought §1.3 into line with it. Step 6 is split in two: the screens are done, and the emails follow.
+Each step is one pull request that leaves the app usable. Steps 1 to 4 are done (#35, #38, #39, #40, #43), and so is step 5, with the pull request that brought §1.3 into line with it. Step 6 was done in two pull requests: the screens, and then the emails.
 
 1. Chairs do everything: permissions, and the phase control on "Manage submissions".
 2. Settings, part two: review settings and reviewer guidelines.
@@ -304,7 +360,7 @@ Each step is one pull request that leaves the app usable. Steps 1 to 4 are done 
 5. Assignments. (Done.)
 6. Reviews, in two parts:
    - the screens: "My reviews", the review form with a draft and then sent, "I cannot review this proposal", the chairs' reading of sent reviews, and the form's settings with the day reviews are due. (Done.)
-   - the emails (§1.7): new assignments, the reminder with its number of days, the notices to chairs, and each person's choices.
+   - the emails (§1.7): new assignments, the reminder with its number of days, the notices to chairs, and each person's choices. (Done.)
 7. Decisions, and sending them.
 
 Small fixes that need none of this: [#29](https://github.com/AMSUCF/ELOchair/issues/29) (the chair's proposal page).

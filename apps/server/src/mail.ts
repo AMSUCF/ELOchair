@@ -6,7 +6,11 @@ import { outbox } from "./db/schema";
 export type MailMessage = { to: string; subject: string; text: string };
 
 export interface MailTransport {
-  send(msg: MailMessage): Promise<void>;
+  /**
+   * `kind` is what the outbox calls the message ("magic_link", "invitation", ...). Nothing of
+   * it is sent: it is for a transport that keeps what it was given (tests).
+   */
+  send(msg: MailMessage, kind?: string): Promise<void>;
 }
 
 /** Development: print the message (and so the magic link) to the server log. */
@@ -16,14 +20,19 @@ export class LogTransport implements MailTransport {
   }
 }
 
-/** Tests: keep messages in memory. */
+/** Tests: keep messages in memory, each with the kind the outbox gave it. */
 export class MemoryTransport implements MailTransport {
-  readonly sent: MailMessage[] = [];
-  async send(msg: MailMessage): Promise<void> {
-    this.sent.push(msg);
+  readonly sent: (MailMessage & { kind?: string })[] = [];
+  async send(msg: MailMessage, kind?: string): Promise<void> {
+    this.sent.push({ ...msg, kind });
   }
-  latestTo(to: string): MailMessage | undefined {
-    return this.sent.filter((m) => m.to === to).at(-1);
+  /**
+   * The latest message to an address; of one kind, where one is named. A test that signs in
+   * asks for the sign-in email by its kind, so that no other email to the same address (a
+   * summary of the review's notices, say) can be taken for it.
+   */
+  latestTo(to: string, kind?: string): MailMessage | undefined {
+    return this.sent.filter((m) => m.to === to && (!kind || m.kind === kind)).at(-1);
   }
 }
 
@@ -185,7 +194,7 @@ async function deliverPass(
       continue;
     }
     try {
-      await transport.send({ to: m.toEmail, subject: m.subject, text: m.bodyText });
+      await transport.send({ to: m.toEmail, subject: m.subject, text: m.bodyText }, m.kind);
       await db
         .update(outbox)
         .set({

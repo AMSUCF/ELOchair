@@ -1,4 +1,5 @@
 import { assignmentsEn } from "./assignments.en";
+import { emailsEn } from "./emails.en";
 import { peopleEn } from "./people.en";
 import { reviewsEn } from "./reviews.en";
 import { settingsEn } from "./settings.en";
@@ -11,6 +12,7 @@ export const en = {
   ...peopleEn,
   ...assignmentsEn,
   ...reviewsEn,
+  ...emailsEn,
   appName: "ELOchair",
   tagline: "Submissions and peer review for the Electronic Literature Organization conference.",
   skipToContent: "Skip to content",

@@ -42,6 +42,7 @@ import {
   toPerson,
 } from "../repo";
 import { Refusal } from "../routes/common";
+import { recordNotifications } from "./notifications";
 import { stillChair } from "./roles";
 import { cursorContext } from "./submissions";
 
@@ -335,6 +336,9 @@ async function lockProposal(tx: Db, conference: ConferenceRow, submissionId: str
  *
  * A reviewer who was released from the proposal (and not because of a conflict) can be
  * assigned to it again: that is a new assignment, made now, by this chair.
+ *
+ * The reviewer is told by email, as often as they have chosen (spec 03, §1.7): what is written
+ * here is that they are to be told, in this transaction; the email is made afterwards.
  */
 export async function assignReviewer(
   deps: Deps,
@@ -391,6 +395,17 @@ export async function assignReviewer(
       .onConflictDoNothing({ target: [assignments.reviewerId, assignments.submissionId] })
       .returning({ id: assignments.id });
     if (made.length === 0) throw new Refusal(409, "already_assigned");
+    // The reviewer is to be told, as often as they have chosen: decided afterwards, by the job
+    // of services/notifications.ts. Nothing is mailed here, and a chair who assigns a proposal
+    // to themself is told nothing.
+    await recordNotifications(tx, {
+      conferenceId: conference.id,
+      submissionId: v.submissionId,
+      kind: "assigned",
+      personIds: [v.reviewerId],
+      by: actor.personId,
+      now,
+    });
     await audit(tx, viewer, {
       action: "assignment.made",
       conferenceId: conference.id,

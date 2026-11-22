@@ -163,7 +163,10 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.getByLabel("Email address").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByText("Check your email.")).toBeVisible();
-  const mail = await request.get(`/api/_test/outbox/latest?to=${encodeURIComponent(email)}`);
+  // The sign-in email, by its kind: other email may reach the same address meanwhile.
+  const mail = await request.get(
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+  );
   const code = /\b(\d{4}) (\d{4})\b/.exec(((await mail.json()) as { text: string }).text);
   await page.getByLabel("Code from the email").fill(`${code?.[1]}${code?.[2]}`);
   await page.getByRole("button", { name: "Sign in with code" }).click();
@@ -474,7 +477,7 @@ test.describe("a reviewer's screens", () => {
     // What telling the chairs does, before it is done.
     await expect(
       page.getByText(
-        "The chairs see that you cannot review it, with your reason and your note, and can give the proposal to someone else. Nobody is emailed. It leaves your list, and you can no longer open it.",
+        "The chairs are told by email that a proposal was given back. On its page they see who gave it back, with your reason and your note, and they can give it to someone else. It leaves your list, and you can no longer open it.",
       ),
     ).toBeVisible();
     const why = page.getByRole("group", { name: "Why?" });
@@ -833,6 +836,129 @@ test.describe("a reviewer's screens", () => {
     await expectNoHorizontalScroll(page);
 
     // The pages rendered every time: none fell back to "Something went wrong".
+    expect(failures).toEqual([]);
+  });
+
+  /*
+   * The emails of the review phase, as often as the reviewer wants them (spec 03, §1.7). It is
+   * after the test above on purpose: settings.spec.ts waits for the review that one sends.
+   * Reviewer-30's choices are nobody else's to read, and no test assigns reviewer-30 anything,
+   * so no email follows from what is chosen here. A second attempt of this file finds the
+   * choices the first one left: the page is held to what the server says they are, and the
+   * test chooses the others.
+   */
+  test("a reviewer chooses how often they are emailed, on Your account, and the choices are kept", async () => {
+    type Choices = {
+      conference: { slug: string; title: Record<string, string> };
+      reviewer: {
+        assignments: "each" | "daily" | "none";
+        reminder: boolean;
+        reminderDays: number;
+      } | null;
+      chair: { notices: string } | null;
+    };
+    const mineNow = async () => {
+      const all = (await (await page.request.get("/api/me/notifications")).json()) as {
+        conferences: Choices[];
+      };
+      return all.conferences;
+    };
+    const before = await mineNow();
+    // Reviewer-30 reviews at the sandbox and nowhere else, and chairs nothing.
+    expect(before.map((k) => k.conference.slug)).toEqual([SANDBOX]);
+    const [here] = before;
+    if (!here?.reviewer) throw new Error("reviewer-30 has no email choices at the sandbox");
+    expect(here.chair).toBeNull();
+    // Someone who has chosen nothing gets one summary a day, and the reminder.
+    if (test.info().retry === 0) {
+      expect(here.reviewer).toEqual({ assignments: "daily", reminder: true, reminderDays: 3 });
+    }
+    const title = here.conference.title.en ?? "";
+    const LABELS = {
+      each: "An email for each one",
+      daily: "One summary a day",
+      none: "No email",
+    } as const;
+
+    await page.goto("/en/me");
+    await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+    const emails = page.getByRole("region", { name: "Emails about reviewing" });
+    await expect(emails.getByRole("heading", { level: 3, name: title })).toBeVisible();
+    const assigned = emails.getByRole("group", { name: "When proposals are assigned to you" });
+    await expect(assigned.getByRole("radio")).toHaveCount(3);
+    await expect(assigned.locator("label")).toHaveText([LABELS.each, LABELS.daily, LABELS.none]);
+    await expect(
+      assigned.getByRole("radio", { name: LABELS[here.reviewer.assignments] }),
+    ).toBeChecked();
+    const reminder = emails.getByRole("checkbox", {
+      name: "Remind me 3 days before reviews are due",
+    });
+    await expect(reminder).toBeChecked({ checked: here.reviewer.reminder });
+    // What cannot be turned off is said, and why.
+    await expect(
+      emails.getByText(
+        "Invitations and sign-in emails are always sent: without them you could not take part.",
+      ),
+    ).toBeVisible();
+    // The chairs' notices are not a reviewer's to choose: they are not on the page.
+    await expect(emails.getByRole("group", { name: /^As a chair/ })).toHaveCount(0);
+    const save = emails.getByRole("button", { name: `Save email choices for ${title}` });
+    await expect(save).toHaveText("Save");
+    for (const label of await assigned.locator("label").all()) await expectTouchTarget(label);
+    await expectTouchTarget(emails.locator("label").filter({ hasText: "Remind me" }));
+    await expectTouchTarget(save);
+    await expectAccessibleInBothThemes(page);
+    await expectFitsBothWidths(page);
+
+    // The other choices, saved: the page says so, and the line that says it takes focus.
+    const next = {
+      assignments: here.reviewer.assignments === "each" ? ("none" as const) : ("each" as const),
+      reminder: !here.reviewer.reminder,
+    };
+    await assigned.getByRole("radio", { name: LABELS[next.assignments] }).check();
+    await reminder.setChecked(next.reminder);
+    await save.click();
+    const said = emails.getByRole("status");
+    await expect(said).toHaveText(`Your email choices for ${title} are saved.`);
+    await expect(said).toBeFocused();
+    expect((await mineNow())[0]?.reviewer).toEqual({ ...next, reminderDays: 3 });
+
+    // Kept: after a reload they are what was chosen, and nothing says "saved" any more.
+    await page.reload();
+    await expect(assigned.getByRole("radio", { name: LABELS[next.assignments] })).toBeChecked();
+    await expect(reminder).toBeChecked({ checked: next.reminder });
+    await expect(said).toHaveText("");
+    await expectAccessibleInBothThemes(page);
+    // An email's link to these choices leads to this part of the page, from wherever the
+    // person is: its heading takes focus.
+    await page.goto("/en/reviews");
+    await page.goto("/en/me#emails");
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Emails about reviewing" }),
+    ).toBeFocused();
+    await expect(assigned.getByRole("radio", { name: LABELS[next.assignments] })).toBeChecked();
+
+    // In Spanish and in Portuguese the choices are in that language.
+    for (const [lang, heading, legend, always] of [
+      [
+        "es",
+        "Correos sobre la revisión",
+        "Cuando te asignen propuestas",
+        "Las invitaciones y los correos para entrar se envían siempre: sin ellos no podrías participar.",
+      ],
+      [
+        "pt",
+        "Emails sobre a revisão",
+        "Quando lhe forem atribuídas propostas",
+        "Os convites e os emails para entrar são sempre enviados: sem eles não poderia participar.",
+      ],
+    ] as const) {
+      await page.goto(`/${lang}/me`);
+      const part = page.getByRole("region", { name: heading });
+      await expect(part.getByRole("group", { name: legend }).getByRole("radio")).toHaveCount(3);
+      await expect(part.getByText(always)).toBeVisible();
+      await expectFitsBothWidths(page);
+    }
     expect(failures).toEqual([]);
   });
 });
