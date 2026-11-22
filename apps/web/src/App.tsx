@@ -12,6 +12,7 @@ import {
 } from "react-router";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, translate, useT } from "./i18n";
+import { AssignmentsPage } from "./pages/Assignments";
 import { ConferencePage } from "./pages/Conference";
 import { HomePage } from "./pages/Home";
 import { InvitationPage } from "./pages/Invitation";
@@ -42,6 +43,7 @@ export function App() {
         <Route path="c/:slug/manage" element={<ManagePage />} />
         <Route path="c/:slug/settings" element={<SettingsPage />} />
         <Route path="c/:slug/people" element={<PeoplePage />} />
+        <Route path="c/:slug/assignments" element={<AssignmentsPage />} />
         <Route path="s/:id" element={<SubmissionPage />} />
         <Route path="invitation" element={<InvitationPage />} />
         <Route path="role-invitation" element={<RoleInvitationPage />} />

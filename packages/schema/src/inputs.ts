@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ContributionRole, Key } from "./config";
-import { FieldValue, InvitableRole, ParticipationMode, SubmissionStatus } from "./domain";
+import { FieldValue, Id, InvitableRole, ParticipationMode, SubmissionStatus } from "./domain";
 import { LanguageCode } from "./i18n";
 import { hasStrayInvisible } from "./invisible";
 import { LIMITS, ROLE_INVITATIONS } from "./limits";
@@ -204,6 +204,17 @@ export type RoleInvitationAnswerInput = z.infer<typeof RoleInvitationAnswerInput
  */
 export const RoleRemovalInput = z.object({ assignments: z.int().min(0).optional() }).strict();
 
+/**
+ * A chair assigns one reviewer to one proposal (spec 03, §1.3). The proposal is named by the
+ * address. `confirmedFull` says the chair was shown that the reviewer has reached the number of
+ * proposals they said they would take, and assigned them all the same: without it such a
+ * reviewer is not assigned (409 `reviewer_full`), so that nobody goes over their number unasked.
+ */
+export const AssignReviewerInput = z
+  .object({ reviewerId: Id, confirmedFull: z.boolean().optional() })
+  .strict();
+export type AssignReviewerInput = z.infer<typeof AssignReviewerInput>;
+
 /** Your own profile. Email and id are not editable here; sending them is an error. */
 export const ProfileInput = z
   .object({
@@ -240,6 +251,25 @@ const flag = z.preprocess(
 export const PageCursor = z
   .string()
   .regex(/^[A-Za-z0-9_-]{40,200}$/, "nextCursor from a previous page");
+
+const assignmentsPageSize = z.coerce.number().int().min(1).max(200).default(50);
+
+/**
+ * The chairs' Assignments page (spec 03, §1.3): every pool, with the first `limit` of its
+ * proposals.
+ */
+export const AssignmentsQuery = z.object({ limit: assignmentsPageSize }).strict();
+export type AssignmentsQuery = z.infer<typeof AssignmentsQuery>;
+
+/** A further page of one pool's proposals on that page. */
+export const AssignmentsPoolQuery = z
+  .object({
+    /** nextCursor from the previous page of the same pool; empty means the first page. */
+    cursor: z.union([z.literal(""), PageCursor]).optional(),
+    limit: assignmentsPageSize,
+  })
+  .strict();
+export type AssignmentsPoolQuery = z.infer<typeof AssignmentsPoolQuery>;
 
 /** One query shape for the REST list, the CSV exports and the MCP tools. */
 export const SubmissionQuery = z

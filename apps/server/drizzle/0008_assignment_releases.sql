@@ -1,0 +1,5 @@
+ALTER TABLE "assignments" ADD COLUMN "assigned_by_person_id" uuid;--> statement-breakpoint
+ALTER TABLE "assignments" ADD COLUMN "released_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "assignments" ADD COLUMN "release_reason" text;--> statement-breakpoint
+ALTER TABLE "assignments" ADD CONSTRAINT "assignments_assigned_by_person_id_people_id_fk" FOREIGN KEY ("assigned_by_person_id") REFERENCES "public"."people"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "assignments" ADD CONSTRAINT "assignments_release_check" CHECK (("assignments"."released_at" is null and "assignments"."release_reason" is null) or ("assignments"."released_at" is not null and "assignments"."release_reason" is not null and "assignments"."release_reason" in ('chair','conflict','expertise','time','role_removed')));

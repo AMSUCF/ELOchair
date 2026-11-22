@@ -13,6 +13,7 @@ import { audit } from "./audit";
 import { SESSION_COOKIE, sessionViewer, tokenViewer } from "./auth";
 import type { AppEnv, Deps, Exposure } from "./context";
 import { mcpHandler } from "./mcp";
+import { assignmentRoutes } from "./routes/assignments";
 import { authRoutes } from "./routes/auth";
 import { Refusal } from "./routes/common";
 import { conferenceRoutes } from "./routes/conferences";
@@ -170,6 +171,7 @@ export function createApp(deps: Deps, exposure: Exposure) {
   app.route("/api/me", meRoutes);
   app.route("/api/conferences", conferenceRoutes);
   app.route("/api/conferences/:slug/people", peopleRoutes);
+  app.route("/api/conferences/:slug/assignments", assignmentRoutes);
   app.route("/api/submissions", submissionRoutes);
   app.route("/api/invitations", invitationRoutes);
   app.route("/api/role-invitations", roleInvitationRoutes);

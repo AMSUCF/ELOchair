@@ -24,7 +24,6 @@ import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { Db } from "../db/client";
 import {
-  assignments,
   conferenceRoles,
   people,
   reviewerProfiles,
@@ -45,6 +44,7 @@ import {
 import { RateLimited, Refusal } from "../routes/common";
 import { hashToken, newToken } from "../secrets";
 import { chairInvitationMessage, reviewerInvitationMessage } from "../templates";
+import { releaseAssignments } from "./assignments";
 import { lockRoles, stillChair } from "./roles";
 
 /*
@@ -519,10 +519,14 @@ export async function cancelRoleInvitation(
  * Take a role away from a person at a conference.
  * - A chair is whoever holds the `chair` or the `admin` role, and loses both.
  * - A chair cannot remove their own chair role, so that a conference keeps a chair.
- * - A reviewer also loses every assignment at the conference and their reviewer profile, in the
- *   same transaction. The request names the number of assigned proposals the confirmation
- *   showed (as the People page counts them for this chair); when that is no longer the number,
- *   nothing is removed (409 `stale`, with the number as it is now).
+ * - A reviewer's assignments at the conference are all released in the same transaction, with
+ *   the reason `role_removed` (their rows are kept; spec 03, §1.3), and their reviewer profile
+ *   is deleted. The request names the number of assigned proposals the confirmation showed (as
+ *   the People page counts them for this chair); when that is no longer the number, nothing is
+ *   removed (409 `stale`, with the number as it is now).
+ * - The roles lock is taken exclusive, so no chair is assigning this reviewer meanwhile (an
+ *   assignment shares it): one made before is released here, and one that comes after finds no
+ *   reviewer to assign. Nobody who is not a reviewer is left with an active assignment.
  *
  * `v.personId` comes from the address and is only ever used to find the role's rows. Whose role
  * it is, is then read from those rows: an id written another way (in capitals) names the same
@@ -534,6 +538,7 @@ export async function removeRole(
   conference: ConferenceRow,
   v: { personId: string; role: RemovableRole; assignments?: number },
 ): Promise<void> {
+  const now = deps.now();
   await change(deps, viewer, async (tx) => {
     // Read again under the lock: of two chairs removing each other at the same moment, the
     // second finds that it is no longer a chair, and the conference keeps one.
@@ -562,10 +567,14 @@ export async function removeRole(
     if (v.role === "reviewer") {
       const shown = assignedCount(actor, target, await loadSubmissionRecords(tx, conference));
       if (v.assignments !== shown) throw new Refusal(409, "stale", { assignments: shown });
-      const released = await tx
-        .delete(assignments)
-        .where(and(eq(assignments.conferenceId, conference.id), eq(assignments.reviewerId, target)))
-        .returning({ id: assignments.id });
+      // Every assignment the person has here, whoever could see it: each is released and
+      // recorded, with the proposal's id. The audit log is not a page.
+      const released = await releaseAssignments(tx, viewer, {
+        conferenceId: conference.id,
+        reviewerId: target,
+        reason: "role_removed",
+        now,
+      });
       await tx
         .delete(reviewerProfiles)
         .where(
@@ -575,8 +584,7 @@ export async function removeRole(
           ),
         );
       details.pools = held.flatMap((g) => g.scope);
-      // Every assignment the person had, whoever could see it: the audit log is not a page.
-      details.assignments = released.length;
+      details.assignments = released;
     }
     await tx.delete(conferenceRoles).where(mine);
     await audit(tx, viewer, {

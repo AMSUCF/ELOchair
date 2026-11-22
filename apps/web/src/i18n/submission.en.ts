@@ -229,7 +229,8 @@ export const submissionEn = {
   /*
    * The phase control on "Manage submissions", for chairs. Each phaseDoes_ sentence says what
    * its phase does in the code as it is (visible() in the server's routes/conferences.ts,
-   * isCallOpen, WITHDRAW_PHASES, the phase badge on the home page), and reads true whether the
+   * isCallOpen, WITHDRAW_PHASES, reviewersCanRead, the phase badge on the home page), and reads
+   * true whether the
    * conference arrives from the phase before or from the one after. Check a sentence against
    * the code before changing it, and change it when the code changes. {reviewing} and
    * {confirming} are the names of those phases (phase_reviewing, phase_confirming).
@@ -253,9 +254,9 @@ export const submissionEn = {
   phaseDoes_draft:
     "The conference is hidden from everyone but its chairs and any agents they have set up for it, and nobody can start, edit, submit or withdraw a proposal; people still see their own proposals.",
   phaseDoes_cfp_open:
-    "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings.",
+    "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings. Reviewers cannot open the proposals assigned to them in this phase.",
   phaseDoes_reviewing:
-    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn.",
+    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them.",
   phaseDoes_deciding:
     "What people can do is the same as in “{reviewing}”: the call is closed and a submitted proposal can still be withdrawn; the list of conferences shows the new phase.",
   phaseDoes_confirming: "The call is closed and a submitted proposal can no longer be withdrawn.",

@@ -1,6 +1,6 @@
 import type { PersonViewer, SubmissionRecord, Tier } from "@elochair/policy";
 import {
-  type Assignment,
+  type ActiveAssignment,
   ConferenceConfig,
   type Conflict,
   type Contribution,
@@ -272,7 +272,38 @@ export async function grantRole(
     });
 }
 
-/** Everything packages/policy needs to project every submission of a conference. */
+/**
+ * A conference's assignments that count: those that have not been released (spec 03, §1.3).
+ * This is the one place assignments are read for the policy, so a released reviewer is a
+ * stranger to the proposal everywhere at once: in what they may read, in who a chair is told
+ * reviews it, and in every count. A released row is read only by the code that manages
+ * assignments (services/assignments.ts).
+ */
+export async function loadActiveAssignments(
+  db: Db,
+  conferenceId: string,
+): Promise<ActiveAssignment[]> {
+  const rows = await db
+    .select()
+    .from(assignments)
+    .where(and(eq(assignments.conferenceId, conferenceId), isNull(assignments.releasedAt)));
+  return rows.map((a) => ({
+    id: a.id,
+    conferenceId: a.conferenceId,
+    reviewerId: a.reviewerId,
+    submissionId: a.submissionId,
+    createdAt: iso(a.createdAt),
+    dueAt: isoOrNull(a.dueAt),
+    assignedByPersonId: a.assignedByPersonId,
+    releasedAt: null,
+    releaseReason: null,
+  }));
+}
+
+/**
+ * Everything packages/policy needs to project every submission of a conference: each with its
+ * active assignments (loadActiveAssignments) and the phase the conference row holds.
+ */
 export async function loadSubmissionRecords(
   db: Db,
   conference: ConferenceRow,
@@ -299,10 +330,7 @@ export async function loadSubmissionRecords(
     ? await db.select().from(people).where(inArray(people.id, personIds))
     : [];
   const peopleById = new Map(peopleRows.map((p) => [p.id, toPerson(p)]));
-  const assigns = await db
-    .select()
-    .from(assignments)
-    .where(eq(assignments.conferenceId, conference.id));
+  const assigns = await loadActiveAssignments(db, conference.id);
   const confls = await db.select().from(conflicts).where(eq(conflicts.conferenceId, conference.id));
 
   const bySub = <T extends { submissionId: string | null }>(rows: T[]) => {
@@ -346,14 +374,6 @@ export async function loadSubmissionRecords(
       updatedAt: iso(s.updatedAt),
       submittedAt: isoOrNull(s.submittedAt),
     };
-    const subAssignments: Assignment[] = (assignsBySub.get(s.id) ?? []).map((a) => ({
-      id: a.id,
-      conferenceId: a.conferenceId,
-      reviewerId: a.reviewerId,
-      submissionId: a.submissionId,
-      createdAt: iso(a.createdAt),
-      dueAt: isoOrNull(a.dueAt),
-    }));
     const subConflicts: Conflict[] = confls
       .filter(
         (c) =>
@@ -370,9 +390,10 @@ export async function loadSubmissionRecords(
       }));
     return {
       config: conference.config,
+      phase: conference.phase,
       submission,
       contributions: cs,
-      assignments: subAssignments,
+      assignments: assignsBySub.get(s.id) ?? [],
       conflicts: subConflicts,
       people: peopleById,
     };

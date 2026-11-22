@@ -81,7 +81,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsBlind_open:
     "Quienes revisan ven los nombres, las instituciones y las biografías de las personas autoras",
   settingsBlindHint:
-    "Una revisión anónima sigue siendo anónima una vez asignadas las personas que revisan: después ya no se puede cambiar para mostrar a las personas autoras.",
+    "Una revisión anónima sigue siendo anónima una vez que se ha asignado a alguien para revisar, aunque después se le quite: a partir de entonces ya no se puede cambiar para mostrar a las personas autoras.",
   settingsGuidelinesHint:
     "Opcional. Quienes revisan en este grupo ven este texto encima de cada propuesta que se les asigna, en su idioma si lo has escrito en él y, si no, en el idioma principal del congreso. Los saltos de línea se conservan.",
   settingsEmailsIntro:
@@ -230,7 +230,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   issue_settings_min_over_max: "No puede ser mayor que el valor máximo que tiene al lado.",
   issue_settings_min_not_below_max: "Debe ser menor que la puntuación más alta que tiene al lado.",
   issue_settings_reviewers_assigned:
-    "Ya hay personas asignadas para revisar propuestas que aquí se revisan de forma anónima. A ellas y a las personas autoras se les dijo que la revisión es anónima, así que ahora no se puede mostrar quiénes son las personas autoras.",
+    "Ya se ha asignado a personas para revisar propuestas que aquí se revisan de forma anónima. A ellas y a las personas autoras se les dijo que la revisión es anónima, así que ahora no se puede mostrar quiénes son las personas autoras.",
   issue_settings_no_whole_number:
     "No hay ningún número entero entre este valor y el máximo que tiene al lado, así que nadie podría responder.",
   issue_settings_deadline_order: "No puede ser anterior al plazo de arriba.",

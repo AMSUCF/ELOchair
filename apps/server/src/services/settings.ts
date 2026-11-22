@@ -173,23 +173,29 @@ function gained(record: SubmissionRecord, after: ConferenceConfig): SubmissionIs
 
 /**
  * An anonymized review that has begun stays anonymized. Reviewers were promised, and authors
- * were told, that the authors are not shown: once a proposal has a reviewer assigned, a change
- * that would show that reviewer who wrote it is refused, at the value that would do it. On the
- * settings screen that is the pool's mode. Through the API it may also be a format's own mode,
- * or the pool a format is reviewed by. Hiding names that were shown is always allowed, and so
- * is every change while no reviewer is assigned.
+ * were told, that the authors are not shown: once a proposal has been given a reviewer, a
+ * change that would show a reviewer of it who wrote it is refused, at the value that would do
+ * it. On the settings screen that is the pool's mode. Through the API it may also be a format's
+ * own mode, or the pool a format is reviewed by. Hiding names that were shown is always
+ * allowed, and so is every change while no proposal has had a reviewer.
  *
- * Any assignment counts, whatever became of the proposal since. The mode is the one in force
- * for the format (effectiveBlindMode), so a format with a mode of its own is not touched by its
- * pool's.
+ * Any assignment counts, whatever became of the proposal since, and whatever became of the
+ * assignment: `everAssigned` holds the submissions that have, or have had, a reviewer. A
+ * released assignment counts for nothing anywhere else (spec 03, §1.3), and still counts here:
+ * the reviewer may have read the proposal anonymized while it was theirs, and can be assigned
+ * to it again. If releasing took the proposal out of this guard, a chair could release its
+ * reviewers, show names, and assign the same people again, who would then be shown the authors
+ * of what they were given as anonymized. The mode is the one in force for the format
+ * (effectiveBlindMode), so a format with a mode of its own is not touched by its pool's.
  */
 function namesRevealed(
   before: ConferenceConfig,
   after: ConferenceConfig,
   records: SubmissionRecord[],
+  everAssigned: ReadonlySet<string>,
 ): ConfigIssue[] {
   const assigned = new Set(
-    records.filter((r) => r.assignments.length > 0).map((r) => r.submission.typeKey),
+    records.filter((r) => everAssigned.has(r.submission.id)).map((r) => r.submission.typeKey),
   );
   const paths = new Set<string>();
   for (const type of after.submissionTypes) {
@@ -209,7 +215,7 @@ function namesRevealed(
   return [...paths].map((path) => ({
     path,
     code: "reviewers_assigned",
-    message: "reviewers are already assigned to proposals that are reviewed anonymized",
+    message: "reviewers have been assigned to proposals that are reviewed anonymized",
   }));
 }
 
@@ -244,19 +250,22 @@ function agreementsReworded(before: ConferenceConfig, after: ConferenceConfig): 
 
 /**
  * What saving `input` over the stored configuration would do. Nothing is written. `records` are
- * the conference's submissions as they are now; `base` is the token of the configuration the
- * person started from, when they said so. `viewer` decides one thing only: which of the
- * proposals that block the save are named to them (those they may manage as a chair).
+ * the conference's submissions as they are now, and `everAssigned` the ids of those that have,
+ * or have had, a reviewer (everAssigned in services/assignments.ts); `base` is the token of the
+ * configuration the person started from, when they said so. `viewer` decides one thing only:
+ * which of the proposals that block the save are named to them (those they may manage as a
+ * chair).
  */
 export function reviewConfig(args: {
   viewer: PersonViewer;
   conference: ConferenceRow;
   records: SubmissionRecord[];
+  everAssigned: ReadonlySet<string>;
   input: unknown;
   base: string | null;
   now: Date;
 }): { review: ConfigReview; next: ConferenceConfig | null } {
-  const { viewer, conference, records, input, base, now } = args;
+  const { viewer, conference, records, everAssigned, input, base, now } = args;
   const token = configToken(conference.config);
   const review: ConfigReview = {
     token,
@@ -275,7 +284,10 @@ export function reviewConfig(args: {
   const next = parsed.data;
   const before = conference.config;
   review.changes = configChanges(before, next);
-  review.issues = [...namesRevealed(before, next, records), ...agreementsReworded(before, next)];
+  review.issues = [
+    ...namesRevealed(before, next, records, everAssigned),
+    ...agreementsReworded(before, next),
+  ];
 
   const byCode: Record<string, number> = {};
   const submissionIds: string[] = [];

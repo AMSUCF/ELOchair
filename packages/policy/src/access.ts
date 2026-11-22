@@ -1,11 +1,13 @@
 import {
-  type Assignment,
+  type ActiveAssignment,
   type BlindMode,
   type ConferenceConfig,
   type Conflict,
   type Contribution,
   effectiveBlindMode,
   findType,
+  isActiveAssignment,
+  reviewersCanRead,
   type Submission,
 } from "@elochair/schema";
 import { hasRole, isConferenceChair, type PersonViewer, type Viewer } from "./viewer";
@@ -13,13 +15,31 @@ import { hasRole, isConferenceChair, type PersonViewer, type Viewer } from "./vi
 /** Everything needed to decide who may see a submission. */
 export type SubmissionContext = {
   config: ConferenceConfig;
+  /**
+   * The phase the conference is in. An assigned reviewer reads the proposal from `reviewing` on
+   * (spec 03, §1.3). A phase that is not one is not a phase of review.
+   */
+  phase: string;
   submission: Submission;
   contributions: Contribution[];
-  /** Assignments for this submission. */
-  assignments: Assignment[];
+  /**
+   * The active assignments for this submission. A released one is not put here (the server's
+   * loader leaves it out), and counts for nothing if it is: read them through
+   * activeAssignments().
+   */
+  assignments: ActiveAssignment[];
   /** Conflicts that name this submission or any of its contributors. */
   conflicts: Conflict[];
 };
+
+/**
+ * The assignments of a submission that count: those that have not been released. Everything in
+ * this package that decides or counts by assignments reads them here, so that a released
+ * reviewer is a stranger to the proposal again, whatever a caller hands over.
+ */
+export function activeAssignments(ctx: Pick<SubmissionContext, "assignments">): ActiveAssignment[] {
+  return ctx.assignments.filter(isActiveAssignment);
+}
 
 export type Access =
   | "none"
@@ -36,12 +56,23 @@ export type Access =
 
 const REVIEWABLE = new Set(["submitted", "accepted", "waitlisted", "rejected", "confirmed"]);
 
+/**
+ * Whether a submission is in a status its assigned reviewers still read: submitted, or carrying
+ * a decision. A withdrawn one is not, and neither is a draft: an assignment to it is nobody's
+ * work, and is not counted as a reviewer's load.
+ */
+export const isReviewable = (s: Pick<Submission, "status">): boolean => REVIEWABLE.has(s.status);
+
 /** Never submitted: a draft in all but name (e.g. withdrawn before ever being submitted). */
 export function isNeverSubmitted(s: Pick<Submission, "status" | "submittedAt">): boolean {
   return s.status === "draft" || s.submittedAt === null;
 }
 
-function isConflicted(personId: string, ctx: SubmissionContext): boolean {
+/**
+ * Whether a person has a conflict with a submission: one that names the submission, or one
+ * that names someone who is on it (invited or confirmed; not someone who declined or left).
+ */
+export function isConflicted(personId: string, ctx: SubmissionContext): boolean {
   const authors = new Set(
     ctx.contributions.filter((c) => c.status !== "declined").map((c) => c.personId),
   );
@@ -78,14 +109,16 @@ function personAccess(p: PersonViewer, ctx: SubmissionContext, baseline: Access)
     return "chair";
   }
 
-  // Reviewer rule: only assigned reviewers, only in pools they serve, only once submitted.
+  // Reviewer rule: only assigned reviewers, only in pools they serve, only once submitted, and
+  // only once the conference is in review. Before that, and after the assignment is released,
+  // an assigned reviewer gets what a stranger gets.
   const reviewer = hasRole(p, s.conferenceId, ["reviewer"]);
   const pool = findType(ctx.config, s.typeKey)?.reviewPool;
   const inPool = reviewer && pool && (reviewer.scope.length === 0 || reviewer.scope.includes(pool));
-  const assigned = ctx.assignments.some(
+  const assigned = activeAssignments(ctx).some(
     (a) => a.reviewerId === p.personId && a.submissionId === s.id,
   );
-  if (inPool && assigned && REVIEWABLE.has(s.status)) {
+  if (inPool && assigned && isReviewable(s) && reviewersCanRead(ctx.phase)) {
     return `reviewer_${effectiveBlindMode(ctx.config, s.typeKey)}`;
   }
   return baseline;

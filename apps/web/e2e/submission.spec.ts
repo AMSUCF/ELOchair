@@ -1110,7 +1110,17 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await expect(proposal.getByRole("term").filter({ hasText: /^Submitted$/ })).toBeVisible();
   await expect(proposal.getByRole("term").filter({ hasText: /^Last changed$/ })).toBeVisible();
   await expect(proposal.getByText(/e2e-panel@example\.org/)).toBeVisible();
-  // It is for reading: nothing to type into, nothing to press.
+  // Under it, a chair finds who reviews it. This call is still open, so nobody can be
+  // assigned yet, and the page says so (assigning is tried in settings.spec.ts).
+  const reviewers = proposal.getByRole("region", { name: "Reviewers" });
+  await expect(reviewers.getByText(/^Reviewers assigned: 0 of \d+\./)).toBeVisible();
+  await expect(reviewers.getByText("No reviewer is assigned to this proposal.")).toBeVisible();
+  await expect(
+    reviewers.getByText(
+      "No reviewer can be assigned yet: the call has not closed. Reviewers can be assigned once its closing date has passed, or once the conference is in review.",
+    ),
+  ).toBeVisible();
+  // The proposal is for reading: nothing to type into, and while the call is open nothing to press.
   await expect(proposal.getByRole("textbox")).toHaveCount(0);
   await expect(proposal.getByRole("button")).toHaveCount(0);
   await expectAccessible(page);
@@ -1321,7 +1331,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   ).toBeFocused();
   await expect(
     phase.getByText(
-      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn.",
+      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them.",
     ),
   ).toBeVisible();
   const reason = phase.getByLabel("Reason for going back");

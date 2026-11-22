@@ -33,6 +33,7 @@ import {
   loadSubmissionRecords,
   normalizeEmail,
 } from "../repo";
+import { everHadReviewer } from "../services/assignments";
 import {
   mailContext,
   mutateSubmission,
@@ -178,6 +179,12 @@ export const submissionRoutes = new Hono<AppEnv>()
         }
         if (input.typeKey && !findType(conference.config, input.typeKey)) {
           unprocessable([{ path: "typeKey", code: "unknown_type" }]);
+        }
+        // A proposal that has had a reviewer keeps its format, a draft too (one taken back while
+        // its call is open again): the format decides what its reviewers are shown (spec 03,
+        // §1.3). Read under the proposal's row, which an assignment takes as well.
+        if (input.typeKey && input.typeKey !== before.typeKey && (await everHadReviewer(tx, id))) {
+          unprocessable([{ path: "typeKey", code: "locked" }]);
         }
         const { version: _v, ...changes } = input;
         const next: Submission = {

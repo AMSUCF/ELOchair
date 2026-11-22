@@ -290,6 +290,9 @@ test("retrying after a network error keeps the link working", async ({ page, req
   await page.waitForLoadState("networkidle");
   await expect(page.getByRole("link", { name: "Download proposals (CSV)" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Conference settings" })).toHaveCount(0);
+  // Nor who holds a role, or who reviews what: those pages are the chairs' too.
+  await expect(page.getByRole("link", { name: "People", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Assignments", exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Conference phase" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^(Move to|Go back to) / })).toHaveCount(0);
 });

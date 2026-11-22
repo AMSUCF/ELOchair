@@ -39,7 +39,13 @@ export {
   type TextSpan,
   UNNAMED_OWNER,
 } from "./messages";
-export { CONFERENCE_PHASES, canWithdrawIn, nextPhase, previousPhase } from "./phases";
+export {
+  CONFERENCE_PHASES,
+  canWithdrawIn,
+  nextPhase,
+  previousPhase,
+  reviewersCanRead,
+} from "./phases";
 export {
   type IdentityHint,
   normalizeWords,

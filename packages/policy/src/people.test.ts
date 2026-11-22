@@ -3,7 +3,7 @@
  * typed names carry markers; each view is rendered and searched for what it must not hold.
  */
 import {
-  type Assignment,
+  type ActiveAssignment,
   type ConferenceConfig,
   ConferenceConfig as ConfigSchema,
   type Conflict,
@@ -138,13 +138,16 @@ function submission(
     invitedName: null,
     invitedAffiliation: null,
   }));
-  const assignments: Assignment[] = (v.reviewers ?? []).map((reviewerId, i) => ({
+  const assignments: ActiveAssignment[] = (v.reviewers ?? []).map((reviewerId, i) => ({
     id: uuid(9000 + n * 10 + i),
     conferenceId: CONFERENCE,
     reviewerId,
     submissionId: id,
     createdAt: at(-10),
     dueAt: null,
+    assignedByPersonId: null,
+    releasedAt: null,
+    releaseReason: null,
   }));
   const conflicts: Conflict[] = (v.conflicted ?? []).map((personId, i) => ({
     id: uuid(8000 + n * 10 + i),
@@ -155,7 +158,14 @@ function submission(
     kind: "declared",
     declaredBy: "chair",
   }));
-  return { config: CONFIG, submission: s, contributions, assignments, conflicts };
+  return {
+    config: CONFIG,
+    phase: "reviewing",
+    submission: s,
+    contributions,
+    assignments,
+    conflicts,
+  };
 }
 
 describe("who may see the People page", () => {
@@ -489,6 +499,28 @@ describe("how many proposals a reviewer has, as a chair may know it", () => {
       submissions,
     });
     expect(projectPeople(author, rec, NOW)?.reviewers.map((r) => r.assigned)).toEqual([2, 2]);
+  });
+
+  it("does not count an assignment that was released, should one ever be handed over", () => {
+    // The server's loader leaves released assignments out. Handed over all the same, one counts
+    // for nothing: the reviewer no longer has that proposal.
+    const chair = chairOf(CONFERENCE, uuid(11));
+    const kept = submission(1, { reviewers: [reviewer, other] });
+    const gone = submission(2, { reviewers: [reviewer] });
+    gone.assignments = gone.assignments.map(
+      (a) => ({ ...a, releasedAt: at(-1), releaseReason: "chair" }) as unknown as ActiveAssignment,
+    );
+    expect(assignedCount(chair, reviewer, [kept, gone])).toBe(1);
+    expect(assignedCount(chair, other, [kept, gone])).toBe(1);
+  });
+
+  it("is the same in every phase: a load is a load before reviewers can read", () => {
+    const chair = chairOf(CONFERENCE, uuid(11));
+    const submissions = [submission(1, { reviewers: [reviewer] })];
+    for (const phase of ["draft", "cfp_open", "reviewing", "archived"]) {
+      const there = submissions.map((s) => ({ ...s, phase }));
+      expect(assignedCount(chair, reviewer, there), phase).toBe(1);
+    }
   });
 
   it("cannot be used by a chair to find who reviews their own proposal", () => {

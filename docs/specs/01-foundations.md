@@ -49,7 +49,7 @@ The goal is to lay down the parts every later phase builds on, so the Submission
 - **Projections:** one function per record kind decides what a viewer may see.
   - _Contributor rule:_ a contributor to a submission always gets the submitter view of it, whatever other roles they hold.
   - _Conflict rule:_ a conflicted reviewer or chair gets nothing beyond what the public sees.
-  - _Reviewer rule:_ only assigned reviewers see a submission.
+  - _Reviewer rule:_ only assigned reviewers see a submission, once the conference is in review, and while the assignment stands: one that was released counts for nothing (spec 03, §1.3).
     - **double-blind:** no names, affiliations, bios, emails, or `identifying` field values
     - **single-blind:** names and affiliations, but no bios or emails
     - **open:** names, affiliations and bios, but no emails

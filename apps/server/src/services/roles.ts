@@ -16,16 +16,18 @@ import { Refusal } from "../routes/common";
  * the changes already under way, which commit as a chair's, and every change that comes after it
  * finds the role gone and is refused.
  *
- * Which changes: saving the configuration, moving the phase, and on the People page inviting,
- * sending again, cancelling and removing. A new route that writes because its caller is a chair
+ * Which changes: saving the configuration, moving the phase, on the People page inviting,
+ * sending again, cancelling and removing, and on a proposal's page assigning a reviewer and
+ * releasing one (services/assignments.ts). A new route that writes because its caller is a chair
  * does the same. Reads are checked once, when they are asked for; a CSV export is a read, and
  * what it writes is the record that it was made.
  *
  * ONE LOCK ORDER EVERYWHERE (spec 02, §1.9). A transaction takes what it needs of these, in
  * this order, and never goes back for an earlier one:
- *   1. the row of what it changes: a submission's, or a role invitation's (for update);
+ *   1. the row of what it changes: a submission's, or a role invitation's (for update). Who
+ *      reviews a proposal is changed under that proposal's row;
  *   2. the conference's roles lock (lockRoles): shared to act as a chair, exclusive to change
- *      who holds a role;
+ *      who holds a role (removing a reviewer's role releases their assignments under it);
  *   3. the conference's row: shared by a write (shareConference), for update by a configuration
  *      save or a phase move (lockConference, movePhase);
  *   4. the locks that count a day's invitations: the sender's, then the address's.

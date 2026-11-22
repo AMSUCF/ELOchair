@@ -1,5 +1,4 @@
 import {
-  type Assignment,
   type BlindMode,
   type Contribution,
   type ContributionRole,
@@ -12,7 +11,7 @@ import {
   type Submission,
   type SubmissionIssue,
 } from "@elochair/schema";
-import { type Access, type SubmissionContext, submissionAccess } from "./access";
+import { type Access, activeAssignments, type SubmissionContext, submissionAccess } from "./access";
 import { selfIdFindings, shownIdentity, submissionIssues } from "./derived";
 import type { Viewer } from "./viewer";
 
@@ -214,7 +213,11 @@ function core(s: Submission): SubmissionCore {
   };
 }
 
-const reviewerIds = (assignments: Assignment[]) => assignments.map((a) => a.reviewerId).sort();
+/** Who reviews it now: a reviewer whose assignment was released is not among them. */
+const reviewerIds = (rec: SubmissionRecord) =>
+  activeAssignments(rec)
+    .map((a) => a.reviewerId)
+    .sort();
 const issueCodes = (rec: SubmissionRecord) =>
   [
     ...new Set(
@@ -283,7 +286,7 @@ export function renderSubmission(
         })),
         issueCodes: issueCodes(rec),
         selfIdWarningCount: selfIdCount(rec),
-        ...(access === "metadata" ? { assignedReviewerIds: reviewerIds(rec.assignments) } : {}),
+        ...(access === "metadata" ? { assignedReviewerIds: reviewerIds(rec) } : {}),
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         submittedAt: s.submittedAt,
@@ -366,7 +369,7 @@ export function renderSubmission(
         }),
         issueCodes: issueCodes(rec),
         selfIdWarningCount: selfIdCount(rec),
-        assignedReviewerIds: reviewerIds(rec.assignments),
+        assignedReviewerIds: reviewerIds(rec),
         conflictCount: rec.conflicts.length,
       };
   }

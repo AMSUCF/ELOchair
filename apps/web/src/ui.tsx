@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "react-router";
 import { type Lang, type MessageKey, translate, useT } from "./i18n";
 import { statusKey } from "./labels";
 
@@ -60,6 +61,24 @@ export function PageHeading({
       {children}
     </h1>
   );
+}
+
+/**
+ * Takes people to the part of the page that the address names ("#formats", "#reviewers"), once
+ * the page is there: links lead to such parts from other pages and from the top of the same
+ * one. That part takes focus as well as the view, so that reading and the keyboard go on from
+ * it. The browser cannot do this by itself: the page is drawn after the address has changed.
+ */
+export function useHashTarget(ready: boolean) {
+  const { hash, key } = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` changes with every navigation, so that taking the same link again goes there again
+  useEffect(() => {
+    if (!ready || hash.length < 2) return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView();
+  }, [ready, hash, key]);
 }
 
 /**

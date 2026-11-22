@@ -1,7 +1,7 @@
 import type { ConferenceConfig } from "@elochair/schema";
 import { effectiveBlindMode, localize } from "@elochair/schema/pure";
-import { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { useState } from "react";
+import { Link, useParams } from "react-router";
 import type { ConferenceDetail, Me } from "../api";
 import {
   clockName,
@@ -29,6 +29,7 @@ import {
   SectionHeading,
   Sheet,
   Stat,
+  useHashTarget,
 } from "../ui";
 import { useApi } from "../useApi";
 
@@ -41,25 +42,6 @@ const DEADLINES = [
 
 const two = (n: number) => String(n).padStart(2, "0");
 const range = (min: number, max: number) => (min === max ? String(min) : `${min}–${max}`);
-
-/**
- * Takes people to the part of the page that the address names ("#formats", "#format-talk"),
- * once the page is there: the invitation's links lead to them, from the front page and from
- * the top of this one. That part takes focus as well as the view, so that reading and the
- * keyboard go on from it. The browser cannot do this by itself: the page is drawn after the
- * address has changed.
- */
-function useHashTarget(ready: boolean) {
-  const { hash, key } = useLocation();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` changes with every navigation, so that taking the same link again goes there again
-  useEffect(() => {
-    if (!ready || hash.length < 2) return;
-    const target = document.getElementById(hash.slice(1));
-    if (!target) return;
-    target.focus({ preventScroll: true });
-    target.scrollIntoView();
-  }, [ready, hash, key]);
-}
 
 export function ConferencePage() {
   const { slug } = useParams();

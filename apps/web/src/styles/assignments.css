@@ -1,0 +1,75 @@
+/* Assigning reviewers: the Reviewers section of a proposal's page, and the Assignments page. */
+
+/* The section under a proposal: who reviews it, then who could. Rows are the roster's. */
+.reviewers {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.reviewers > h2,
+.reviewers > h3,
+.reviewers > p {
+  margin: 0;
+}
+
+.reviewers > h3 {
+  margin-top: 12px;
+}
+
+.assignments-page {
+  display: grid;
+  gap: 8px;
+}
+
+.assignments-page section {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.assignments-page section > h2,
+.assignments-page section > p {
+  margin: 0;
+}
+
+/* The box that finds a reviewer by name, and the line under it that says how many match. */
+.reviewers .stack > p {
+  margin: 0;
+}
+
+/* A line that says what happened keeps no room while it has nothing to say. */
+.reviewers .status-line:empty,
+.assignments-page .status-line:empty {
+  min-height: 0;
+}
+
+/* One proposal to a card: its title, its format, how many reviewers, and who. */
+.assignments-page .cards {
+  margin: 4px 0;
+}
+
+.assignments-page .card {
+  display: grid;
+  gap: 4px;
+}
+
+.assignments-page .card h3,
+.assignments-page .card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.assignments-page .card h3 {
+  font-size: 1.15rem;
+}
+
+/* The committees, as links to their parts of the page. */
+.jump {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+}

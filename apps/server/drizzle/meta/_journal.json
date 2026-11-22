@@ -57,6 +57,13 @@
       "when": 1795302434977,
       "tag": "0007_people_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795315240746,
+      "tag": "0008_assignment_releases",
+      "breakpoints": true
     }
   ]
 }

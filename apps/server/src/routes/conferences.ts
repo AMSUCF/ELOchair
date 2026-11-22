@@ -36,6 +36,7 @@ import {
   shareConference,
   writeConfig,
 } from "../repo";
+import { everAssigned } from "../services/assignments";
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
 import { stillChair } from "../services/roles";
 import { configToken, reviewConfig } from "../services/settings";
@@ -163,6 +164,7 @@ export const conferenceRoutes = new Hono<AppEnv>()
       viewer,
       conference: k,
       records: await loadSubmissionRecords(db, k),
+      everAssigned: await everAssigned(db, k.id),
       input,
       base: baseToken(c),
       now: now(),
@@ -191,14 +193,17 @@ export const conferenceRoutes = new Hono<AppEnv>()
         viewer: actor,
         conference: stored,
         records: await loadSubmissionRecords(tx, stored),
+        // Read under the conference's row: an assignment shares that row, so none is being
+        // made while this is checked (services/assignments.ts).
+        everAssigned: await everAssigned(tx, stored.id),
         input: next,
         base,
         now,
       });
       if (review.stale) throw new Refusal(409, "stale", { token: review.token });
       // What a valid configuration still may not do is named at the value that would do it,
-      // as in the review: show the authors of a proposal that has a reviewer and is reviewed
-      // anonymized (`reviewers_assigned`), or change what an agreement says under the version
+      // as in the review: show the authors of a proposal that has been given a reviewer and is
+      // reviewed anonymized (`reviewers_assigned`), or change what an agreement says under the version
       // people have accepted (`agreement_version_required`). The answer carries every such
       // issue, under the code of the first.
       const [refused] = review.issues;

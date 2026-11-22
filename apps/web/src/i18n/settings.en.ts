@@ -76,7 +76,7 @@ export const settingsEn = {
   settingsBlind_single: "Reviewers see the authors' names and affiliations",
   settingsBlind_open: "Reviewers see the authors' names, affiliations and bios",
   settingsBlindHint:
-    "An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors.",
+    "An anonymized review stays anonymized once a reviewer has been assigned, even if they are removed again: after that, it can no longer be changed to show the authors.",
   settingsGuidelinesHint:
     "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
   settingsEmailsIntro:
@@ -224,7 +224,7 @@ export const settingsEn = {
   issue_settings_min_over_max: "This must not be more than the largest value beside it.",
   issue_settings_min_not_below_max: "This must be less than the largest score beside it.",
   issue_settings_reviewers_assigned:
-    "Reviewers are already assigned to proposals that are reviewed anonymized here. They and the authors were told that the review is anonymized, so the authors cannot be shown now.",
+    "Reviewers have already been assigned to proposals that are reviewed anonymized here. They and the authors were told that the review is anonymized, so the authors cannot be shown now.",
   issue_settings_no_whole_number:
     "There is no whole number between this and the largest value beside it, so nobody could answer.",
   issue_settings_deadline_order: "This must not be before the deadline above it.",

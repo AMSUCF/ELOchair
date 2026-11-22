@@ -179,6 +179,15 @@ export const conflicts = pgTable(
   ],
 );
 
+/**
+ * One reviewer on one proposal (spec 03, §1.3): at most one row for the two.
+ * - Rows are kept. Taking a reviewer off a proposal releases the assignment: `released_at` and
+ *   `release_reason` are set together, and the row counts for nothing from then on.
+ * - Assigning the same reviewer again makes the same row active again: `released_at` and
+ *   `release_reason` go back to null, and `created_at` becomes the time of the new assignment.
+ * - Only `loadActiveAssignments()` in repo.ts reads rows for the policy, and it reads the active
+ *   ones. Released rows are read by services/assignments.ts alone.
+ */
 export const assignments = pgTable(
   "assignments",
   {
@@ -192,10 +201,26 @@ export const assignments = pgTable(
     submissionId: uuid("submission_id")
       .notNull()
       .references(() => submissions.id, { onDelete: "cascade" }),
+    /** When the assignment was made; made again after a release, when that was. */
     createdAt: created(),
     dueAt: ts("due_at"),
+    /** The chair who made it. Null on rows from before this column, and on seeded ones. */
+    assignedByPersonId: uuid("assigned_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    releasedAt: ts("released_at"),
+    releaseReason: text("release_reason"),
   },
-  (t) => [unique("assignments_reviewer_submission").on(t.reviewerId, t.submissionId)],
+  (t) => [
+    unique("assignments_reviewer_submission").on(t.reviewerId, t.submissionId),
+    // Released with a reason, or active with neither: never one without the other. (The reason
+    // is said to be there before it is compared: a comparison with nothing is not false, and a
+    // check lets through whatever is not false.)
+    check(
+      "assignments_release_check",
+      sql`(${t.releasedAt} is null and ${t.releaseReason} is null) or (${t.releasedAt} is not null and ${t.releaseReason} is not null and ${t.releaseReason} in ('chair','conflict','expertise','time','role_removed'))`,
+    ),
+  ],
 );
 
 export const loginTokens = pgTable("login_tokens", {

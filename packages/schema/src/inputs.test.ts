@@ -1,10 +1,13 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Key } from "./config";
-import { roleInvitationState } from "./domain";
+import { Assignment, isActiveAssignment, roleInvitationState } from "./domain";
 import { LocalizedText } from "./i18n";
 import {
   AnswerInvitationInput,
+  AssignmentsPoolQuery,
+  AssignmentsQuery,
+  AssignReviewerInput,
   OneLine,
   ProfileInput,
   RoleInvitationAnswerInput,
@@ -360,5 +363,79 @@ describe("invitations to a role (spec 03, §1.2)", () => {
     expect(state({ answer: "declined", cancelled: true })).toBe("cancelled");
     expect(state({ expires: -1000, cancelled: true })).toBe("cancelled");
     expect(state({ answer: "accepted", cancelled: true })).toBe("accepted");
+  });
+});
+
+describe("assignments (spec 03, §1.3)", () => {
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const ok = (schema: { safeParse: (v: unknown) => { success: boolean } }, v: unknown) =>
+    schema.safeParse(v).success;
+
+  it("assigning names one reviewer, and may say the chair was shown they are full; nothing else", () => {
+    expect(AssignReviewerInput.parse({ reviewerId: id(1) })).toEqual({ reviewerId: id(1) });
+    expect(ok(AssignReviewerInput, { reviewerId: id(1), confirmedFull: true })).toBe(true);
+    for (const bad of [
+      {},
+      { reviewerId: "not-an-id" },
+      { reviewerId: [id(1), id(2)] },
+      { reviewerId: id(1), confirmedFull: "yes" },
+      // Nothing in the request can name the proposal, a reason, or who assigns.
+      { reviewerId: id(1), submissionId: id(2) },
+      { reviewerId: id(1), assignedByPersonId: id(3) },
+      { reviewerId: id(1), releaseReason: "conflict" },
+    ]) {
+      expect(ok(AssignReviewerInput, bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("the Assignments page is asked for by a page size, and a pool's next page by a cursor too", () => {
+    expect(AssignmentsQuery.parse({})).toEqual({ limit: 50 });
+    expect(AssignmentsQuery.parse({ limit: "200" })).toEqual({ limit: 200 });
+    expect(AssignmentsPoolQuery.parse({ limit: "20", cursor: "" })).toEqual({
+      limit: 20,
+      cursor: "",
+    });
+    expect(ok(AssignmentsPoolQuery, { cursor: "s".padEnd(105, "A") })).toBe(true);
+    for (const bad of [{ limit: "0" }, { limit: "201" }, { limit: "2.5" }, { pool: "x" }]) {
+      expect(ok(AssignmentsQuery, bad), JSON.stringify(bad)).toBe(false);
+      expect(ok(AssignmentsPoolQuery, bad), JSON.stringify(bad)).toBe(false);
+    }
+    // The page as a whole has no cursor: each pool's list has its own.
+    expect(ok(AssignmentsQuery, { cursor: "" })).toBe(false);
+    expect(ok(AssignmentsPoolQuery, { cursor: "short" })).toBe(false);
+  });
+
+  it("an assignment is released with a time and a reason, or is active with neither", () => {
+    const active = {
+      id: id(1),
+      conferenceId: id(2),
+      reviewerId: id(3),
+      submissionId: id(4),
+      createdAt: "2027-02-15T12:00:00Z",
+      dueAt: null,
+      assignedByPersonId: null,
+      releasedAt: null,
+      releaseReason: null,
+    };
+    const released = { ...active, releasedAt: "2027-02-16T12:00:00Z", releaseReason: "chair" };
+    expect(ok(Assignment, active)).toBe(true);
+    expect(ok(Assignment, released)).toBe(true);
+    expect(isActiveAssignment(Assignment.parse(active))).toBe(true);
+    expect(isActiveAssignment(Assignment.parse(released))).toBe(false);
+    for (const reason of ["chair", "conflict", "expertise", "time", "role_removed"]) {
+      expect(ok(Assignment, { ...released, releaseReason: reason }), reason).toBe(true);
+    }
+    for (const bad of [
+      { ...active, releasedAt: "2027-02-16T12:00:00Z" },
+      { ...active, releaseReason: "chair" },
+      { ...released, releaseReason: "withdrawn" },
+    ]) {
+      expect(ok(Assignment, bad), JSON.stringify(bad)).toBe(false);
+    }
+    // Half a release never counts as active, whatever handed it over.
+    expect(isActiveAssignment({ releasedAt: null, releaseReason: "chair" })).toBe(false);
+    expect(isActiveAssignment({ releasedAt: "2027-02-16T12:00:00Z", releaseReason: null })).toBe(
+      false,
+    );
   });
 });
