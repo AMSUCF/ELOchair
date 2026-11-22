@@ -4,9 +4,10 @@ import { LIMITS } from "./limits";
 import { linkSpans } from "./links";
 
 /*
- * The emails the app sends to the people on a proposal: one definition of each, shared by the
- * server, which sends them, and the settings screen, where chairs change their wording and see
- * what will be sent. Zod-free, so that the browser can use it.
+ * The emails the app sends to the people on a proposal, and to the people a chair invites to a
+ * role at the conference: one definition of each, shared by the server, which sends them, and
+ * the settings screen, where chairs change their wording and see what will be sent. Zod-free, so
+ * that the browser can use it.
  *
  * A message has a subject and a body, each with a standard text in English, Spanish and
  * Portuguese. A text names what is only known when the mail is sent with a placeholder: a name
@@ -51,6 +52,8 @@ export const MESSAGE_KEYS = [
   "invitation_withdrawn",
   "invitation_answered",
   "draft_deleted",
+  "reviewer_invitation",
+  "chair_invitation",
 ] as const;
 export type MailMessageKey = (typeof MESSAGE_KEYS)[number];
 
@@ -97,6 +100,12 @@ type MessageDefinition = {
  *   A name is chosen by its owner, and the first line a person reads should not be.
  * Allowing either later would be a decision; forbidding one later would make stored
  * configurations unreadable.
+ *
+ * The two invitations to a role (`reviewer_invitation`, `chair_invitation`; spec 03, §1.2) go to
+ * people who have agreed to nothing as well, and carry nothing a person typed at all: not the
+ * name of the chair who invites, not the name that chair typed for the invitee. They name the
+ * conference, for a reviewer the review pools (the committees, as the configuration names them),
+ * and the link, which is the only way to answer.
  *
  * A name is a word of its own. The server takes links out of an owner's name (sanitizeName), but
  * a text could put the rest of a link around the placeholder: "https://{owner}.example" would
@@ -242,6 +251,53 @@ export const MESSAGES = {
       },
     },
   },
+  /**
+   * To someone a chair invites to review, and again when the chair sends it again. They have
+   * agreed to nothing: the text can name the conference and the committees, and no person.
+   */
+  reviewer_invitation: {
+    placeholders: ["committees", "conference", "link"],
+    // The only way to read the invitation and to accept or decline it, account or not.
+    required: ["link"],
+    bodyOnly: ["link"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: invitation to review proposals",
+        body: "The chairs of {conference} invite you to be a reviewer ({committees}).\n\nIf you accept, the chairs will assign proposals to you; you read them and write a short review of each.\n\nOpen this link to read the invitation and to accept or decline it. You do not need an account:\n\n{link}\n\nThe link works for 30 days. If you did not expect this invitation, decline it or ignore this email: you get no role unless you accept.",
+      },
+      es: {
+        subject: "{conference}: invitación para revisar propuestas",
+        body: "Quienes presiden {conference} te invitan a revisar propuestas ({committees}).\n\nSi aceptas, te asignarán propuestas; las lees y escribes una breve revisión de cada una.\n\nAbre este enlace para leer la invitación y aceptarla o rechazarla. No necesitas tener cuenta:\n\n{link}\n\nEl enlace funciona durante 30 días. Si no esperabas esta invitación, recházala o ignora este correo: no recibes ningún rol si no aceptas.",
+      },
+      pt: {
+        subject: "{conference}: convite para rever propostas",
+        body: "Quem preside a {conference} convida-o/a a rever propostas ({committees}).\n\nSe aceitar, ser-lhe-ão atribuídas propostas; lê-as e escreve uma breve revisão de cada uma.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\n{link}\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
+      },
+    },
+  },
+  /** To someone a chair invites to be a chair, and again when the chair sends it again. */
+  chair_invitation: {
+    placeholders: ["conference", "link"],
+    // As for a reviewer: without the link there is no way to answer.
+    required: ["link"],
+    bodyOnly: ["link"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: invitation to be a chair",
+        body: "The chairs of {conference} invite you to be a chair of the conference.\n\nIf you accept, you will be able to see every proposal and everyone on it, change the conference's settings, invite people, and move the conference from one phase to the next.\n\nOpen this link to read the invitation and to accept or decline it. You do not need an account:\n\n{link}\n\nThe link works for 30 days. If you did not expect this invitation, decline it or ignore this email: you get no role unless you accept.",
+      },
+      es: {
+        subject: "{conference}: invitación para presidir el congreso",
+        body: "Quienes presiden {conference} te invitan a sumarte a la presidencia del congreso.\n\nSi aceptas, podrás ver todas las propuestas y a todas las personas que figuran en ellas, cambiar la configuración del congreso, invitar a personas y pasar el congreso de una fase a la siguiente.\n\nAbre este enlace para leer la invitación y aceptarla o rechazarla. No necesitas tener cuenta:\n\n{link}\n\nEl enlace funciona durante 30 días. Si no esperabas esta invitación, recházala o ignora este correo: no recibes ningún rol si no aceptas.",
+      },
+      pt: {
+        subject: "{conference}: convite para presidir ao congresso",
+        body: "Quem preside a {conference} convida-o/a a juntar-se à presidência do congresso.\n\nSe aceitar, poderá ver todas as propostas e todas as pessoas que nelas constam, alterar a configuração do congresso, convidar pessoas e passar o congresso de uma fase para a seguinte.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\n{link}\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
+      },
+    },
+  },
 } as const satisfies Record<MailMessageKey, MessageDefinition>;
 
 /** A placeholder of a message, as a name without its braces. */
@@ -299,6 +355,14 @@ export const ANSWER_WORDS: Record<MailLang, Record<InvitationAnswer, string>> = 
     left: "saiu de",
   },
 };
+
+/**
+ * What "{committees}" stands for: the names of the review pools a reviewer is invited to, as
+ * the conference's configuration has them in the reader's language, in one list.
+ */
+export function committeeList(names: readonly string[]): string {
+  return names.join(", ");
+}
 
 /** What "{owner}" stands for when the owner has no name that can be shown. */
 export const UNNAMED_OWNER: Record<MailLang, string> = {

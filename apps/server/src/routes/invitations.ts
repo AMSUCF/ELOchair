@@ -171,9 +171,13 @@ export async function answerInvitation(
 /**
  * Checks shared by the link routes, in order: agents never answer invitations or read them
  * (403 before anything else); then the per-IP limit, whose first refusal in each window is
- * audited.
+ * audited. The links of invitations to a proposal and of invitations to a role (routes/people.ts)
+ * share that limit.
  */
-async function guardLinkRoute(c: Context<AppEnv>, endpoint: "info" | "answer"): Promise<void> {
+export async function guardLinkRoute(
+  c: Context<AppEnv>,
+  endpoint: "info" | "answer" | "role_info" | "role_answer",
+): Promise<void> {
   if (c.get("viewer").kind === "agent") throw new Refusal(403, "agents_read_only");
   const deps = c.get("deps");
   const outcome = deps.limits.invitationLinksPerIp.attempt(c.get("clientIp"));

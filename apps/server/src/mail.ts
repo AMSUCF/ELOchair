@@ -91,6 +91,8 @@ export function redactTokens(body: string): string {
 const REDACT: Record<string, (body: string) => string> = {
   magic_link: redactSecrets,
   invitation: redactTokens,
+  // An invitation to a role: its link gives that role to whoever follows it and accepts.
+  role_invitation: redactTokens,
 };
 const redactStored = (kind: string, body: string) => REDACT[kind]?.(body) ?? body;
 

@@ -12,6 +12,12 @@ import type { MailLang, MailMessageKey } from "./messages";
  * - packages/schema/src/messages.test.ts fills the standard texts with the same values;
  * - apps/server/src/messages.test.ts calls the functions as they are now.
  *
+ * The two invitations to a role (`reviewer_invitation`, `chair_invitation`) came later, with the
+ * People page. Their cases, at the end, are the output of their two functions in templates.ts
+ * as they were first written: every language, one committee and two, committee names that the
+ * server cleans, and the invitation to be a chair. `committees` holds the names it was called
+ * with, separated by " | ".
+ *
  * A case changes only when the standard wording is changed on purpose, and then in the same
  * commit as the text in messages.ts. People and conferences are made up.
  */
@@ -731,5 +737,138 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
     input: { conference: "Encontro Inventado 2031" },
     subject: "Encontro Inventado 2031: um convite foi cancelado",
     text: "Foi eliminado um rascunho de proposta para Encontro Inventado 2031 em que constava. Não precisa de fazer nada.",
+  },
+  // The two invitations to a role (spec 03, §1.2), as they were first written: see above.
+  {
+    key: "reviewer_invitation",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      committees: "Scientific committee",
+      link: "https://chair.example.org/en/role-invitation#token=made-up-token",
+    },
+    subject: "Made-up Meeting 2031: invitation to review proposals",
+    text: "The chairs of Made-up Meeting 2031 invite you to be a reviewer (Scientific committee).\n\nIf you accept, the chairs will assign proposals to you; you read them and write a short review of each.\n\nOpen this link to read the invitation and to accept or decline it. You do not need an account:\n\nhttps://chair.example.org/en/role-invitation#token=made-up-token\n\nThe link works for 30 days. If you did not expect this invitation, decline it or ignore this email: you get no role unless you accept.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      committees: "Scientific committee | Artistic committee",
+      link: "https://chair.example.org/en/role-invitation#token=made-up-token",
+    },
+    subject: "Made-up Meeting 2031: invitation to review proposals",
+    text: "The chairs of Made-up Meeting 2031 invite you to be a reviewer (Scientific committee, Artistic committee).\n\nIf you accept, the chairs will assign proposals to you; you read them and write a short review of each.\n\nOpen this link to read the invitation and to accept or decline it. You do not need an account:\n\nhttps://chair.example.org/en/role-invitation#token=made-up-token\n\nThe link works for 30 days. If you did not expect this invitation, decline it or ignore this email: you get no role unless you accept.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      committees: "Scientific\ncommittee\u200B | Artistic\tcommittee",
+      link: "https://chair.example.org/en/role-invitation#token=made-up-token",
+    },
+    cleaned: { committees: "Scientific committee, Artistic committee" },
+    subject: "Made-up Meeting 2031: invitation to review proposals",
+    text: "The chairs of Made-up Meeting 2031 invite you to be a reviewer (Scientific committee, Artistic committee).\n\nIf you accept, the chairs will assign proposals to you; you read them and write a short review of each.\n\nOpen this link to read the invitation and to accept or decline it. You do not need an account:\n\nhttps://chair.example.org/en/role-invitation#token=made-up-token\n\nThe link works for 30 days. If you did not expect this invitation, decline it or ignore this email: you get no role unless you accept.",
+  },
+  {
+    key: "chair_invitation",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      link: "https://chair.example.org/en/role-invitation#token=made-up-token",
+    },
+    subject: "Made-up Meeting 2031: invitation to be a chair",
+    text: "The chairs of Made-up Meeting 2031 invite you to be a chair of the conference.\n\nIf you accept, you will be able to see every proposal and everyone on it, change the conference's settings, invite people, and move the conference from one phase to the next.\n\nOpen this link to read the invitation and to accept or decline it. You do not need an account:\n\nhttps://chair.example.org/en/role-invitation#token=made-up-token\n\nThe link works for 30 days. If you did not expect this invitation, decline it or ignore this email: you get no role unless you accept.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      committees: "Comité científico",
+      link: "https://chair.example.org/es/role-invitation#token=made-up-token",
+    },
+    subject: "Encuentro Inventado 2031: invitación para revisar propuestas",
+    text: "Quienes presiden Encuentro Inventado 2031 te invitan a revisar propuestas (Comité científico).\n\nSi aceptas, te asignarán propuestas; las lees y escribes una breve revisión de cada una.\n\nAbre este enlace para leer la invitación y aceptarla o rechazarla. No necesitas tener cuenta:\n\nhttps://chair.example.org/es/role-invitation#token=made-up-token\n\nEl enlace funciona durante 30 días. Si no esperabas esta invitación, recházala o ignora este correo: no recibes ningún rol si no aceptas.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      committees: "Comité científico | Comité artístico",
+      link: "https://chair.example.org/es/role-invitation#token=made-up-token",
+    },
+    subject: "Encuentro Inventado 2031: invitación para revisar propuestas",
+    text: "Quienes presiden Encuentro Inventado 2031 te invitan a revisar propuestas (Comité científico, Comité artístico).\n\nSi aceptas, te asignarán propuestas; las lees y escribes una breve revisión de cada una.\n\nAbre este enlace para leer la invitación y aceptarla o rechazarla. No necesitas tener cuenta:\n\nhttps://chair.example.org/es/role-invitation#token=made-up-token\n\nEl enlace funciona durante 30 días. Si no esperabas esta invitación, recházala o ignora este correo: no recibes ningún rol si no aceptas.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      committees: "Comité\ncientífico\u200B | Comité\tartístico",
+      link: "https://chair.example.org/es/role-invitation#token=made-up-token",
+    },
+    cleaned: { committees: "Comité científico, Comité artístico" },
+    subject: "Encuentro Inventado 2031: invitación para revisar propuestas",
+    text: "Quienes presiden Encuentro Inventado 2031 te invitan a revisar propuestas (Comité científico, Comité artístico).\n\nSi aceptas, te asignarán propuestas; las lees y escribes una breve revisión de cada una.\n\nAbre este enlace para leer la invitación y aceptarla o rechazarla. No necesitas tener cuenta:\n\nhttps://chair.example.org/es/role-invitation#token=made-up-token\n\nEl enlace funciona durante 30 días. Si no esperabas esta invitación, recházala o ignora este correo: no recibes ningún rol si no aceptas.",
+  },
+  {
+    key: "chair_invitation",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      link: "https://chair.example.org/es/role-invitation#token=made-up-token",
+    },
+    subject: "Encuentro Inventado 2031: invitación para presidir el congreso",
+    text: "Quienes presiden Encuentro Inventado 2031 te invitan a sumarte a la presidencia del congreso.\n\nSi aceptas, podrás ver todas las propuestas y a todas las personas que figuran en ellas, cambiar la configuración del congreso, invitar a personas y pasar el congreso de una fase a la siguiente.\n\nAbre este enlace para leer la invitación y aceptarla o rechazarla. No necesitas tener cuenta:\n\nhttps://chair.example.org/es/role-invitation#token=made-up-token\n\nEl enlace funciona durante 30 días. Si no esperabas esta invitación, recházala o ignora este correo: no recibes ningún rol si no aceptas.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      committees: "Comissão científica",
+      link: "https://chair.example.org/pt/role-invitation#token=made-up-token",
+    },
+    subject: "Encontro Inventado 2031: convite para rever propostas",
+    text: "Quem preside a Encontro Inventado 2031 convida-o/a a rever propostas (Comissão científica).\n\nSe aceitar, ser-lhe-ão atribuídas propostas; lê-as e escreve uma breve revisão de cada uma.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\nhttps://chair.example.org/pt/role-invitation#token=made-up-token\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      committees: "Comissão científica | Comissão artística",
+      link: "https://chair.example.org/pt/role-invitation#token=made-up-token",
+    },
+    subject: "Encontro Inventado 2031: convite para rever propostas",
+    text: "Quem preside a Encontro Inventado 2031 convida-o/a a rever propostas (Comissão científica, Comissão artística).\n\nSe aceitar, ser-lhe-ão atribuídas propostas; lê-as e escreve uma breve revisão de cada uma.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\nhttps://chair.example.org/pt/role-invitation#token=made-up-token\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
+  },
+  {
+    key: "reviewer_invitation",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      committees: "Comissão\ncientífica\u200B | Comissão\tartística",
+      link: "https://chair.example.org/pt/role-invitation#token=made-up-token",
+    },
+    cleaned: { committees: "Comissão científica, Comissão artística" },
+    subject: "Encontro Inventado 2031: convite para rever propostas",
+    text: "Quem preside a Encontro Inventado 2031 convida-o/a a rever propostas (Comissão científica, Comissão artística).\n\nSe aceitar, ser-lhe-ão atribuídas propostas; lê-as e escreve uma breve revisão de cada uma.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\nhttps://chair.example.org/pt/role-invitation#token=made-up-token\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
+  },
+  {
+    key: "chair_invitation",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      link: "https://chair.example.org/pt/role-invitation#token=made-up-token",
+    },
+    subject: "Encontro Inventado 2031: convite para presidir ao congresso",
+    text: "Quem preside a Encontro Inventado 2031 convida-o/a a juntar-se à presidência do congresso.\n\nSe aceitar, poderá ver todas as propostas e todas as pessoas que nelas constam, alterar a configuração do congresso, convidar pessoas e passar o congresso de uma fase para a seguinte.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\nhttps://chair.example.org/pt/role-invitation#token=made-up-token\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
   },
 ];

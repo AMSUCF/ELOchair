@@ -1,0 +1,86 @@
+/* The chairs' People page: who holds a role, and the invitations nobody has accepted. */
+
+/* One person or one invitation to a row: who, then what can be done. */
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.roster > li {
+  display: grid;
+  gap: 6px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.roster p,
+.roster h3,
+.roster h4 {
+  margin: 0;
+}
+
+/* An address has no space to break at: it wraps wherever it must. */
+.roster .who,
+.roster .meta {
+  overflow-wrap: anywhere;
+}
+
+.roster .who {
+  font-weight: 600;
+}
+
+/* A question asked in place of the buttons that opened it. */
+.confirm {
+  display: grid;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.confirm h3,
+.confirm h4 {
+  font-size: 1rem;
+}
+
+.people-page {
+  display: grid;
+  gap: 8px;
+}
+
+.people-page section {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.people-page section > h2,
+.people-page section > p {
+  margin: 0;
+}
+
+/* A review pool's name, above its reviewers. */
+.people-page .stack > h3 {
+  margin: 8px 0 0;
+}
+
+/* A line that says what happened keeps no room while it has nothing to say. */
+.people-page .status-line:empty {
+  min-height: 0;
+}
+
+/* Under each role of the invitation form: what the role may do, in line with its name. */
+.people-page .choice-hint {
+  margin: 0 0 4px 32px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* The page of an invitation to a role: what one is invited to, set off from what follows. */
+.invited-to {
+  margin-bottom: 16px;
+}

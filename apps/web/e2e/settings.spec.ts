@@ -1207,4 +1207,514 @@ test.describe("conference settings", () => {
     await expect.poll(() => unsavedKeys(chair)).toEqual([]);
     expect((await stored(chair, SANDBOX)).token).toBe(before.token);
   });
+
+  /*
+   * People and invitations (spec 03, §1.2). They are here because this file has a chair signed
+   * in: nobody signs in below. An invitee answers by the emailed link, which needs no account.
+   * Each test invites addresses of its own, and leaves the call's roles as it found them.
+   */
+
+  /** The call's People page, reached as a chair reaches it. */
+  async function openPeople(page: Page) {
+    await page.goto(`/en/c/${CALL}/manage`);
+    await page.getByRole("link", { name: "People", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/en/c/${CALL}/people$`));
+    // A new page: its heading takes focus.
+    await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeFocused();
+  }
+  /** One part of the People page, by its heading. */
+  const part = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
+  /** The row of one invitation or one person, by the address on it. */
+  const rowOf = (within: Locator, email: string) =>
+    within.getByRole("listitem").filter({ hasText: email });
+  /** The latest invitation to a role mailed to an address, and the link in it. */
+  async function invitationMail(request: APIRequestContext, email: string) {
+    const res = await request.get(`/api/_test/outbox/latest?to=${encodeURIComponent(email)}`);
+    const mail = (await res.json()) as { subject: string; text: string };
+    const link = /https?:\/\/\S+\/role-invitation#token=\S+/.exec(mail.text)?.[0] ?? "";
+    expect(link).not.toBe("");
+    return { ...mail, link };
+  }
+  /** Fill in the invitation form and send it. The role and the pools stay as they are. */
+  async function sendInvitation(page: Page, email: string, name?: string) {
+    await page.getByLabel("Email address *").fill(email);
+    await page.getByLabel("Name (optional)").fill(name ?? "");
+    await page.getByRole("button", { name: "Send the invitation" }).click();
+  }
+
+  test("a chair invites a reviewer by email, who accepts by the link; the chair sees them under the pool, and removes them", async ({
+    browser,
+    request,
+  }) => {
+    test.slow();
+    const email = "e2e-people-reviewer@example.org";
+    const typed = "Typed By The Chair";
+    const own = "Rita Reviewer-Example";
+    // The call's review pools and its title, whatever they are called.
+    const { config } = await stored(chair, CALL);
+    const pool = config.reviewPools[0]?.name.en ?? "";
+    const title = config.title.en ?? "";
+
+    await openPeople(chair);
+    // The page says what it is, and what each part of it is for.
+    await expect(
+      chair.getByText(
+        "This page shows who holds a role at this conference, and the invitations that nobody has accepted. A person gets a role by accepting an invitation sent from here. You can take a role away again.",
+      ),
+    ).toBeVisible();
+    const inviting = part(chair, "Invite someone");
+    await expect(
+      inviting.getByText(
+        "The person gets an email with a link. Nothing changes until they open the link and accept: then the address you typed gets the role, whoever opened the link. The link works for 30 days. You invite one address at a time.",
+      ),
+    ).toBeVisible();
+    // The chair is listed as a chair, marked as themselves, with no way to remove their own role.
+    const chairs = part(chair, "Chairs");
+    const me = rowOf(chairs, "chair@example.org");
+    await expect(me).toContainText("You");
+    await expect(me.getByRole("button")).toHaveCount(0);
+    await expect(
+      chairs.getByText(
+        "You cannot remove your own role, so that the conference always has a chair.",
+      ),
+    ).toBeVisible();
+    await expect(rowOf(chairs, "admin@example.org").getByRole("button")).toHaveAccessibleName(
+      /^Remove .+ as a chair$/,
+    );
+    // No track chair was ever given the role here: the page has no such part.
+    await expect(part(chair, "Track chairs")).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // Nothing typed: the form says what is missing, at the field.
+    const send = chair.getByRole("button", { name: "Send the invitation" });
+    await expectTouchTarget(send);
+    await send.click();
+    const address = chair.getByLabel("Email address *");
+    await expect(address).toBeFocused();
+    await expect(address).toHaveAccessibleDescription("Enter one valid email address.");
+    // A reviewer needs a pool. (A call with one pool has it chosen already.)
+    await address.fill(email);
+    const pools = inviting.getByRole("group", { name: "Review pools *" });
+    for (const box of await pools.getByRole("checkbox").all()) await box.uncheck();
+    await send.click();
+    await expect(pools.getByText("Choose at least one review pool.")).toBeVisible();
+    await expect(pools.getByRole("checkbox").first()).toBeFocused();
+    await pools.getByLabel(pool, { exact: true }).check();
+    const asReviewer = inviting.getByRole("radio", { name: "Reviewer", exact: true });
+    await expect(asReviewer).toBeChecked();
+    await expect(asReviewer).toHaveAccessibleDescription(
+      "Sees only the proposals the chairs assign to them, and writes a review of each.",
+    );
+    await expect(
+      inviting.getByText(
+        "Only chairs see this name, on this page. It is not put in the email, and the person gives their own name when they accept.",
+      ),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+
+    await sendInvitation(chair, email, typed);
+    const sent = inviting.getByRole("status");
+    await expect(sent).toHaveText(`The invitation was sent to ${email}.`);
+    await expect(sent).toBeFocused();
+    // The form is ready for the next address; the role and the pool stay.
+    await expect(address).toHaveValue("");
+    await expect(pools.getByLabel(pool, { exact: true })).toBeChecked();
+
+    // The invitation is listed as the chair typed it, with what can be done about it.
+    const invitations = part(chair, "Invitations");
+    const row = rowOf(invitations, email);
+    await expect(row).toContainText(typed);
+    await expect(row).toContainText(`Invited as a reviewer: ${pool}`);
+    await expect(row).toContainText("Waiting for an answer");
+    await expect(row).toContainText("The link works until");
+    await expectTouchTarget(
+      row.getByRole("button", { name: `Send again: invitation to ${email}` }),
+    );
+    await expectTouchTarget(row.getByRole("button", { name: `Cancel the invitation to ${email}` }));
+    // The same address cannot be invited to the same role twice.
+    await sendInvitation(chair, email);
+    await expect(address).toBeFocused();
+    await expect(address).toHaveAccessibleDescription(
+      "An invitation to this address for this role is already waiting. You can send it again from the list of invitations.",
+    );
+    await address.fill("");
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // The email: the conference, the committee and the link; no person, typed or real.
+    const mail = await invitationMail(request, email);
+    expect(mail.subject).toBe(`${title}: invitation to review proposals`);
+    expect(mail.text).toContain(`invite you to be a reviewer (${pool})`);
+    expect(`${mail.subject}\n${mail.text}`).not.toMatch(/Typed|Fictional|chair@example\.org/);
+    expect(mail.link).toMatch(/\/en\/role-invitation#token=role_/);
+
+    // The invitee opens the link on their own phone, with no account.
+    const invitee = await newPhone(browser);
+    await invitee.goto(mail.link);
+    await expect(
+      invitee.getByRole("heading", { level: 1, name: "Invitation to a role" }),
+    ).toBeVisible();
+    // The token leaves the address bar as soon as it is read.
+    await expect(invitee).toHaveURL(/\/en\/role-invitation$/);
+    await expect(
+      invitee.getByText(`The chairs of ${title} invite you to be a reviewer.`),
+    ).toBeVisible();
+    const details = invitee.locator("dl.details");
+    await expect(details).toContainText(title);
+    await expect(details).toContainText("Reviewer");
+    await expect(details).toContainText(pool);
+    await expect(details).toContainText(email);
+    await expect(
+      invitee.getByText(
+        "If you accept: the chairs will assign proposals to you; you read them and write a short review of each.",
+      ),
+    ).toBeVisible();
+    await expect(
+      invitee.getByText(
+        `This invitation is for ${email}. If you accept, that address gets the role, whoever opens this link. Accepting does not sign you in.`,
+      ),
+    ).toBeVisible();
+    // The name the chair typed is nowhere on the invitee's page, and their own name starts empty.
+    await expect(invitee.getByText(typed)).toHaveCount(0);
+    const name = invitee.getByLabel("Your name *");
+    await expect(name).toHaveValue("");
+    const accept = invitee.getByRole("button", { name: "Accept", exact: true });
+    const decline = invitee.getByRole("button", { name: "Decline", exact: true });
+    await expectTouchTarget(accept);
+    await expectTouchTarget(decline);
+    await expect(accept).toHaveAccessibleDescription(
+      "If you accept: the chairs will assign proposals to you; you read them and write a short review of each.",
+    );
+    await expectAccessibleInBothThemes(invitee);
+    await expectNoHorizontalScroll(invitee);
+
+    // Accepting asks for the invitee's own name, the languages they review in and a number.
+    const status = invitee.getByRole("status");
+    await accept.click();
+    await expect(name).toBeFocused();
+    await expect(status).toHaveText("Enter your name to accept.");
+    await name.fill(own);
+    await accept.click();
+    const languages = invitee.getByRole("group", { name: "Languages you can review in *" });
+    await expect(languages.getByRole("checkbox").first()).toBeFocused();
+    await expect(status).toHaveText("Choose at least one language to accept.");
+    await languages.getByLabel("English").check();
+    await languages.getByLabel("Español").check();
+    const load = invitee.getByLabel("The most proposals you are willing to review *");
+    await expect(load).toHaveValue("8");
+    await load.fill("31");
+    await accept.click();
+    await expect(load).toBeFocused();
+    await expect(status).toHaveText("Enter a whole number from 1 to 30.");
+    await expectAccessibleInBothThemes(invitee);
+    await load.fill("5");
+    await accept.click();
+    await expect(status).toHaveText(
+      `Thank you: ${email} is now a reviewer for ${title}. You can sign in with that address at any time.`,
+    );
+    await expect(status).toBeFocused();
+    await expect(accept).toHaveCount(0);
+    // Accepting signed nobody in: the page offers to sign in with the invited address.
+    expect((await invitee.request.get("/api/me")).status()).toBe(401);
+    const signInLink = invitee.getByRole("link", { name: `Sign in as ${email}` });
+    await expectTouchTarget(signInLink);
+    await expectAccessibleInBothThemes(invitee);
+    await signInLink.click();
+    await expect(invitee).toHaveURL(/\/en\/sign-in$/);
+    await expect(invitee.getByLabel("Email address")).toHaveValue(email);
+
+    // The link was used: opened again, it gives a plain page and nothing else.
+    await invitee.goto(mail.link);
+    await expect(invitee.getByRole("status")).toHaveText(
+      "This invitation link no longer works: it has expired, was already answered, or was cancelled. If you were sent a newer email, use the link in that one. Otherwise, ask the conference's chairs to invite you again.",
+    );
+    await expect(invitee.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+    await expectAccessibleInBothThemes(invitee);
+    await invitee.context().close();
+
+    // The chair's page: a reviewer under that pool, by their own name; the invitation is gone.
+    await chair.reload();
+    const reviewers = part(chair, "Reviewers");
+    const reviewer = rowOf(reviewers, email);
+    await expect(reviewer).toHaveCount(1);
+    await expect(reviewer).toContainText(own);
+    await expect(reviewer).not.toContainText(typed);
+    await expect(reviewer).toContainText("No proposals assigned");
+    await expect(reviewer).toContainText("Will take up to 5. Reviews in: English, Español.");
+    // Under the pool they were invited to: its heading is the one just above their row.
+    await expect(
+      reviewers
+        .locator("div")
+        .filter({ has: chair.getByRole("heading", { level: 3, name: pool, exact: true }) })
+        .getByText(email),
+    ).toBeVisible();
+    await expect(rowOf(part(chair, "Invitations"), email)).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // Removing asks first, in place, and says what will happen.
+    const removeButton = reviewer.getByRole("button", { name: `Remove ${own} as a reviewer` });
+    await expectTouchTarget(removeButton);
+    await removeButton.click();
+    const question = reviewer.getByRole("heading", { name: `Remove ${own} as a reviewer?` });
+    await expect(question).toBeFocused();
+    await expect(
+      reviewer.getByText(
+        `${own} will no longer be a reviewer at this conference, in any review pool, and will no longer see the proposals assigned to them. They are not told by email. To make them a reviewer again, invite them again.`,
+      ),
+    ).toBeVisible();
+    await expect(
+      reviewer.getByText("None of the proposals you manage is assigned to them."),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    // "No" changes nothing, and gives focus back to the button that asked.
+    await reviewer.getByRole("button", { name: "No, go back" }).click();
+    await expect(question).toHaveCount(0);
+    await expect(removeButton).toBeFocused();
+    await removeButton.click();
+    await expectTouchTarget(reviewer.getByRole("button", { name: "Yes, remove" }));
+    await reviewer.getByRole("button", { name: "Yes, remove" }).click();
+    const removed = reviewers.getByRole("status").first();
+    await expect(removed).toHaveText(`${own} is no longer a reviewer at this conference.`);
+    await expect(removed).toBeFocused();
+    await expect(rowOf(reviewers, email)).toHaveCount(0);
+    await chair.reload();
+    await expect(rowOf(part(chair, "Reviewers"), email)).toHaveCount(0);
+  });
+
+  test("an invitee declines by the link, and the chair sees it on the People page", async ({
+    browser,
+    request,
+  }) => {
+    test.slow();
+    const email = "e2e-people-declines@example.org";
+    const { config } = await stored(chair, CALL);
+    const pool = config.reviewPools[0]?.name.en ?? "";
+    await openPeople(chair);
+    const pools = part(chair, "Invite someone").getByRole("group", { name: "Review pools *" });
+    await pools.getByLabel(pool, { exact: true }).check();
+    await sendInvitation(chair, email, "Declines Typed");
+    await expect(part(chair, "Invite someone").getByRole("status")).toHaveText(
+      `The invitation was sent to ${email}.`,
+    );
+
+    const invitee = await newPhone(browser);
+    await invitee.goto((await invitationMail(request, email)).link);
+    const decline = invitee.getByRole("button", { name: "Decline", exact: true });
+    await expect(decline).toHaveAccessibleDescription(
+      "Declining needs nothing more. The chairs will see that you declined; nobody is emailed.",
+    );
+    // Declining needs nothing: no name, no language, no number.
+    await decline.click();
+    const status = invitee.getByRole("status");
+    await expect(status).toHaveText(
+      "You declined. No role was given, and the chairs will see your answer.",
+    );
+    await expect(status).toBeFocused();
+    await expect(invitee.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+    await expectAccessibleInBothThemes(invitee);
+    await invitee.context().close();
+
+    // The chair is not emailed: the list is where the answer shows.
+    await chair.reload();
+    const invitations = part(chair, "Invitations");
+    const row = rowOf(invitations, email);
+    await expect(row).toContainText("Declined");
+    await expect(row).toContainText("Declines Typed");
+    await expect(rowOf(part(chair, "Reviewers"), email)).toHaveCount(0);
+    // A declined invitation cannot be sent again. It can be taken off the list, which asks first.
+    await expect(row.getByRole("button", { name: /^Send again/ })).toHaveCount(0);
+    const off = row.getByRole("button", { name: `Take off this list: invitation to ${email}` });
+    await expectTouchTarget(off);
+    await expectAccessibleInBothThemes(chair);
+    await off.click();
+    await expect(
+      row.getByRole("heading", { name: `Take the invitation to ${email} off this list?` }),
+    ).toBeFocused();
+    await expect(
+      row.getByText("Nothing else changes, and nobody is told. You can invite this address again."),
+    ).toBeVisible();
+    await row.getByRole("button", { name: "Yes, take it off" }).click();
+    const said = invitations.getByRole("status").first();
+    await expect(said).toHaveText(`The invitation to ${email} was taken off the list.`);
+    await expect(said).toBeFocused();
+    await expect(rowOf(invitations, email)).toHaveCount(0);
+  });
+
+  test("an invitation to be a chair says what a chair can do, in the language chosen; cancelled, its link stops working", async ({
+    browser,
+    request,
+  }) => {
+    test.slow();
+    const email = "e2e-people-cochair@example.org";
+    const { config } = await stored(chair, CALL);
+    const title = config.title.es ?? config.title[config.defaultLanguage] ?? "";
+    await openPeople(chair);
+    const inviting = part(chair, "Invite someone");
+    // Choosing "Chair" says what a chair can do, and takes the pools away.
+    const asChair = inviting.getByRole("radio", { name: "Chair", exact: true });
+    await asChair.check();
+    await expect(asChair).toHaveAccessibleDescription(
+      "Can do everything you can: see every proposal and everyone on it, change the conference's settings, invite and remove people, and move the conference from one phase to the next.",
+    );
+    await expect(inviting.getByRole("group", { name: "Review pools *" })).toHaveCount(0);
+    await chair.getByLabel("Language of the email").selectOption({ label: "Español" });
+    await expectAccessibleInBothThemes(chair);
+    await sendInvitation(chair, email);
+    await expect(inviting.getByRole("status")).toHaveText(`The invitation was sent to ${email}.`);
+    const invitations = part(chair, "Invitations");
+    const row = rowOf(invitations, email);
+    await expect(row).toContainText("Invited as a chair");
+
+    // The email and the page are in Spanish, as the chair chose.
+    const mail = await invitationMail(request, email);
+    expect(mail.subject).toBe(`${title}: invitación para presidir el congreso`);
+    expect(mail.link).toMatch(/\/es\/role-invitation#token=role_/);
+    const invitee = await newPhone(browser);
+    await invitee.goto(mail.link);
+    await expect(
+      invitee.getByRole("heading", { level: 1, name: "Invitación a un rol" }),
+    ).toBeVisible();
+    await expect(
+      invitee.getByText(
+        "Si aceptas: podrás ver todas las propuestas y a todas las personas que figuran en ellas, cambiar la configuración del congreso, invitar a personas y pasar el congreso de una fase a la siguiente.",
+      ),
+    ).toBeVisible();
+    await expect(invitee.locator("dl.details")).toContainText(email);
+    // A chair is asked for no languages and no number: only for a name, having none yet.
+    await expect(invitee.getByRole("group")).toHaveCount(0);
+    await expect(invitee.getByRole("spinbutton")).toHaveCount(0);
+    await expect(invitee.getByLabel("Tu nombre *")).toHaveValue("");
+    await expectTouchTarget(invitee.getByRole("button", { name: "Aceptar", exact: true }));
+    await expectAccessibleInBothThemes(invitee);
+    await expectNoHorizontalScroll(invitee);
+    // The same page in Portuguese, by the language links.
+    await invitee.getByRole("link", { name: /Português/ }).click();
+    await expect(invitee).toHaveURL(/\/pt\/role-invitation$/);
+
+    // The chair cancels the invitation, which asks first. Nobody became a chair.
+    const cancel = row.getByRole("button", { name: `Cancel the invitation to ${email}` });
+    await cancel.click();
+    await expect(
+      row.getByRole("heading", { name: `Cancel the invitation to ${email}?` }),
+    ).toBeFocused();
+    await expect(
+      row.getByText(
+        "The link in the email stops working, and the invitation leaves this list. Nobody is told.",
+      ),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await row.getByRole("button", { name: "Yes, cancel it" }).click();
+    const said = invitations.getByRole("status").first();
+    await expect(said).toHaveText(
+      `The invitation to ${email} was cancelled. Its link no longer works.`,
+    );
+    await expect(said).toBeFocused();
+    await expect(rowOf(invitations, email)).toHaveCount(0);
+    await expect(rowOf(part(chair, "Chairs"), email)).toHaveCount(0);
+
+    // The link now gives the plain page, in the invitee's language.
+    await invitee.goto(mail.link);
+    await expect(invitee.getByRole("status")).toHaveText(
+      "Este enlace de invitación ya no funciona: caducó, ya se respondió o se canceló. Si te enviaron un correo más reciente, usa el enlace de ese correo. Si no, pide a quienes presiden el congreso que te inviten de nuevo.",
+    );
+    await expect(invitee.getByRole("button", { name: "Aceptar", exact: true })).toHaveCount(0);
+    await invitee.context().close();
+  });
+
+  test("the two invitations to a role are among the emails a chair can reword, in each language", async () => {
+    test.slow();
+    const { config } = await stored(chair, CALL);
+    const names = (lang: string) =>
+      config.reviewPools.map((p) => p.name[lang] ?? p.name[config.defaultLanguage]).join(", ");
+    await openSettings(chair);
+    await expect(
+      chair.getByText(
+        "The app sends these emails to the people on a proposal, and to the people a chair invites as reviewers or chairs.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    // The invitation to review: when it goes and to whom, and what its texts may name.
+    const reviewer = await openPool(chair, "Invitation to be a reviewer");
+    await expect(reviewer.locator("p.meta").first()).toHaveText(
+      "Sent to a person when a chair invites them, on the People page, to be a reviewer, and again if a chair sends the invitation again. That person has not agreed to anything yet, so the email names no person: neither the chair who invites, nor the name that chair typed for them.",
+    );
+    await expect(reviewer.locator(".placeholders dt")).toHaveText([
+      "{committees}",
+      "{conference}",
+      "{link}",
+    ]);
+    await expect(reviewer.locator(".placeholders dd")).toHaveText([
+      "the names of the review pools the person is invited to, with commas between them",
+      "the conference's title",
+      "the link where the person reads the invitation and accepts or declinesThe text must contain it, and it cannot go in the subject.",
+    ]);
+    // The standard text is in the boxes, and the preview names the call's own pools.
+    const english = reviewer.getByRole("group", { name: "English" });
+    await expect(english.getByLabel("Subject (English)")).toHaveValue(
+      "{conference}: invitation to review proposals",
+    );
+    await expect(english.locator(".email-body")).toContainText(
+      `invite you to be a reviewer (${names("en")}).`,
+    );
+    await expect(english.locator(".email-body")).toContainText("/en/role-invitation#token=…");
+    await expect(english.getByText("This is the standard text.")).toBeVisible();
+    // A text that names a person is refused where it is typed: this email has no such value.
+    const body = english.getByLabel("Text (English)");
+    const standard = await body.inputValue();
+    await body.fill("{owner} invites you.\n\n{link}");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(english.locator(".field-error")).toContainText(
+      "This email has nothing to put in place of {owner}.",
+    );
+    await body.fill(standard);
+    await expect(english.getByText("This is the standard text.")).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // The invitation to be a chair names the conference and the link, and nothing else.
+    const chairs = await openPool(chair, "Invitation to be a chair");
+    await expect(chairs.locator("p.meta").first()).toContainText(
+      "to be a chair, and again if a chair sends the invitation again.",
+    );
+    await expect(chairs.locator(".placeholders dt")).toHaveText(["{conference}", "{link}"]);
+    // Nothing was changed: nothing is kept in this browser.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+
+    // In Spanish and in Portuguese, each has its name, its line and its placeholders' meanings.
+    for (const [lang, name, line, committees] of [
+      [
+        "es",
+        "Invitación para revisar",
+        "Se envía a una persona cuando alguien de la presidencia la invita, en la página Personas, a revisar",
+        "los nombres de los grupos de revisión a los que se invita a la persona, separados por comas",
+      ],
+      [
+        "pt",
+        "Convite para rever",
+        "É enviado a uma pessoa quando alguém da presidência a convida, na página Pessoas, para rever",
+        "os nomes dos grupos de revisão para os quais a pessoa é convidada, separados por vírgulas",
+      ],
+    ] as const) {
+      await chair.goto(`/${lang}/c/${CALL}/settings`);
+      const section = chair
+        .locator("details")
+        .filter({ has: chair.locator("summary", { hasText: name }) });
+      await section.locator("summary").click();
+      await expect(section.locator("p.meta").first()).toContainText(line);
+      await expect(section.locator(".placeholders dd").first()).toHaveText(committees);
+      // The email in that language, previewed with the call's pools as that language names them.
+      await expect(section.locator(`.email-body[lang="${lang}"]`)).toContainText(
+        `(${names(lang)})`,
+      );
+      await expect(section.locator(`.email-body[lang="${lang}"]`)).toContainText(
+        `/${lang}/role-invitation#token=…`,
+      );
+    }
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+  });
 });

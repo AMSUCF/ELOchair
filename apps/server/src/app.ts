@@ -18,6 +18,7 @@ import { Refusal } from "./routes/common";
 import { conferenceRoutes } from "./routes/conferences";
 import { invitationRoutes } from "./routes/invitations";
 import { meRoutes } from "./routes/me";
+import { peopleRoutes, roleInvitationRoutes } from "./routes/people";
 import { submissionRoutes } from "./routes/submissions";
 import { testRoutes } from "./routes/testing";
 
@@ -168,8 +169,10 @@ export function createApp(deps: Deps, exposure: Exposure) {
   app.route("/api/auth", authRoutes);
   app.route("/api/me", meRoutes);
   app.route("/api/conferences", conferenceRoutes);
+  app.route("/api/conferences/:slug/people", peopleRoutes);
   app.route("/api/submissions", submissionRoutes);
   app.route("/api/invitations", invitationRoutes);
+  app.route("/api/role-invitations", roleInvitationRoutes);
   app.all("/api/mcp", mcpHandler);
   if (deps.env.ENABLE_TEST_ENDPOINTS) app.route("/api/_test", testRoutes);
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));

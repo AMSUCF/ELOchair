@@ -350,3 +350,91 @@ export const invitationTokens = pgTable(
   },
   (t) => [index("invitation_tokens_target_idx").on(t.submissionId, t.personId)],
 );
+
+/**
+ * Invitations to a role at a conference (reviewer or chair), sent by a chair to an address
+ * (spec 03, §1.2). A row holds what the chair typed, and nothing from anyone's profile.
+ * - `person_id` is the one person row of the invited address: the role goes to that person when
+ *   the invitation is accepted, whoever opens the link.
+ * - The link's token is stored only as a hash. It works while the row is not answered, not
+ *   cancelled and not expired; sending the invitation again puts a new hash in its place.
+ * - Rows are kept: an answer or a cancellation is recorded on the row, never by deleting it.
+ */
+export const roleInvitations = pgTable(
+  "role_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    /** Review pool keys for a reviewer; empty for a chair. */
+    pools: text("pools").array().notNull().default(sql`'{}'::text[]`),
+    /** What the chair typed: shown instead of the profile until the invitation is accepted. */
+    invitedEmail: text("invited_email").notNull(),
+    invitedName: text("invited_name"),
+    /** The language of the email, chosen by the chair. */
+    lang: text("lang").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** The chair who invited. Kept as null if that person's record is ever deleted. */
+    invitedByPersonId: uuid("invited_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    createdAt: created(),
+    /** Last time the email went out (for the once-an-hour resend limit, and shown to chairs). */
+    lastSentAt: ts("last_sent_at").notNull(),
+    expiresAt: ts("expires_at").notNull(),
+    answeredAt: ts("answered_at"),
+    answer: text("answer"),
+    cancelledAt: ts("cancelled_at"),
+  },
+  (t) => [
+    check("role_invitations_role_check", sql`${t.role} in ('reviewer','chair')`),
+    check("role_invitations_lang_check", sql`${t.lang} in ('en','es','pt')`),
+    check("role_invitations_answer_check", sql`${t.answer} in ('accepted','declined')`),
+    check(
+      "role_invitations_answered_check",
+      sql`(${t.answer} is null) = (${t.answeredAt} is null)`,
+    ),
+    // A reviewer is invited to at least one pool, a chair to none: an empty scope on a
+    // reviewer's role would mean every pool.
+    check(
+      "role_invitations_pools_check",
+      sql`(${t.role} = 'reviewer' and cardinality(${t.pools}) >= 1) or (${t.role} = 'chair' and cardinality(${t.pools}) = 0)`,
+    ),
+    index("role_invitations_conference_idx").on(t.conferenceId, t.invitedEmail),
+    index("role_invitations_person_idx").on(t.personId),
+  ],
+);
+
+/**
+ * Every role invitation email sent (first invitations and resends), for the daily limits.
+ * Server-internal and never projected. It holds IDs only, and nothing deletes from it:
+ * cancelling an invitation must not hand back the inviting chair's or the recipient's budget,
+ * so `conference_id` and `invitation_id` deliberately have no foreign key.
+ */
+export const roleInvitationSends = pgTable(
+  "role_invitation_sends",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inviterPersonId: uuid("inviter_person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    /** One person row per normalized address, so this is the recipient address too. */
+    recipientPersonId: uuid("recipient_person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    conferenceId: uuid("conference_id"),
+    invitationId: uuid("invitation_id"),
+    kind: text("kind").notNull(),
+    sentAt: ts("sent_at").notNull(),
+  },
+  (t) => [
+    check("role_invitation_sends_kind_check", sql`${t.kind} in ('invite','resend')`),
+    index("role_invitation_sends_inviter_idx").on(t.inviterPersonId, t.sentAt),
+    index("role_invitation_sends_recipient_idx").on(t.recipientPersonId, t.sentAt),
+  ],
+);

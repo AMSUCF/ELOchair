@@ -70,7 +70,7 @@ export const settingsEn = {
   settingsGuidelinesHint:
     "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
   settingsEmailsIntro:
-    "The app sends these emails to the people on a proposal. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
+    "The app sends these emails to the people on a proposal, and to the people a chair invites as reviewers or chairs. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
   settingsEmailsNote:
     "All three languages are here, whichever of them the conference has, because each person gets the email in their own language: someone can be invited in Portuguese to a conference held in English and Spanish. A language you have not changed keeps the standard text. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
   settingsEmail_invitation: "Invitation to a proposal",
@@ -79,6 +79,8 @@ export const settingsEn = {
   settingsEmail_invitation_withdrawn: "Notice to people invited to a withdrawn proposal",
   settingsEmail_invitation_answered: "Answer to an invitation, for the owner",
   settingsEmail_draft_deleted: "Notice to people invited to a deleted draft",
+  settingsEmail_reviewer_invitation: "Invitation to be a reviewer",
+  settingsEmail_chair_invitation: "Invitation to be a chair",
   settingsEmailWhen_invitation:
     "Sent to a person when the owner of a proposal adds them to it, and again if the owner sends the invitation again. That person has not agreed to anything yet.",
   settingsEmailWhen_submission_received:
@@ -91,6 +93,10 @@ export const settingsEn = {
     "Sent to the owner of a proposal when someone they invited confirms or declines, or when a contributor leaves.",
   settingsEmailWhen_draft_deleted:
     "Sent to people who were invited to a draft and have not answered, when its owner deletes it. It cannot name the proposal: they have not agreed to anything.",
+  settingsEmailWhen_reviewer_invitation:
+    "Sent to a person when a chair invites them, on the People page, to be a reviewer, and again if a chair sends the invitation again. That person has not agreed to anything yet, so the email names no person: neither the chair who invites, nor the name that chair typed for them.",
+  settingsEmailWhen_chair_invitation:
+    "Sent to a person when a chair invites them, on the People page, to be a chair, and again if a chair sends the invitation again. That person has not agreed to anything yet, so the email names no person: neither the chair who invites, nor the name that chair typed for them.",
   settingsEmailPlaceholders:
     "You can put these words, with their braces, in the subject and in the text. Each is replaced when the email is sent:",
   settingsEmailPlaceholder_conference: "the conference's title",
@@ -101,6 +107,10 @@ export const settingsEn = {
   settingsEmailPlaceholder_link: "the link to the proposal",
   settingsEmailPlaceholder_invitationLink:
     "the link where the person sees the proposal and confirms or declines",
+  settingsEmailPlaceholder_roleInvitationLink:
+    "the link where the person reads the invitation and accepts or declines",
+  settingsEmailPlaceholder_committees:
+    "the names of the review pools the person is invited to, with commas between them",
   settingsEmailPlaceholder_owner: "the name of the proposal's owner",
   settingsEmailPlaceholder_role: "the person's role on the proposal",
   settingsEmailPlaceholder_person:

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ContributionRole, Key } from "./config";
 import { LanguageCode } from "./i18n";
+import { MAIL_LANGUAGES } from "./messages";
 
 export const Id = z.uuid();
 
@@ -136,3 +137,64 @@ export const RoleGrant = z.object({
   scope: z.array(Key),
 });
 export type RoleGrant = z.infer<typeof RoleGrant>;
+
+/**
+ * The roles a chair can invite someone to (spec 03, §1.2). Track chairs are not part of this
+ * version, and `admin` means nothing more than `chair`: neither is ever offered.
+ */
+export const InvitableRole = z.enum(["reviewer", "chair"]);
+export type InvitableRole = z.infer<typeof InvitableRole>;
+
+/**
+ * The roles a chair can take away on the People page, as that page shows them: a chair is
+ * anyone with the `chair` or the `admin` role, and removing one removes both.
+ */
+export const RemovableRole = z.enum(["chair", "reviewer", "track_chair"]);
+export type RemovableRole = z.infer<typeof RemovableRole>;
+
+/**
+ * An invitation to a role at a conference, sent to an address by a chair. It holds what the
+ * chair typed and nothing from anyone's profile: until it is accepted, every view shows it from
+ * these fields only, so that it reads the same whether or not the address has an account.
+ * `personId` is the one person row of that address, which is who the role goes to on acceptance,
+ * whoever opens the link. The link's token is not part of this record: the server keeps its hash.
+ */
+export const RoleInvitation = z.object({
+  id: Id,
+  conferenceId: Id,
+  personId: Id,
+  role: InvitableRole,
+  /** Review pool keys for a reviewer; empty for a chair. */
+  pools: z.array(Key),
+  /** The address as the chair typed it, lowercased. */
+  invitedEmail: z.string(),
+  /** A name the chair typed, for the chairs' own list. Never mailed, never put in a profile. */
+  invitedName: z.string().nullable(),
+  /** The language of the email. */
+  lang: z.enum(MAIL_LANGUAGES),
+  /** When the invitation was last sent, and until when its link works. */
+  sentAt: z.iso.datetime({ offset: true }),
+  expiresAt: z.iso.datetime({ offset: true }),
+  answer: z.enum(["accepted", "declined"]).nullable(),
+  answeredAt: z.iso.datetime({ offset: true }).nullable(),
+  cancelledAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type RoleInvitation = z.infer<typeof RoleInvitation>;
+
+/** Where an invitation stands. "expired" is a waiting one whose link no longer works. */
+export type RoleInvitationState = "waiting" | "expired" | "accepted" | "declined" | "cancelled";
+
+/**
+ * An accepted invitation stays accepted: the role it gave is removed, not the invitation. Any
+ * other one that a chair cancelled is cancelled, a declined one included (cancelling is how a
+ * chair takes it off the list). What is left is declined, or waiting until it expires.
+ */
+export function roleInvitationState(
+  inv: Pick<RoleInvitation, "answer" | "cancelledAt" | "expiresAt">,
+  now: Date,
+): RoleInvitationState {
+  if (inv.answer === "accepted") return "accepted";
+  if (inv.cancelledAt) return "cancelled";
+  if (inv.answer === "declined") return "declined";
+  return new Date(inv.expiresAt).getTime() > now.getTime() ? "waiting" : "expired";
+}

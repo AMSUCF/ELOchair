@@ -57,12 +57,13 @@ function canChair(viewer: Viewer, conferenceId: string): boolean {
 const visible = (viewer: Viewer, k: ConferenceRow) => k.phase !== "draft" || canChair(viewer, k.id);
 
 /**
- * The person changing a conference's configuration or moving its phase, or a refusal. Both are
- * human-only: an agent may read a conference but never reconfigure or move it. Both are for the
- * conference's chairs, who are one group with its admins and the site admins (isConferenceChair).
- * Track chairs and reviewers are refused.
+ * The person changing a conference's configuration, moving its phase or managing its people
+ * (routes/people.ts), or a refusal. All of that is human-only: an agent may read a conference
+ * but never reconfigure it, move it or give anyone a role. It is for the conference's chairs,
+ * who are one group with its admins and the site admins (isConferenceChair). Track chairs and
+ * reviewers are refused.
  */
-async function chairInPerson(
+export async function chairInPerson(
   c: Context<AppEnv>,
 ): Promise<{ viewer: PersonViewer; k: ConferenceRow }> {
   const viewer = c.get("viewer");

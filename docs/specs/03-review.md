@@ -25,13 +25,50 @@ Everything below is held to these. They decide what is left out.
 - **Whether more roles are needed** is being asked of the conference chair. Nothing here depends on the answer.
 
 ### 1.2 People
-- A **People** page lists who holds a role in the conference: chairs, and reviewers by pool, each with how many proposals they have and how many reviews they have sent.
-- A chair **invites** someone by email, as a reviewer for one or more pools or as a chair. The email carries a link, in the language the chair picks.
-  - Accepting gives the role. A reviewer then says which languages they read and the most proposals they will take.
-  - Declining tells the chairs. An invitation can be sent again, at most once an hour, and it expires with the review.
-  - Invitations protect the invitee as proposal invitations do (spec 02, §1.2): nobody learns from the app whether an address has an account.
-- A chair **removes** a role. A reviewer's assignments without a sent review are released; sent reviews stay.
-- A chair cannot remove their own role, so a conference always has a chair.
+- A **People** page (`/:lang/c/:slug/people`, linked from "Manage submissions") is for the conference's chairs, in person. It lists:
+  - the chairs: everyone with the `chair` or the `admin` role, shown simply as chairs;
+  - the reviewers, under each review pool they belong to, each with the number of proposals assigned to them and what they said when they accepted (the languages they review in, the most proposals they will take). There are no reviews yet, so none are counted.
+    - That number counts the proposals the chair who is looking manages as a chair. Their own proposals and those they have a conflict with are left out: a chair may not learn who reviews their own work (§1.3), and a count would give it away.
+  - track chairs, where a conference has any: they can be removed and never added (§1.1);
+  - the invitations that are waiting, were declined or have expired, with when they were sent.
+  - A site admin holds no role at the conference and is not listed.
+- **Who is shown how.** A person who holds a role is shown by their profile: name and address. An invitation that has not been accepted is shown only as the chair typed it (the address, and a name if the chair typed one), never from the invited person's profile. The page is therefore the same whether or not the address has an account (spec 02, §1.2).
+- A chair **invites** one address at a time: the address, an optional name, the role (reviewer or chair), for a reviewer one or more of the conference's review pools, and the language of the email (`en`, `es` or `pt`).
+  - The name is for the chairs' own list. It is never mailed and never written to anyone's profile.
+  - **Refused**, in plain words: a second invitation to the same address and role while one is waiting (409 `already_invited`), and an invitation to someone who already holds that role at this conference (409 `already_has_role`; a chair or an admin holds "chair"). The People page shows both facts anyway, and nothing else about the address is said.
+  - **Limits.** 200 invitation emails a day per inviting chair, and 3 a day per recipient address, each across all conferences; the same invitation is sent again at most once an hour. Resends count toward both daily limits.
+    - They are counted in a ledger of their own (`role_invitation_sends`, IDs only, never projected), which cancelling an invitation does not empty.
+    - Concurrent invitations take advisory locks for the chair and for the address before counting, as proposal invitations do. The lock on the address also puts two invitations to it in order, so the second sees the first.
+    - Over a limit: 429 `rate_limited`, audited every time (`role_invitation.rate_limited`, with the limit and IDs).
+    - The hour is counted per invitation. Cancelling one and inviting the address again is a new invitation, which a chair may need at once (the wrong pool, the wrong language): the 3 a day per address are what bound it.
+  - A chair can **send again** an invitation that is waiting, or one that expired unanswered: a new email with a new link, good for 30 days from then. The link in the earlier email stops working. It is refused when the address has since been given the role or invited again, and when none of a reviewer's pools is left in the configuration (409 `pools_gone`): that one is cancelled, and the person invited again.
+  - A chair can **cancel** a waiting invitation: its link stops working, and it leaves the list. The same takes a declined or an expired one off the list. The invitee is not told.
+- **The email** is one of two messages, `reviewer_invitation` and `chair_invitation`. Chairs change their wording on the settings screen like every other email (§1.8; spec 02, §1.9).
+  - It goes to someone who has agreed to nothing. A text can name the conference, for a reviewer the review pools (as the configuration names them, in the email's language), and the link. The link is required and stands alone.
+  - It carries no person: not the inviting chair's name, and not the name the chair typed. An invitation to a role has no such value to put into a text, and a text that names one is refused.
+  - Once sent, the outbox keeps a copy with the link's token removed.
+- **The link** opens `/:lang/role-invitation#token`. The token travels in the fragment, is stored only as a hash, works once, and expires 30 days after the invitation was last sent.
+  - The page needs no account. It says which conference, which role, for a reviewer which committees, which address was invited, and in a sentence or two what accepting means. It has two actions, Accept and Decline. It never shows the name the chair typed.
+  - **Accept** gives the role to the person the invitation was addressed to, whoever opens the link: a forwarded link cannot give the role to someone else, and nothing in the request can name another person, role or pool. Accepting signs nobody in; the page then offers sign-in with that address.
+  - **A reviewer who accepts** says, on the same page, which languages they can review in (`en`, `es`, `pt`; at least one) and the most proposals they are willing to take (a whole number from 1 to 30; 8 unless they say otherwise).
+    - These go to `reviewer_profiles` with the invitation's pools, and the role's scope is those pools.
+    - Someone who is a reviewer already keeps the pools they have and gains these.
+    - A pool the conference no longer has is not given, and the reviewer's role is never given without a pool: on a role, no scope means every pool. An invitation with none of its pools left shows no page and takes no answer.
+  - **Accept needs a name** when the person's profile has none, typed by the invitee and never prefilled: otherwise 422 `[{path: "displayName", code: "required"}]`. A reviewer who names no language gets `{path: "languages", code: "required"}`.
+  - **Decline** needs nothing. The People page then shows the invitation as declined.
+  - **Nobody is emailed about an answer** in this version. The People page is where chairs see it.
+  - A link that has expired, was cancelled, was already used or never existed gets one answer (400 `invalid_or_expired`) and one plain page, which says so.
+  - Agents are refused on the link routes (403 `agents_read_only`), as for proposal invitations. The two kinds of link share one per-IP limit.
+- A chair **removes** a role, after a confirmation in its place that says what will happen.
+  - Removing a reviewer also deletes, in the same transaction, that person's assignments at the conference and their `reviewer_profiles` row. Nothing else of theirs is touched. (There are no reviews yet; step 6 decides what becomes of a sent review.)
+    - The confirmation says how many proposals lose the reviewer, counted as the page counts them. The request names that number and removes nothing if it is no longer true (409 `stale`).
+  - Removing a chair removes both the `chair` and the `admin` role. The invitations that chair sent stay the conference's: the chairs who remain see them in the list and can cancel them, and the confirmation says so.
+  - **A chair cannot remove their own chair role**, on the page or through the API (409 `own_role`), so a conference always has a chair. Two chairs removing each other at the same moment cannot both succeed: the second finds that it is no longer a chair.
+    - Whose role it is, is read from the role's own rows, never from the id as it was typed in the address: an id in capitals names the same person to the database, and to this rule.
+  - **Every change reads the chair again inside its transaction**, under a lock on the conference's roles: someone removed while their request was on its way invites, sends again, cancels and removes nothing (403).
+  - A reviewer's pools are not edited after they accept: remove them and invite them again.
+- The server's `grant` command still gives any role, as before.
+- **Audit.** One row per invitation sent, sent again, cancelled, accepted and declined (`role_invitation.sent`, `.resent`, `.cancelled`, `.accepted`, `.declined`), and per role removed (`role.removed`). Each holds IDs, the role, the pools and counts, and nothing else.
 
 ### 1.3 Assignments
 - A chair assigns reviewers **by hand**, on the proposal's page. The list offers the reviewers of that format's pool, with each one's load beside the most they said they would take.
@@ -99,10 +136,31 @@ Shapes start in `packages/schema` (house rule 1). Additions, all optional so tha
 - `reviewPools[].guidelines`: text per language.
 - `deadlines.reviewsDue`: a date and time, after `submissionsClose` and before `notification`.
 - `messages`: by message key, a subject and a body per language. An absent key means the default text, which lives with the code in three languages.
-- Tables: `reviews` (one per assignment: scores, both texts, recommendation, draft or sent, times), `role_invitations` (like `invitation_tokens`), `notification_choices` (person, conference, the three choices above). `assignments` gains who made it and when it was released.
+- Tables: `reviews` (one per assignment: scores, both texts, recommendation, draft or sent, times), `notification_choices` (person, conference, the three choices above). `assignments` gains who made it and when it was released.
 - Projections: a review as its reviewer, as a chair and as an author sees it.
 
+Built in step 4 (§1.2):
+
+- Messages: `reviewer_invitation` (placeholders `{committees}`, `{conference}`, `{link}`) and `chair_invitation` (`{conference}`, `{link}`). In both, `{link}` is required and stays out of the subject.
+- Tables, both new (migration `0007_people_invitations`, which changes no existing table):
+  - `role_invitations`: what the chair typed (address, name), the role, the pools, the language, the hash of the link's token, the person row of the address, who invited, when it was last sent and when it expires, when it was answered and how, when it was cancelled. Rows are kept: an answer or a cancellation is recorded, never deleted.
+  - `role_invitation_sends`: one row per email sent (who sent, to whom, when, first or again), for the daily limits. IDs only.
+- Projections, in `packages/policy`: `projectPeople()` (the People page, for a chair in person) and `projectRoleInvitation()` (the invitation page, for whoever holds the link, never an agent).
+- Constants: `ROLE_INVITATIONS` in `packages/schema` holds the 30 days, the limits and the range of a reviewer's load, so that the pages say the numbers the server enforces.
+
 Routes are written into this section as each part is built, in the form of spec 02, §2.2.
+
+| Route | Who | Notes |
+|---|---|---|
+| `GET /api/conferences/:slug/people` | chair or admin (human) | `projectPeople()`: chairs, reviewers with their pools and assigned proposals, track chairs, invitations nobody accepted |
+| `POST /api/conferences/:slug/people/invitations` | chair or admin (human) | `{email, name?, role, pools?, lang}`; 201 `{id}`; 409 `already_invited` or `already_has_role`; 422 `unknown_pool`; 429 over a limit |
+| `POST /api/conferences/:slug/people/invitations/:id/resend` | chair or admin (human) | a waiting or expired invitation; once an hour; a new link replaces the old; 409 `not_waiting`, `pools_gone`, `already_invited` or `already_has_role`; 429 over a limit |
+| `POST /api/conferences/:slug/people/invitations/:id/cancel` | chair or admin (human) | any invitation nobody accepted; 409 `already_answered` for an accepted one |
+| `DELETE /api/conferences/:slug/people/:personId/roles/:role` | chair or admin (human) | `role` is `chair`, `reviewer` or `track_chair`; a reviewer's removal sends `{assignments}`; 409 `own_role` or `stale`; 404 when the role is not held |
+| `POST /api/role-invitations/info` | holder of a role invitation token (not agents) | `projectRoleInvitation()`: conference, role, pools, the address, `nameNeeded` |
+| `POST /api/role-invitations/answer` | holder of a role invitation token (not agents) | `{token, answer, displayName?, languages?, maxLoad?}`; the role goes to the invited address |
+
+"Chair or admin (human)" is as in spec 02, §2.2: a chair, an admin or a site admin, in person. A draft conference the caller cannot see answers 404; everyone else is refused with 403, an agent included, whatever its tier. The routes that change something count toward the person's 60 writes a minute.
 
 ## 3. Order of work
 
