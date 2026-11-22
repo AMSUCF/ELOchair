@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { en } from "./i18n/en";
-import { formatAnchor, headlineParts, invites, languageChoice, mainAction } from "./invitation";
+import { headlineParts, invites, languageChoice, mainAction } from "./invitation";
 
 const group = {
   key: "talks",
@@ -62,11 +62,5 @@ describe("the headline", () => {
     });
     expect(headlineParts("Nothing")).toEqual({ lead: "Nothing", rest: "" });
     expect(headlineParts("")).toEqual({ lead: "", rest: "" });
-  });
-});
-
-describe("where a way to contribute leads", () => {
-  it("is the card of a format on the conference's page", () => {
-    expect(formatAnchor("artist_talk")).toBe("format-artist_talk");
   });
 });

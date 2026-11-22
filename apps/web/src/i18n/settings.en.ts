@@ -39,6 +39,9 @@ export const settingsEn = {
     "Optional. One line, shown with the dates and the place on the front page and at the top of the conference page.",
   settingsInvitationHint:
     "Optional. A short paragraph that says what work the call welcomes. The front page and the conference page begin with it, in the reader's language where you have written it and otherwise in the conference's main language.",
+  settingsLabel_formatsIntro: "Introduction to the formats",
+  settingsFormatsIntroHint:
+    "Optional. A sentence or two, shown on the conference page above its submission formats, in the reader's language where you have written it and otherwise in the conference's main language.",
   settingsLabel_host: "Host institution",
   settingsLabel_location: "Place",
   settingsLabel_modality: "How people take part",

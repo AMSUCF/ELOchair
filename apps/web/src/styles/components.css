@@ -94,7 +94,7 @@ a.paired:hover .pair-text {
   flex: none;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--numeral);
 }
 
@@ -187,29 +187,23 @@ a.paired:hover .pair-text {
   color: var(--tone-info-text);
 }
 
-/* Outlined mono chip: "ACADEMIC", "Aug 4–6 · Uninorte". */
+/* Outlined mono chip: the committee beside a format's name. As written, and never tiny. */
 .tag {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-align: center;
   color: var(--text);
 }
 
 .status-line {
   font-weight: 600;
   min-height: 1.55em;
-}
-
-/* Lists of facts */
-.facts {
-  padding-left: 1.2em;
-  margin: 8px 0;
 }
 
 .deadlines,
@@ -251,13 +245,17 @@ a.paired:hover .pair-text {
   margin-bottom: 4px;
 }
 
-/* Stat tiles: "300 WORDS | 15 MIN | 250 BIO WORDS". */
+/*
+ * Stat tiles: "300 WORDS AT MOST | 15 MINUTES | 1–4 PEOPLE". The figure is large and its label
+ * is never smaller than 13px. The tiles are set into the panel they sit in, side by side while
+ * there is room: a tile is never narrower than what it says, and the last of a row fills it.
+ */
 .stats {
   list-style: none;
   margin: 12px 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -266,17 +264,20 @@ a.paired:hover .pair-text {
 }
 
 .stats li {
+  flex: 1 1 auto;
+  min-width: 8.5rem;
   display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  background: var(--surface);
+  align-content: start;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--sunken);
 }
 
 .stat-value {
   white-space: nowrap;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.25rem;
+  font-size: 1.875rem;
   line-height: 1.1;
   letter-spacing: -0.03em;
   color: var(--numeral);
@@ -284,14 +285,15 @@ a.paired:hover .pair-text {
 
 @media (min-width: 40rem) {
   .stat-value {
-    font-size: 1.5rem;
+    font-size: 2.125rem;
   }
 }
 
 .stat-label {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.1em;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
 }

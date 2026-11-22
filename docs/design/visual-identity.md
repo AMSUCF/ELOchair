@@ -22,7 +22,7 @@ The values below were read from the live conference site on 2026-11-10 by render
 | Coordinates | `10.96° N 74.80° W` in mono | From `coordinates` in the conference configuration |
 | Title in two weights | "Ecologies" heavy, "of Attention" light and lime | The invitation's headline: the theme's first word, then the rest |
 
-What the front page says, and in what order, follows the design preview in [visitor-preview](visitor-preview/README.md): see "The front page and the invitation" below.
+What the front page says, and in what order, follows the design preview in [visitor-preview](visitor-preview/README.md): see "The front page and the invitation" below. So does the way a conference's page shows its formats: see "The formats, one at a time".
 
 ## Code map
 
@@ -35,15 +35,18 @@ apps/web/src/styles/
   layout.css       shell, band art, header, sheet, footer
   components.css   eyebrow, echo, section head, card, chip, tag, stats, buttons
   forms.css        fields, field sets, errors, filters, the chair's overview
-  conference.css   hero, facts strip, formats, timeline, the invitation (home and conference pages)
+  conference.css   hero, facts strip, the formats view, timeline, the invitation (home and conference pages)
   people.css       the chairs' People page: a roster of people or invitations, a question asked in place
 apps/web/src/assets/contours.svg       generated: do not edit by hand
 apps/web/scripts/make-contours.mjs     generates it
 apps/web/src/ui.tsx                    Echo, LocalizedEcho, Pair, SectionHeading, Eyebrow, Sheet, Stat, FooterLink
 apps/web/src/invitation.ts             when a conference invites, and its main action by the state of its call
-apps/web/src/invitationParts.tsx       InvitationHero, WaysToContribute, AlreadyInvolved
+apps/web/src/invitationParts.tsx       InvitationHero, WaysToContribute, AlreadyInvolved, ProposalLanguages
+apps/web/src/formats.ts                which formats a call lists, which one an address chooses, what its panel says
+apps/web/src/formatsView.tsx           FormatsView: the chooser and the panel of the chosen format
 apps/web/src/App.tsx                   Shell, BandArt, Wordmark
 apps/web/e2e/identity.spec.ts          the checks described under "Promises"
+apps/web/e2e/formats.spec.ts           the formats view: what it says, how a format is chosen, sizes and contrast
 ```
 
 ## Themes and tokens
@@ -100,6 +103,28 @@ The front page features one conference: the one whose call is open, else the one
 - **A conference that does not invite** is shown as before: on the front page a card on glass (`.feature`) under the heading "Conferences", in the plain look; on its own page its title as the heading and the facts strip.
 - **Two phones, one layout.** On a phone the parts stack in the order above, with the main action straight under the headline. From 52rem the band has two columns: the headline, the action and the place on the left, the glass card on the right.
 
+## The formats, one at a time
+
+Every conference's page shows its formats the way the design preview's formats view does: one at a time. It is the structure of the page, not ELO 2027's dress, so a conference in the plain look gets the same view in its own colours and fonts (spec 02, §1.10).
+
+- **The start of the section:** the numbered heading; the sentence that introduces the formats (`formatsIntro` in the configuration, with its echo under it; nothing where a conference has none); the languages proposals may be in; and a link to the official call, where the conference has a website.
+- **A chooser.** Every format of the call in its order, those submitted here and then those that are not.
+  - Where the section is at least 42rem wide it is a list beside the panel (`.format-list`): each row is a button with the format's number, its name with its echo under it, and its committee (or "Not submitted here") as a `.tag`. The chosen row is filled with the accent and has `aria-current="true"`. From 68rem the committee sits beside the name; in a narrower list it is under it.
+  - Otherwise it is one labelled select above the panel (`.format-select`).
+  - The widths are the section's, not the screen's (container queries): a plain conference's page is narrower than a dressed one's.
+- **One panel** (`.format-panel`) for the chosen format, most important first: "Format 01 / 08"; the name, large, with its echo under it; the figures as large tiles; the description as body text; what the form asks for, as a short list with the required ones marked; the committee that reviews it and one sentence on how; then "Start this proposal" (or when submissions open, or that the window has closed); then "Previous" and "Next". A format that is not submitted here says so where the figures would be, and offers the official call instead.
+- **Choosing changes the panel in place.** The control keeps the focus, the address names the format (`#format-<key>`), and a `role="status"` line says the choice once. A link to a format arrives at the start of the section, with that format chosen and its name in focus (`data-arrive-at-start`, read by `useHashTarget` in `ui.tsx`).
+- **Sizes.** Nothing in the section is smaller than 13px. Mono labels in capitals are 13px; names, descriptions and lists are the body size (17px); a figure is 30px on a phone and 34px from 40rem; the format's name is between 36px and 60px, by the width of the panel.
+- **Standing apart.** The surface of a card is too near the sheet to set anything apart by itself (1.08:1 in the forest theme, 1.07:1 on paper). So the panel and every row of the list have an edge in `--control-border`, the colour of a field's border, and the chosen row is filled with `--accent`. Measured:
+
+  | Pair | Paper | Forest | Plain light | Plain dark |
+  |---|---|---|---|---|
+  | the panel's edge, and a row's, on the sheet (needs 3:1) | 4.23 | 4.89 | 6.87 | 9.14 |
+  | the chosen row beside the other rows | 7.30 | 10.60 | 10.56 | 8.24 |
+  | the chosen row on the sheet | 6.85 | 11.48 | 9.68 | 9.05 |
+  | text on the chosen row | 7.52 | 11.51 | 10.56 | 9.05 |
+  | a figure / its label, on a tile (`--sunken`) | 6.26 / 6.45 | 12.34 / 9.23 | 8.94 / 6.34 | 8.52 / 8.61 |
+
 ## Components
 
 | Class or component | What it is | Notes |
@@ -108,16 +133,21 @@ The front page features one conference: the one whose call is open, else the one
 | `.echo`, `<Echo>`, `<LocalizedEcho>` | the second language of a pair | always `aria-hidden`; see "Promises" |
 | `.echo-below`, `<Pair>`, `.pair` | the echo on a line of its own under its text, without the slash | for a sentence or the label of a button; `<Pair>` is an interface text with its echo |
 | `a.paired` | a link that holds a pair | only its text is underlined, not the echo |
-| `.section-head`, `<SectionHeading>` | numbered `h2` with echo and a hairline | public pages only |
+| `.section-head`, `<SectionHeading>` | numbered `h2` with echo and a hairline | public pages only; a link to its id lands on it, and it shows no focus ring (promise 9) |
 | `.card` | surface panel with a large radius | titles inside are `h2`/`h3` links |
 | `.badge` | status chip | tones: `data-tone="good" \| "warn" \| "info"`, or `status-*` classes; default is quiet. A conference's chip says its phase, except that "Call for proposals open" is said only while the call is open (`chipKey()` in `labels.ts`) |
-| `.tag` | outlined mono chip | review pool on a format card |
-| `.stats`, `<Stat>` | stat tiles: value over label | read as one phrase ("250–300 words") |
+| `.tag` | outlined mono chip, as written, 13px | the committee on a row of the formats list |
+| `.stats`, `<Stat>` | stat tiles: a large value over a 13px label | read as one phrase ("250–300 words"); a tile is never narrower than what it says, and the last of a row fills it |
 | `.overview` | the chair's figures | the number is set large inside its sentence |
 | `button`, `.button` | pill; `.secondary`, `.danger` | 44px tall at least |
 | `.notice` | pale gold panel | for things to know, not errors |
 | `.timeline` | key dates | vertical on a phone, horizontal from 52rem; `li.key` is filled in |
-| `.format`, `.format-elsewhere` | a format card; dashed for a format the call takes outside this portal | conference page |
+| `.formats-view`, `<FormatsView>` | the formats section: its start, a chooser and one panel | conference page; see "The formats, one at a time" |
+| `.formats-intro`, `.formats-lead` | the sentence that introduces the formats; the languages line and the link to the official call | the sentence is the conference's own text, with its echo below |
+| `.format-select`, `.format-list`, `.format-choice` | the chooser: a labelled select, or a list of buttons | the styles show one or the other, by the section's width; the chosen row has `aria-current` |
+| `.format-panel`, `.format-title`, `.format-position` | the panel of the chosen format; its name; "Format 01 / 08" | the name's size follows the panel's width |
+| `.format-details`, `.format-asks`, `.format-required`, `.format-committee` | what the form asks for, and who reviews the format | a label (`dt`), then plain lines |
+| `.format-elsewhere` | "Not submitted here", dashed, where the figures would be | for a format the call takes outside this portal |
 | `.hero-facts`, `.fact`, `.countdown` | the facts strip on glass | conference page |
 | `.feature` | the featured conference on glass | home page, for a conference that does not invite |
 | `.invitation`, `<InvitationHero>` | the top of an invitation, on the band | front page and conference page |
@@ -141,7 +171,7 @@ Chip tones come from `phaseTone()` and `contribTone()` in `labels.ts`. The chip'
 
 ## Promises
 
-These are checked by `apps/web/e2e/identity.spec.ts`, and the last one by `smoke.spec.ts`. Each was shown to fail when broken on purpose.
+These are checked by `apps/web/e2e/identity.spec.ts`; promise 8 by `smoke.spec.ts`, and promises 9 and 10 by `formats.spec.ts`. Each was shown to fail when broken on purpose.
 
 1. **Contrast on the band.** Text sits directly on the glow fields, where axe cannot measure. On the conference page and on the front page, the test first checks that every text in the hero is in one of the four band colours (text on a filled button aside, which axe measures). It then screenshots the art alone at six points of its drift, finds the brightest pixel, and requires 4.5:1 against it for every band text colour. Measured at the brightest point (`#376146`): mist 6.26, band-muted 4.83, lime 5.12, gold 5.07. On the glass panels the lowest is 8.55. **Do not raise the `--glow-*` alphas or `--band-contour` without running this test.**
 2. **Contrast elsewhere.** axe runs in both themes on every page the e2e suite visits. Measured pairs:
@@ -160,12 +190,14 @@ These are checked by `apps/web/e2e/identity.spec.ts`, and the last one by `smoke
 
    The palette also has colours the app does not use yet (the site's ochre `#8a6512` and coral `#e8735a`). Ochre measures 4.84 on paper, enough for text; coral measures 2.72, so it could only ever be decoration.
 
-3. **Touch targets.** The wordmark, both navigation links, the three language links (44px wide as well) and the footer link are at least 44px tall at 360px wide, with no sideways scrolling. So is every link of an invitation: its two buttons, the due date, the ways to contribute, the ways back in and the conference's website.
+3. **Touch targets.** The wordmark, both navigation links, the three language links (44px wide as well) and the footer link are at least 44px tall at 360px wide, with no sideways scrolling. So is every link of an invitation: its two buttons, the due date, the ways to contribute, the ways back in and the conference's website. So is everything people tap in the formats: the select or the rows of the list, the link to the official call, "Start this proposal", "Previous" and "Next".
 4. **Motion is opt-in.** Every animation and transition sits inside `@media (prefers-reduced-motion: no-preference)`. With reduced motion, `document.getAnimations()` is empty. Without it, only the glow fields and the hero title animate.
 5. **Nothing from elsewhere.** No request leaves the app's origin, and nothing is refused by the Content-Security-Policy. Vite is configured never to inline assets (`assetsInlineLimit: 0`), because an inlined font is a `data:` URL, which the policy blocks.
 6. **The echo is not read twice.** It is `aria-hidden` with its own `lang`; headings are named in the page's language only.
 7. **The device clock decides nothing.** The countdown is shown only while the server says the call is open, and is for display only (spec 02 §1.3). Whether an invitation says "Call for proposals", "Call opening soon" or "Submissions closed", and which main action it offers, is the server's answer too (`callState`, which has unit tests for all three; the seeded call is open, so the browser tests see that one; spec 02 §1.10).
 8. **A deadline reads as its call states it.** Where the pages show a deadline, they show the date and time as written and name the clock: the conference's time zone, "anywhere on Earth (AoE)" for an offset of −12:00, or the offset itself (`statedDeadline`; spec 02 §1.10). The open call closes anywhere on Earth: the tests hold the invitation and the timeline to that, and ELO 2026's page to its own time zone, as before.
+9. **A focus ring is for controls.** A heading takes the focus by script when a page arrives, or the part of one that a link leads to (`tabindex="-1"`), so that reading and the keyboard go on from it. It is not a control and shows no outline: one rule in `base.css` says so for every heading, whichever page it is on. Links, buttons, selects and fields keep the 3px outline of `:focus-visible`. (A browser draws that outline around anything focused by script when a page has just loaded, which is how a section heading came to be boxed.)
+10. **The formats are readable, and stand apart.** In the formats section no text is smaller than 13px, at 360px, 390px and on a wide screen, for a dressed and for a plain conference. The panel's edge, every row's edge and the chosen row keep 3:1 against what is around them in both themes (the table under "The formats, one at a time").
 
 ## Do and do not
 
@@ -175,6 +207,8 @@ These are checked by `apps/web/e2e/identity.spec.ts`, and the last one by `smoke
 - **Do not** put text on the band in a colour other than the four band tokens.
 - **Do not** add an animation outside the `no-preference` media query, or animate opacity on text.
 - **Do not** use the echo in forms or on working pages: there it is noise.
+- **Do not** draw a focus ring around a heading, and do not take one away from a control.
+- **Do not** set a card apart from the sheet by its surface alone: give it an edge that keeps 3:1 (`--control-border`), or the accent.
 - **Do not** decide what a page shows of a conference by its slug. Its configuration says what it has; only the identity goes by `dressedAs()`.
 - **Do not** fetch fonts or images from another origin.
 

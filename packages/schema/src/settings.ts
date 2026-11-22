@@ -65,6 +65,7 @@ const STAGE_ONE = [
   { id: "theme", pattern: "theme.@", kind: "longtext" },
   { id: "distinction", pattern: "distinction.@", kind: "text", optional: true },
   { id: "invitation", pattern: "invitation.@", kind: "longtext", optional: true },
+  { id: "formatsIntro", pattern: "formatsIntro.@", kind: "longtext", optional: true },
   { id: "host", pattern: "host", kind: "text" },
   { id: "location", pattern: "location.@", kind: "text" },
   { id: "modality", pattern: "modality", kind: "modality" },

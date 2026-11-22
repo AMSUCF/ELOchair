@@ -42,7 +42,12 @@ h1 {
   margin: 8px 0 12px;
 }
 
-h1:focus {
+/*
+ * A heading takes the focus by script when a page arrives, or the part of one that a link
+ * leads to (tabindex="-1"), so that reading and the keyboard go on from it. It is not a
+ * control and shows no focus ring; controls keep theirs (:focus-visible, below).
+ */
+:is(h1, h2, h3, h4, h5, h6)[tabindex="-1"]:focus {
   outline: none;
 }
 

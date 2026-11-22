@@ -269,41 +269,250 @@
   margin: 0;
 }
 
-/* Formats: numbered cards. */
-.formats {
+/*
+ * Formats, one at a time (formatsView.tsx): the start of the section, a chooser, and the panel
+ * of the chosen format. The chooser is a select above the panel on a phone, and the list of
+ * the formats beside it where there is room. How much room there is goes by the width of the
+ * section, not of the screen: a conference in the plain look has a narrower page. Nothing here
+ * is smaller than 13px.
+ */
+.formats-intro {
+  max-width: 46rem;
+  margin: 0 0 14px;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.formats-intro .echo-below {
+  margin-top: 6px;
+  font-size: 1rem;
+}
+
+/* The languages proposals may be in, and the way to the official call. */
+.formats-lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 24px;
+  margin-bottom: 16px;
+}
+
+.formats-lead p {
+  margin: 0;
+}
+
+.formats-body {
+  container: formats / inline-size;
+}
+
+.format-select {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.format-select select {
+  width: 100%;
+}
+
+.format-list {
+  display: none;
+  align-content: start;
+  gap: 6px;
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 14px;
 }
 
-.format-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+.formats-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.formats-layout > * {
+  min-width: 0;
+}
+
+/*
+ * A row of the list: the format's number, its name with its echo under it, and its committee.
+ * The committee is under the name unless the list is wide enough to set it beside it. A row's
+ * edge is the colour of a field's border, like the panel's: each row stands apart from the
+ * sheet as something to press.
+ */
+.format-choice {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  justify-content: stretch;
+  gap: 6px 12px;
+  padding: 12px 16px;
+  border-color: var(--control-border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: start;
+}
+
+.format-choice:hover {
+  border-color: var(--accent);
 }
 
 .format-number {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--numeral);
 }
 
-.format h3 {
-  font-size: 1.5rem;
-  margin-bottom: 8px;
+.format-name .echo-below {
+  font-size: 0.875rem;
+  font-weight: 400;
 }
 
-.format .facts {
-  margin-bottom: 0;
+.format-choice .tag {
+  grid-column: 2;
+  justify-self: start;
 }
 
-@media (min-width: 52rem) {
-  .formats {
-    grid-template-columns: repeat(2, 1fr);
+/* The chosen row is filled with the accent, and everything on it takes the row's own colour. */
+.format-choice[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.format-choice[aria-current="true"] :is(.format-number, .echo, .tag) {
+  border-color: currentcolor;
+  color: inherit;
+}
+
+/*
+ * The panel of the chosen format. Its edge is the colour of a field's border, which keeps 3:1
+ * against the sheet in both themes (docs/design/visual-identity.md): the surface alone is too
+ * near the sheet to set a panel apart.
+ */
+.format-panel {
+  container-type: inline-size;
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.format-panel > *,
+.format-panel p {
+  margin: 0;
+}
+
+.format-position,
+.format-details dt {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+/* The format's name, as large as the panel has room for, and under it its echo. */
+.format-title {
+  font-size: clamp(2.25rem, 1.2rem + 6cqi, 3.75rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.format-title .echo-below {
+  margin-top: 0.14em;
+  font-size: 0.58em;
+  line-height: 1.1;
+}
+
+/* In place of the figures, for a format the call takes outside this portal. */
+.format-elsewhere {
+  padding: 14px 16px;
+  border: 1px dashed var(--control-border);
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+.format-description {
+  max-width: 40rem;
+}
+
+/* What the form asks for, and who reviews the format: a label, then plain lines. */
+.format-details {
+  display: grid;
+  gap: 18px;
+}
+
+.format-details dt {
+  margin-bottom: 4px;
+}
+
+.format-details dd {
+  margin: 0;
+}
+
+.format-asks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.format-asks li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.format-required {
+  color: var(--muted);
+}
+
+.format-committee {
+  font-weight: 600;
+}
+
+@container formats (min-width: 42rem) {
+  .format-select {
+    display: none;
+  }
+
+  .format-list {
+    display: grid;
+  }
+
+  .formats-layout {
+    grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.4fr);
+    align-items: start;
+  }
+
+  .format-panel {
+    gap: 24px;
+    padding: 32px;
+  }
+}
+
+@container formats (min-width: 68rem) {
+  .format-choice {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .format-choice .tag {
+    grid-column: auto;
+    max-width: 8.5rem;
   }
 }
 
@@ -402,14 +611,6 @@
   margin-top: 32px;
 }
 
-/* A format the call offers but this portal does not take: outlined, not a solid card. */
-.format-elsewhere {
-  border-style: dashed;
-  border-color: var(--control-border);
-  background: none;
-  box-shadow: none;
-}
-
 /*
  * The invitation to a conference's call (invitationParts.tsx): the front page for the
  * conference it features, and the top of that conference's own page. On the band: the theme
@@ -484,14 +685,17 @@
   font-size: 1rem;
 }
 
-/* An invitation's buttons hold two lines each: the text, and its echo in a smaller size. */
-.invitation .actions .button {
+/*
+ * The buttons of an invitation, and of a format's panel, hold two lines each: the text, and its
+ * echo in a smaller size.
+ */
+:is(.invitation, .format-panel) .actions :is(button, .button) {
   justify-content: space-between;
   padding-block: 10px;
   line-height: 1.25;
 }
 
-.invitation .button .echo-below {
+:is(.invitation, .format-panel) :is(button, .button) .echo-below {
   font-size: 0.875rem;
 }
 
@@ -560,6 +764,7 @@
 
 /* A part of the page that a link leads to shows clear of the edge of the screen. */
 .conference h2[id],
-.conference h3[id] {
+.conference h3[id],
+.formats-view {
   scroll-margin-top: 20px;
 }

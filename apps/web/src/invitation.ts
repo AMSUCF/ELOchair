@@ -34,9 +34,6 @@ export function mainAction(
   return { label: "inviteMyProposals", to: `/${lang}/my` };
 }
 
-/** The id of a format's card on the conference's page, which a way to contribute leads to. */
-export const formatAnchor = (key: string) => `format-${key}`;
-
 /**
  * "English or Spanish": the languages proposals may be written in, named in the language of
  * the page (`lang`), for the line under "Ways to contribute".

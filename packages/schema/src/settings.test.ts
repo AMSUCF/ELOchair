@@ -119,9 +119,11 @@ describe("what the settings screen offers", () => {
       "otherFormats.pitch.description.es",
       "tracks.main.name.en",
       "topics.sound.label.en",
-      // The invitation's two texts, although this conference has written neither.
+      // The invitation's two texts and the sentence that introduces the formats, although
+      // this conference has written none of them.
       "distinction.en",
       "invitation.es",
+      "formatsIntro.en",
     ]) {
       expect(offered, path).toContain(path);
     }
@@ -240,6 +242,8 @@ describe("what the settings screen offers", () => {
       "distinction",
       "invitation",
       "invitation.pt",
+      "formatsIntro",
+      "formatsIntro.pt",
       "contributionGroups",
       "contributionGroups.talks.name.en",
       // Of an email, its texts only, and only in a language the app writes mail in.
@@ -920,6 +924,45 @@ describe("the invitation and the ways to contribute", () => {
     const half = withSetting(invited, "distinction.es", undefined);
     expect(half.distinction).toEqual({ en: "The first meeting on the island" });
     expect(ConferenceConfig.safeParse(half).success).toBe(true);
+  });
+
+  it("offers the sentence that introduces the formats, straight after the invitation", () => {
+    const introduced = ConferenceConfig.parse({
+      ...input,
+      formatsIntro: { en: "These are the forms a proposal can take." },
+    });
+    expect(at(introduced, /^formatsIntro\./)).toEqual([
+      [
+        "formatsIntro.en",
+        "formatsIntro",
+        "longtext",
+        true,
+        "These are the forms a proposal can take.",
+      ],
+      ["formatsIntro.es", "formatsIntro", "longtext", true, undefined],
+    ]);
+    // A conference that has none is offered it all the same, to be written.
+    expect(config).not.toHaveProperty("formatsIntro");
+    expect(at(config, /^formatsIntro\./)).toEqual([
+      ["formatsIntro.en", "formatsIntro", "longtext", true, undefined],
+      ["formatsIntro.es", "formatsIntro", "longtext", true, undefined],
+    ]);
+    const order = stageOneSettings(config).map((s) => s.id);
+    expect(order.indexOf("formatsIntro")).toBe(order.lastIndexOf("invitation") + 1);
+    // Written where there was none, and cleared again: the conference then holds none, as before.
+    const written = withSetting(config, "formatsIntro.en", "Pick one.");
+    expect(configChanges(config, written)).toEqual([
+      { path: "formatsIntro.en", after: "Pick one." },
+    ]);
+    expect(ConferenceConfig.parse(written).formatsIntro).toEqual({ en: "Pick one." });
+    const cleared = withSetting(written, "formatsIntro.en", undefined);
+    expect(cleared).not.toHaveProperty("formatsIntro");
+    // Like every text of a conference, it is needed in the conference's main language.
+    expect(refusals({ ...input, formatsIntro: { es: "Solo en español." } })).toEqual([
+      { path: "formatsIntro", params: { code: "default_language_required", leaf: "en" } },
+    ]);
+    // A stored configuration from before it existed is read as it was.
+    expect(ConferenceConfig.parse(structuredClone(config))).toEqual(config);
   });
 
   it("changes a group's name and line by path, and never adds or regroups one", () => {

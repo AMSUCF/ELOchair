@@ -1,9 +1,10 @@
 import type { ConferenceConfig } from "@elochair/schema";
 import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type ConferenceDetail, type Me, type MySubmission, type Role } from "../api";
 import { hasMinimum } from "../format";
+import { startingFormat } from "../formats";
 import { ErrorSummary } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { modeKey, roleKey } from "../labels";
@@ -48,7 +49,12 @@ export function StartPage() {
 function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string }) {
   const { lang, t } = useT();
   const navigate = useNavigate();
-  const [typeKey, setTypeKey] = useState(c.submissionTypes[0]?.key ?? "");
+  // "Start this proposal" on the conference's page names the format in the address; it is only
+  // where the form begins, and the person may still choose another.
+  const [params] = useSearchParams();
+  const [typeKey, setTypeKey] = useState(() =>
+    startingFormat(c.submissionTypes, params.get("format")),
+  );
   const [language, setLanguage] = useState(c.languages.includes(lang) ? lang : c.defaultLanguage);
   const [mode, setMode] = useState<(typeof MODES)[number] | "">("");
   const [ownRole, setOwnRole] = useState<Role>("lead");

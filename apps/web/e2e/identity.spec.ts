@@ -9,6 +9,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const CALL = "elo2027-open";
+type Texts = Record<string, string>;
 
 /** axe in the paper theme and again in the forest theme. */
 async function expectAccessible(page: Page) {
@@ -77,31 +78,65 @@ test("the call's page shows the conference: theme and echo, place, deadline, for
     page.getByRole("heading", { level: 2, name: "Submission formats", exact: true }),
   ).toBeVisible();
   await expect(page.locator("#formats .echo")).toHaveText("Formatos de envío");
-  // The call's seven formats, in its order, with its lengths; then the one taken by email.
-  const formats = page.locator(".formats > li");
-  await expect(formats).toHaveCount(8);
-  await expect(formats.locator("h3")).toContainText([
-    "Paper",
-    "Lightning talk",
-    "Panel",
-    "Artist talk",
-    "Workshop",
-    "Reading or performance",
-    "Work for the exhibition",
-    "Curatorial pitch",
-  ]);
-  await expect(formats.first()).toContainText("300 words at most");
-  await expect(formats.first()).toContainText("15 minutes");
-  await expect(formats.nth(1)).toContainText("150 words at most");
-  await expect(formats.first().locator(".echo")).toHaveText("Ponencia");
-  const elsewhere = page.locator(".format-elsewhere");
-  await expect(elsewhere).toContainText("Not submitted here");
-  await expect(elsewhere).toContainText("by email");
+  // The call's formats, one at a time (formats.spec.ts reads the panel through, from the
+  // call's configuration): the chooser has every format of the call in its order, those
+  // submitted here and then those that are not, and the panel shows the first.
+  const { config } = (await (await page.request.get(`/api/conferences/${CALL}`)).json()) as {
+    config: Record<"submissionTypes" | "otherFormats", { key: string; name: Texts }[]>;
+  };
+  const listed = [...config.submissionTypes, ...config.otherFormats];
+  expect(listed.length).toBeGreaterThan(1);
+  const chooser = page.getByRole("combobox", { name: "Format", exact: true });
+  await expect(chooser.locator("option")).toHaveText(
+    listed.map((format, i) => `${String(i + 1).padStart(2, "0")} · ${format.name.en}`),
+  );
+  const panel = page.locator(".format-panel");
+  await expect(panel).toHaveCount(1);
+  const name = panel.getByRole("heading", { level: 3 });
+  await expect(name).toHaveAccessibleName(listed[0]?.name.en ?? "");
+  // The name's echo is shown and not read out, like every echo; the name is set in the
+  // display face, heavy, and the figures in the colour of numerals.
+  const nameEcho = name.locator(".echo");
+  await expect(nameEcho).toHaveText(listed[0]?.name.es ?? "");
+  await expect(nameEcho).toHaveAttribute("lang", "es");
+  await expect(nameEcho).toHaveAttribute("aria-hidden", "true");
+  expect(
+    await name.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return `${style.fontFamily.split(",")[0]?.replaceAll('"', "").trim()} ${style.fontWeight}`;
+    }),
+  ).toBe("Bricolage Grotesque Variable 700");
+  expect(
+    await panel
+      .locator(".stat-value")
+      .first()
+      .evaluate((el) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--numeral)";
+        el.append(probe);
+        const same = getComputedStyle(probe).color === getComputedStyle(el).color;
+        probe.remove();
+        return same;
+      }),
+  ).toBe(true);
+  // A format the call takes outside this portal says so, in the chooser's last place.
+  if (config.otherFormats.length > 0) {
+    await chooser.selectOption(listed.at(-1)?.key ?? "");
+    await expect(panel.locator(".format-elsewhere")).toHaveText("Not submitted here");
+    await chooser.selectOption(listed[0]?.key ?? "");
+  }
   await expect(page.locator(".timeline > li")).toHaveCount(5);
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await page.setViewportSize({ width: 360, height: 740 });
   await expectNoHorizontalScroll(page);
+  // Everything people tap in the formats is a touch target, on a small phone too.
+  for (const control of await page
+    .locator(".formats-view")
+    .locator("a:visible, button:visible, select:visible")
+    .all()) {
+    await expectTouchTarget(control);
+  }
 
   // In Spanish the pair turns round: Spanish first, English as the echo.
   await page.goto(`/es/c/${CALL}`);

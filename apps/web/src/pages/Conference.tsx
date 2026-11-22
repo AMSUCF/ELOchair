@@ -1,5 +1,5 @@
 import type { ConferenceConfig } from "@elochair/schema";
-import { effectiveBlindMode, localize } from "@elochair/schema/pure";
+import { localize } from "@elochair/schema/pure";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import type { ConferenceDetail, Me } from "../api";
@@ -10,15 +10,16 @@ import {
   formatCoordinates,
   formatDateRange,
   formatDateTime,
-  hasMinimum,
   statedWhen,
   themeClass,
   viewerTimeZone,
 } from "../format";
+import { two } from "../formats";
+import { FormatsView } from "../formatsView";
 import { useT } from "../i18n";
-import { formatAnchor, invites } from "../invitation";
+import { invites } from "../invitation";
 import { AlreadyInvolved, InvitationHero, WaysToContribute } from "../invitationParts";
-import { deadlineKey, modalityKey, reviewKey } from "../labels";
+import { deadlineKey, modalityKey } from "../labels";
 import {
   Eyebrow,
   FooterLink,
@@ -28,7 +29,6 @@ import {
   partnerLang,
   SectionHeading,
   Sheet,
-  Stat,
   useHashTarget,
 } from "../ui";
 import { useApi } from "../useApi";
@@ -40,14 +40,11 @@ const DEADLINES = [
   "finalMaterials",
 ] as const;
 
-const two = (n: number) => String(n).padStart(2, "0");
-const range = (min: number, max: number) => (min === max ? String(min) : `${min}–${max}`);
-
 export function ConferencePage() {
   const { slug } = useParams();
   const { lang, t } = useT();
   const res = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
-  useHashTarget(Boolean(res?.ok));
+  const moveTo = useHashTarget(Boolean(res?.ok));
 
   if (!res) {
     return (
@@ -112,91 +109,7 @@ export function ConferencePage() {
 
         <WaysToContribute detail={res.data} own number="01" />
 
-        <section aria-labelledby="formats">
-          <SectionHeading id="formats" k="confFormats" number={two(numbers.formats)} />
-          <ol className="formats">
-            {c.submissionTypes.map((type, i) => {
-              const pool = c.reviewPools.find((p) => p.key === type.reviewPool);
-              return (
-                <li key={type.key} className="card format">
-                  <div className="format-head">
-                    <span className="format-number" aria-hidden="true">
-                      {two(i + 1)}
-                    </span>
-                    {pool && (
-                      <span className="tag">
-                        <Localized text={pool.name} fallback={fb} />
-                      </span>
-                    )}
-                  </div>
-                  <h3 id={formatAnchor(type.key)} tabIndex={-1}>
-                    <Localized text={type.name} fallback={fb} />
-                    <LocalizedEcho text={type.name} />
-                  </h3>
-                  <p>
-                    <Localized text={type.description} fallback={fb} />
-                  </p>
-                  <p className="meta">
-                    <Localized text={type.abstract.label} fallback={fb} />
-                  </p>
-                  <ul className="stats">
-                    {hasMinimum(type.abstract.minWords) ? (
-                      <Stat
-                        value={range(type.abstract.minWords, type.abstract.maxWords)}
-                        label={t("statWords")}
-                      />
-                    ) : (
-                      <Stat value={type.abstract.maxWords} label={t("statWordsMax")} />
-                    )}
-                    {type.durationMinutes && (
-                      <Stat value={type.durationMinutes} label={t("statMinutes")} />
-                    )}
-                    <Stat
-                      value={range(type.team.min, type.team.max)}
-                      label={
-                        type.team.max === 1 && new Intl.PluralRules(lang).select(1) === "one"
-                          ? t("statPerson")
-                          : t("statPeople")
-                      }
-                    />
-                  </ul>
-                  <p className="meta">{t(reviewKey(effectiveBlindMode(c, type.key)))}</p>
-                  {type.fields.length > 0 && (
-                    <>
-                      <p className="meta">{t("confAlsoAsks")}:</p>
-                      <ul className="facts">
-                        {type.fields.map((f) => (
-                          <li key={f.key}>
-                            <Localized text={f.label} fallback={fb} />
-                            {f.required && ` (${t("confRequired")})`}
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </li>
-              );
-            })}
-            {/* In the call, but not submitted through this portal: listed so the call is whole. */}
-            {c.otherFormats.map((other, i) => (
-              <li key={other.key} className="card format format-elsewhere">
-                <div className="format-head">
-                  <span className="format-number" aria-hidden="true">
-                    {two(c.submissionTypes.length + i + 1)}
-                  </span>
-                  <span className="tag">{t("confNotHere")}</span>
-                </div>
-                <h3 id={formatAnchor(other.key)} tabIndex={-1}>
-                  <Localized text={other.name} fallback={fb} />
-                  <LocalizedEcho text={other.name} />
-                </h3>
-                <p>
-                  <Localized text={other.description} fallback={fb} />
-                </p>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <FormatsView detail={res.data} number={two(numbers.formats)} moveTo={moveTo} />
 
         <Deadlines config={c} number={two(numbers.deadlines)} />
 

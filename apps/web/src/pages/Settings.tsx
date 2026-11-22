@@ -95,6 +95,7 @@ const LABELS: Record<SettingId, MessageKey> = {
   theme: "settingsLabel_theme",
   distinction: "settingsLabel_distinction",
   invitation: "settingsLabel_invitation",
+  formatsIntro: "settingsLabel_formatsIntro",
   host: "settingsLabel_host",
   location: "settingsLabel_location",
   modality: "settingsLabel_modality",
@@ -146,12 +147,14 @@ const LABELS: Record<SettingId, MessageKey> = {
 };
 
 /**
- * The invitation's two texts (the front page and the top of the conference page show them),
- * each with the hint that says where it appears. They come after the title and the theme.
+ * The invitation's two texts (the front page and the top of the conference page show them)
+ * and the sentence that introduces the formats (on the conference page, above them), each with
+ * the hint that says where it appears. They come after the title and the theme.
  */
 const INVITATION_TEXTS = [
   { id: "distinction", hint: "settingsDistinctionHint" },
   { id: "invitation", hint: "settingsInvitationHint" },
+  { id: "formatsIntro", hint: "settingsFormatsIntroHint" },
 ] as const satisfies readonly { id: SettingId; hint: MessageKey }[];
 
 /** How a pool's reviewers are shown the authors: the choices, most hidden first. */
@@ -587,7 +590,8 @@ function SettingsForm({
         s.path,
       ),
   );
-  // The conference's own texts lead: its title and theme, then the invitation's two.
+  // The conference's own texts lead: its title and theme, then the invitation's two and the
+  // sentence that introduces the formats.
   const named = (s: Setting) => s.id === "title" || s.id === "theme";
   const invitationText = (s: Setting) => INVITATION_TEXTS.some((x) => x.id === s.id);
   const rules = under("rules.");

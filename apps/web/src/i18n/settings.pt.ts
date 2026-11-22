@@ -42,6 +42,9 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "Opcional. Uma linha que aparece junto das datas e do local, na página inicial e no início da página do congresso.",
   settingsInvitationHint:
     "Opcional. Um parágrafo breve que diz que trabalhos a chamada acolhe. A página inicial e a página do congresso começam com ele, no idioma de quem lê se o tiver escrito nesse idioma e, se não, no idioma principal do congresso.",
+  settingsLabel_formatsIntro: "Introdução aos formatos",
+  settingsFormatsIntroHint:
+    "Opcional. Uma ou duas frases que aparecem na página do congresso, acima dos seus formatos de submissão, no idioma de quem lê se as tiver escrito nesse idioma e, se não, no idioma principal do congresso.",
   settingsLabel_host: "Instituição anfitriã",
   settingsLabel_location: "Local",
   settingsLabel_modality: "Como se participa",
