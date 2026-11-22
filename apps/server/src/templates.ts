@@ -4,6 +4,7 @@ import {
   BARE_HOST,
   type ConferenceConfig,
   type ContributionRole,
+  committeeList,
   fillMessage,
   HOST_WITH_PATH,
   type InvitationAnswer,
@@ -32,6 +33,9 @@ import type { MailMessage } from "./mail";
  * - Mail to people who are part of the proposal (confirmed contributors, its owner, the
  *   conference's contact address) shows owner-written text, such as the title, as it was
  *   typed, cleaned up to one line (oneLine).
+ * - Invitations to a role (reviewer, chair) go to people who have agreed to nothing as well.
+ *   They carry nothing a person typed: not the inviting chair's name, and not the name that
+ *   chair typed for the invitee. What they name comes from the conference's configuration.
  *
  * A conference's own wording changes none of that:
  * - Every value is cleaned here, before it is put in, exactly as for the standard text. No text
@@ -258,4 +262,35 @@ export function draftDeletedMessage(
   v: { conference: string },
 ): MailMessage {
   return message(wording, "draft_deleted", lang, to, { conference: v.conference });
+}
+
+/**
+ * The invitation to review (spec 03, §1.2). `committees` are the names of the review pools the
+ * person is invited to, as the configuration has them in the reader's language: each is put on
+ * one line, and they are listed together. Nothing a person typed is in it.
+ */
+export function reviewerInvitationMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: { conference: string; committees: readonly string[]; link: string },
+): MailMessage {
+  return message(wording, "reviewer_invitation", lang, to, {
+    committees: committeeList(v.committees.map((name) => oneLine(name, "—"))),
+    conference: v.conference,
+    link: v.link,
+  });
+}
+
+/** The invitation to be a chair (spec 03, §1.2): the conference and the link, and no person. */
+export function chairInvitationMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: { conference: string; link: string },
+): MailMessage {
+  return message(wording, "chair_invitation", lang, to, {
+    conference: v.conference,
+    link: v.link,
+  });
 }

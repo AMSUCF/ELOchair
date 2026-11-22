@@ -37,11 +37,18 @@ export const ownModeKey = (b: BlindMode): MessageKey => `settingsPoolOwnMode_${b
 export const emailNameKey = (k: MailMessageKey): MessageKey => `settingsEmail_${k}`;
 /** The sentence that says when that email is sent, and to whom. */
 export const emailWhenKey = (k: MailMessageKey): MessageKey => `settingsEmailWhen_${k}`;
-/** What a placeholder of an email stands for. An invitation's link is not a proposal's. */
+/**
+ * What a placeholder of an email stands for. An invitation's link is not a proposal's, and the
+ * link of an invitation to a role is another again.
+ */
 export const placeholderKey = (k: MailMessageKey, name: MessagePlaceholder): MessageKey =>
-  k === "invitation" && name === "link"
-    ? "settingsEmailPlaceholder_invitationLink"
-    : `settingsEmailPlaceholder_${name}`;
+  name !== "link"
+    ? `settingsEmailPlaceholder_${name}`
+    : k === "invitation"
+      ? "settingsEmailPlaceholder_invitationLink"
+      : k === "reviewer_invitation" || k === "chair_invitation"
+        ? "settingsEmailPlaceholder_roleInvitationLink"
+        : "settingsEmailPlaceholder_link";
 export const selfIdKey = (k: SelfIdKind): MessageKey => `selfId_${k}`;
 export const conferenceRoleKey = (r: ConferenceRole): MessageKey => `role_${r}`;
 export const deadlineKey = (d: keyof ConferenceConfig["deadlines"]): MessageKey => `deadline_${d}`;

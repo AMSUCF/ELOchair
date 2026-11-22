@@ -45,6 +45,18 @@ export async function getConference(db: Db, slug: string): Promise<ConferenceRow
   };
 }
 
+/** A conference by its id, without a lock (lockConference and shareConference take one). */
+export async function getConferenceById(db: Db, id: string): Promise<ConferenceRow | null> {
+  const [row] = await db.select().from(conferences).where(eq(conferences.id, id));
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    phase: row.phase,
+    config: ConferenceConfig.parse(row.config),
+  };
+}
+
 export async function listConferences(db: Db): Promise<ConferenceRow[]> {
   const rows = await db.select().from(conferences).orderBy(conferences.slug);
   return rows.map((r) => ({

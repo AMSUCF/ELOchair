@@ -184,3 +184,52 @@ export type Profile = {
   orcid: string | null;
   bios: Record<string, string>;
 };
+
+/** The roles a chair can invite someone to, and those the People page can take away. */
+export type InvitableRole = "reviewer" | "chair";
+export type RemovableRole = "chair" | "reviewer" | "track_chair";
+
+/** Someone who holds a role, by their profile (the People projection in packages/policy). */
+export type RoleHolder = { personId: string; displayName: string | null; email: string };
+
+/** An invitation nobody accepted, as the chair typed it: nothing in it is from a profile. */
+export type PeopleInvitation = {
+  id: string;
+  role: InvitableRole;
+  pools: string[];
+  email: string;
+  name: string | null;
+  lang: "en" | "es" | "pt";
+  state: "waiting" | "expired" | "declined";
+  sentAt: string;
+  expiresAt: string;
+  answeredAt: string | null;
+};
+
+/** Who holds a role at a conference and who has been invited, for its chairs. */
+export type People = {
+  view: "people";
+  chairs: (RoleHolder & { you: boolean })[];
+  reviewers: (RoleHolder & {
+    pools: string[];
+    /** Among the proposals the chair looking manages: their own and conflicted ones left out. */
+    assigned: number;
+    maxLoad: number | null;
+    languages: string[];
+  })[];
+  trackChairs: (RoleHolder & { tracks: string[] })[];
+  invitations: PeopleInvitation[];
+};
+
+/** What the page of an invitation to a role shows whoever holds its link. */
+export type RoleInvitation = {
+  view: "role_invitation";
+  conference: { slug: string; title: LocalizedText };
+  role: InvitableRole;
+  pools: { key: string; name: LocalizedText }[];
+  /** The address the invitation was sent to: the role goes to it, whoever opens the link. */
+  email: string;
+  lang: "en" | "es" | "pt";
+  expiresAt: string;
+  nameNeeded: boolean;
+};

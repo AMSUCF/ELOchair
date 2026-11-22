@@ -274,6 +274,12 @@ export function ManagePage() {
             {t("manageSettingsLink")}
           </Link>
         )}
+        {/* Who holds a role, and inviting people to one: for the same chairs (spec 03, §1.2). */}
+        {mayConfigure && (
+          <Link className="button secondary" to={`/${lang}/c/${slug}/people`}>
+            {t("managePeopleLink")}
+          </Link>
+        )}
       </p>
       {mayConfigure && <PhaseControl slug={slug} phase={conf.data.phase} onMoved={reread} />}
       <Filters config={config} onApply={setQuery} />

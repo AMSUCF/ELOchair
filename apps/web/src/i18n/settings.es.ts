@@ -75,7 +75,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quienes revisan en este grupo ven este texto encima de cada propuesta que se les asigna, en su idioma si lo has escrito en él y, si no, en el idioma principal del congreso. Los saltos de línea se conservan.",
   settingsEmailsIntro:
-    "La aplicación envía estos correos a las personas de una propuesta. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
+    "La aplicación envía estos correos a las personas de una propuesta, y a las personas a quienes la presidencia invita a revisar o a presidir. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
   settingsEmailsNote:
     "Están los tres idiomas, tenga el congreso los que tenga, porque cada persona recibe el correo en su idioma: se puede invitar a alguien en portugués a un congreso que se celebra en inglés y español. Un idioma que no hayas cambiado conserva el texto estándar. Estos textos no son privados: como el resto de esta configuración, puede leerlos cualquiera que pueda ver el congreso. El correo para entrar es igual para todo el mundo y no se puede cambiar aquí.",
   settingsEmail_invitation: "Invitación a una propuesta",
@@ -85,6 +85,8 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Aviso a quienes tenían una invitación a una propuesta retirada",
   settingsEmail_invitation_answered: "Respuesta a una invitación, para quien creó la propuesta",
   settingsEmail_draft_deleted: "Aviso a quienes tenían una invitación a un borrador eliminado",
+  settingsEmail_reviewer_invitation: "Invitación para revisar",
+  settingsEmail_chair_invitation: "Invitación para presidir",
   settingsEmailWhen_invitation:
     "Se envía a una persona cuando quien creó una propuesta la incluye en ella, y otra vez si le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada.",
   settingsEmailWhen_submission_received:
@@ -97,6 +99,10 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Se envía a quien creó una propuesta cuando una persona invitada confirma o rechaza, o cuando alguien que participaba la deja.",
   settingsEmailWhen_draft_deleted:
     "Se envía a quienes tenían una invitación a un borrador y no habían respondido, cuando quien lo creó lo elimina. No puede nombrar la propuesta: esas personas no han aceptado nada.",
+  settingsEmailWhen_reviewer_invitation:
+    "Se envía a una persona cuando alguien de la presidencia la invita, en la página Personas, a revisar, y otra vez si se le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada, así que el correo no nombra a nadie: ni a quien invita ni el nombre que esa persona escribió para ella.",
+  settingsEmailWhen_chair_invitation:
+    "Se envía a una persona cuando alguien de la presidencia la invita, en la página Personas, a presidir, y otra vez si se le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada, así que el correo no nombra a nadie: ni a quien invita ni el nombre que esa persona escribió para ella.",
   settingsEmailPlaceholders:
     "Puedes poner estas palabras, con sus llaves, en el asunto y en el texto. Cada una se sustituye cuando se envía el correo:",
   settingsEmailPlaceholder_conference: "el título del congreso",
@@ -107,6 +113,10 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsEmailPlaceholder_link: "el enlace a la propuesta",
   settingsEmailPlaceholder_invitationLink:
     "el enlace donde la persona ve la propuesta y confirma o rechaza",
+  settingsEmailPlaceholder_roleInvitationLink:
+    "el enlace donde la persona lee la invitación y la acepta o la rechaza",
+  settingsEmailPlaceholder_committees:
+    "los nombres de los grupos de revisión a los que se invita a la persona, separados por comas",
   settingsEmailPlaceholder_owner: "el nombre de quien creó la propuesta",
   settingsEmailPlaceholder_role: "el rol de la persona en la propuesta",
   settingsEmailPlaceholder_person:

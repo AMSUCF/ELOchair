@@ -17,6 +17,10 @@ const config: PreviewSource = {
   timezone: "America/Bogota",
   deadlines: { submissionsClose: "2031-02-14T23:59:00-12:00" },
   submissionTypes: [{ name: { en: "Talk", es: "Charla" } }],
+  reviewPools: [
+    { name: { en: "Scientific committee", es: "Comité científico" } },
+    { name: { en: "Artistic committee" } },
+  ],
 };
 const ORIGIN = "https://chair.example.org";
 
@@ -69,6 +73,22 @@ describe("the made-up values an email is previewed with", () => {
     );
     expect(sampleValues("submission_withdrawn", "en", config, ORIGIN).link).toBe(
       "https://chair.example.org/en/s/…",
+    );
+    // An invitation to a role has a page of its own.
+    for (const key of ["reviewer_invitation", "chair_invitation"] as const) {
+      expect(sampleValues(key, "pt", config, ORIGIN).link).toBe(
+        "https://chair.example.org/pt/role-invitation#token=…",
+      );
+    }
+  });
+
+  it("name the conference's own review pools as a reviewer's committees", () => {
+    expect(sampleValues("reviewer_invitation", "en", config, ORIGIN).committees).toBe(
+      "Scientific committee, Artistic committee",
+    );
+    // In the email's language where the conference has written the name, else in its main one.
+    expect(sampleValues("reviewer_invitation", "es", config, ORIGIN).committees).toBe(
+      "Comité científico, Artistic committee",
     );
   });
 });

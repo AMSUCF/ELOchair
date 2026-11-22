@@ -1,4 +1,5 @@
 import type { Messages } from "./en";
+import { peoplePt } from "./people.pt";
 import { settingsPt } from "./settings.pt";
 import { submissionPt } from "./submission.pt";
 
@@ -6,6 +7,7 @@ import { submissionPt } from "./submission.pt";
 export const pt: Messages = {
   ...submissionPt,
   ...settingsPt,
+  ...peoplePt,
   appName: "ELOchair",
   tagline: "Submissões e revisão por pares para o congresso da Electronic Literature Organization.",
   skipToContent: "Saltar para o conteúdo",
