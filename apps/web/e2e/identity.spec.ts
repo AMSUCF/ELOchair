@@ -42,9 +42,13 @@ test("the call's page shows the conference: theme and echo, place, deadline, for
 }) => {
   await page.goto(`/en/c/${CALL}`);
   const hero = page.locator(".hero");
-  await expect(hero.getByRole("heading", { level: 1 })).toHaveText("ELO 2027 (open test call)");
-  await expect(hero.getByText("Electronic Literature Organization Conference")).toBeVisible();
-  await expect(hero.getByText("Ecologies of Attention", { exact: true })).toBeVisible();
+  // The page begins with the call's invitation: the theme is its heading, and the line above
+  // names the conference and says where its call stands.
+  await expect(hero.getByRole("heading", { level: 1 })).toHaveText("Ecologies of Attention");
+  await expect(page).toHaveTitle("ELO 2027 (open test call): Ecologies of Attention – ELOchair");
+  await expect(hero.locator(".hero-eyebrow")).toContainText(
+    "ELO 2027 (open test call) · Call for proposals",
+  );
   await expect(hero.getByText("10.96° N 74.80° W")).toBeVisible();
   await expect(hero.getByText("Universidad del Norte")).toBeVisible();
   // The echo is the theme in the conference's other language: shown, but not read out twice.
@@ -54,12 +58,20 @@ test("the call's page shows the conference: theme and echo, place, deadline, for
   await expect(echo).toHaveAttribute("aria-hidden", "true");
   // The countdown shows only because the server says the call is open.
   await expect(hero.locator(".countdown")).toHaveText(/^\d+ days? left$/i);
-  await expect(hero.getByRole("link", { name: "Submit a proposal" })).toBeVisible();
+  await expect(hero.getByRole("link", { name: "Start a proposal" })).toBeVisible();
 
-  await expect(page.getByRole("link", { name: /Read the full call/ })).toHaveAttribute(
+  // One link to the full call, the invitation's; and the conference's site again in the footer.
+  await expect(page.getByRole("link", { name: "Read the CFP" })).toHaveAttribute(
     "href",
     "https://elo27.eliterature.org/",
   );
+  await expect(page.getByRole("link", { name: /Read the full call/ })).toHaveCount(0);
+  await expect(
+    page.locator(".site-footer").getByRole("link", { name: "Conference website" }),
+  ).toHaveAttribute("href", "https://elo27.eliterature.org/");
+  // The ways to contribute come first, so the sections that follow are numbered after them.
+  await expect(page.locator(".section-number")).toHaveText(["01", "02", "03"]);
+  await expect(page.getByRole("navigation", { name: "Already involved?" })).toBeVisible();
   // Section headings are named in the page's language only; the echo is decoration.
   await expect(
     page.getByRole("heading", { level: 2, name: "Submission formats", exact: true }),
@@ -103,21 +115,86 @@ test("the call's page shows the conference: theme and echo, place, deadline, for
   await expectNoHorizontalScroll(page);
 });
 
-test("the home page features the open call once, above the other conferences", async ({ page }) => {
+test("the front page wears the identity of the call it invites to, once, above the other conferences", async ({
+  page,
+}) => {
   await page.goto("/en/");
-  await expect(page.getByRole("heading", { level: 1, name: "Conferences" })).toBeVisible();
-  const feature = page.locator(".feature");
-  await expect(feature.getByRole("heading", { level: 2 })).toHaveText("ELO 2027 (open test call)");
-  await expect(feature.getByText("Call for proposals open")).toBeVisible();
-  await expect(feature.locator(".hero-theme")).toContainText("Ecologies of Attention");
-  await expect(feature.getByRole("link", { name: "Submit a proposal" })).toHaveAttribute(
-    "href",
-    `/en/c/${CALL}/submit`,
-  );
-  await expect(feature.getByRole("link", { name: "See the call" })).toHaveAttribute(
-    "href",
-    `/en/c/${CALL}`,
-  );
+  const hero = page.locator(".hero");
+  const heading = hero.getByRole("heading", { level: 1 });
+  await expect(heading).toHaveText("Ecologies of Attention");
+  // Its address names no conference: the page says itself whose identity it wears.
+  await expect(page.locator(".home")).toHaveAttribute("data-dressed", "elo2027");
+  await expect(page.locator(".shell")).toHaveClass(/shell-hero/);
+
+  // The band is the forest, and the headline is set as on the conference's site: the first
+  // word heavy, the rest light and in the accent colour; the echo in the serif italic.
+  const look = (target: Locator) =>
+    target.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        family: style.fontFamily.split(",")[0]?.replaceAll('"', "").trim(),
+        weight: style.fontWeight,
+        italic: style.fontStyle === "italic",
+        colour: style.color,
+      };
+    });
+  const tokens = await page.locator(".shell").evaluate((shell) => {
+    const style = getComputedStyle(shell);
+    const probe = document.createElement("span");
+    shell.append(probe);
+    const rgb = (name: string) => {
+      probe.style.color = style.getPropertyValue(name).trim();
+      return getComputedStyle(probe).color;
+    };
+    const out = {
+      band: getComputedStyle(shell).backgroundColor,
+      forest: rgb("--forest"),
+      text: rgb("--band-text"),
+      accent: rgb("--band-accent"),
+      echo: rgb("--band-echo"),
+    };
+    probe.remove();
+    return out;
+  });
+  expect(tokens.band).toBe(tokens.forest);
+  expect(await look(heading.locator(".headline-lead"))).toEqual({
+    family: "Bricolage Grotesque Variable",
+    weight: "700",
+    italic: false,
+    colour: tokens.text,
+  });
+  expect(await look(heading.locator(".headline-rest"))).toEqual({
+    family: "Bricolage Grotesque Variable",
+    weight: "300",
+    italic: false,
+    colour: tokens.accent,
+  });
+  expect(await look(hero.locator(".hero-echo .echo"))).toEqual({
+    family: "Brygada 1918 Variable",
+    weight: "400",
+    italic: true,
+    colour: tokens.echo,
+  });
+  expect(await look(hero.locator(".hero-eyebrow"))).toMatchObject({
+    family: "Unbounded",
+    colour: tokens.accent,
+  });
+  expect(await look(hero.locator(".invitation-text"))).toMatchObject({
+    family: "Schibsted Grotesk Variable",
+    colour: tokens.text,
+  });
+  // An echo under its text is in the echo colour; on the filled button it takes the button's.
+  expect((await look(hero.locator(".invitation-text .echo"))).colour).toBe(tokens.echo);
+  const start = hero.getByRole("link", { name: "Start a proposal" });
+  expect((await look(start.locator(".echo"))).colour).toBe((await look(start)).colour);
+
+  // Everything people tap in the invitation is a touch target.
+  for (const link of await page
+    .locator(".invitation a, .ways a, .involved a, .footer-slot a")
+    .all()) {
+    await expectTouchTarget(link);
+  }
+
   // Featured, so not listed again.
   await expect(page.getByRole("heading", { level: 2, name: "Other conferences" })).toBeVisible();
   await expect(page.locator(".cards").getByRole("link", { name: /open test call/ })).toHaveCount(0);
@@ -125,7 +202,15 @@ test("the home page features the open call once, above the other conferences", a
     page.locator(".cards").getByRole("link", { name: "ELO 2026: (un)supervised" }),
   ).toBeVisible();
   await expectAccessible(page);
+  await expectNoHorizontalScroll(page);
   await page.setViewportSize({ width: 360, height: 740 });
+  await expectNoHorizontalScroll(page);
+  await expectTouchTarget(start);
+
+  // In Spanish and in the forest theme the same holds.
+  await page.goto("/es/");
+  await expect(page.locator(".hero h1")).toHaveText("Ecologías de la atención");
+  await expectAccessible(page);
   await expectNoHorizontalScroll(page);
 });
 
@@ -180,11 +265,18 @@ test("with reduced motion nothing moves; otherwise only decoration does", async 
   expect(await animated()).toEqual([]);
 });
 
-test("text on the band keeps 4.5:1 against the brightest point of the glow fields", async ({
-  page,
-}) => {
-  await page.goto(`/en/c/${CALL}`);
-  await expect(page.locator(".hero h1")).toBeVisible();
+/** The pages that put the invitation on the band: the call's own page, and the front page. */
+for (const path of [`/en/c/${CALL}`, "/en/"]) {
+  test(`text on the band keeps 4.5:1 against the brightest point of the glow fields (${path})`, async ({
+    page,
+  }) => {
+    await page.goto(path);
+    await expect(page.locator(".hero h1")).toBeVisible();
+    await expectBandContrast(page);
+  });
+}
+
+async function expectBandContrast(page: Page) {
   // The band's text colours, from the tokens — set on .shell (see tokens.css), not :root, so an
   // undressed conference's page doesn't inherit ELO 2027's palette.
   const colours = await page.evaluate(() => {
@@ -195,6 +287,24 @@ test("text on the band keeps 4.5:1 against the brightest point of the glow field
       (name) => [name, style.getPropertyValue(name).trim()] as const,
     );
   });
+  // Every text in the hero is in one of those four colours, so the measurement below covers
+  // it. (Text on a filled button sits on the button's own colour, which axe measures.)
+  const used = await page.locator(".hero").evaluate((hero) => {
+    const found = new Set<string>();
+    const walker = document.createTreeWalker(hero, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || !node.textContent?.trim()) continue;
+      if (parent.closest(".button:not(.secondary)")) continue;
+      found.add(getComputedStyle(parent).color);
+    }
+    return [...found];
+  });
+  const asRgb = (hex: string) =>
+    `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+  const allowed = colours.map(([, hex]) => asRgb(hex));
+  expect(used.length).toBeGreaterThan(1);
+  for (const colour of used) expect(allowed, `${colour} is a band colour`).toContain(colour);
   // Only the art, with nothing over it; then the glow fields at several points of their drift.
   await page.addStyleTag({
     content: ".shell > :not(.band-art) { visibility: hidden !important; }",
@@ -243,7 +353,7 @@ test("text on the band keeps 4.5:1 against the brightest point of the glow field
     const ratio = (text + 0.05) / (brightest + 0.05);
     expect(ratio, `${name} ${hex} on the band`).toBeGreaterThanOrEqual(4.5);
   }
-});
+}
 
 test("fonts and images come from the app's own origin, within the content security policy", async ({
   page,
@@ -261,11 +371,12 @@ test("fonts and images come from the app's own origin, within the content securi
   page.on("console", (message) => {
     if (/Content Security Policy|Refused to/i.test(message.text())) refused.push(message.text());
   });
-  // Only pages wearing the identity (a dressed conference's own routes) should fetch its fonts.
-  // Generic chrome (home, sign-in) is plain for every conference now — see the next test.
+  // Only pages wearing the identity (a dressed conference's own routes, and the front page
+  // while it is that conference's invitation) should fetch its fonts. Generic chrome (sign-in,
+  // the account) is plain for every conference — see the next test.
   // networkidle (not just fonts.ready) because the hero's one-time focus-in animation can delay
   // when its heading is first painted, and so when its font is first requested.
-  for (const path of [`/en/c/${CALL}`, `/es/c/${CALL}`, `/en/c/${CALL}/submit`]) {
+  for (const path of ["/en/", `/en/c/${CALL}`, `/es/c/${CALL}`, `/en/c/${CALL}/submit`]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await page.evaluate(() => document.fonts.ready);
@@ -294,11 +405,25 @@ test("a plain conference, and the app's own pages, wear no identity at all", asy
   await expect(page.locator(".shell")).not.toHaveAttribute("data-dressed");
   await expect(page.locator("article.conference")).toBeVisible();
 
-  // Home and generic chrome pages are plain too: no slug, so never dressed.
-  for (const path of [`/en/`, "/es/", "/pt/sign-in"]) {
+  // Generic chrome pages are plain too: no slug, so never dressed.
+  for (const path of ["/en/my", "/es/me", "/pt/sign-in"]) {
     await page.goto(path);
     await expect(page.locator(".shell")).not.toHaveAttribute("data-dressed");
+    await expect(page.locator("[data-dressed]")).toHaveCount(0);
   }
+
+  // So is the front page when the conference it features has no identity: here, as if ELO 2026
+  // were the only conference. (It wears one only as the invitation of a conference that has
+  // one; the test above reads that.)
+  const all = (await (await page.request.get("/api/conferences")).json()) as {
+    conferences: { slug: string }[];
+  };
+  await page.route("**/api/conferences", (route) =>
+    route.fulfill({ json: { conferences: all.conferences.filter((k) => k.slug === "elo2026") } }),
+  );
+  await page.goto("/en/");
+  await expect(page.locator(".feature")).toBeVisible();
+  await expect(page.locator("[data-dressed]")).toHaveCount(0);
 
   await page.evaluate(() => document.fonts.ready);
   expect(fonts).toEqual([]);

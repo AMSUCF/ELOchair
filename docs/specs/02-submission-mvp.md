@@ -55,7 +55,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - `draft → submitted ⇄ draft` (return to draft, before the close) `→ withdrawn` (final).
 - Drafts are created only by an explicit **Start**, after a format and abstract language are chosen.
 - Drafts can be deleted outright: a hard delete by the owner. The audit row keeps IDs only, and pending invitees are told.
-- **The call is open** when the phase is `cfp_open` and the server's receipt time `t` satisfies `submissionsOpen ≤ t < submissionsClose` (`isCallOpen`). There is no grace period, and the client clock never decides anything: the conference, Start and editor pages follow the `callOpen` the server returns.
+- **The call is open** when the phase is `cfp_open` and the server's receipt time `t` satisfies `submissionsOpen ≤ t < submissionsClose` (`isCallOpen`). There is no grace period, and the client clock never decides anything: the front page and the conference, Start and editor pages follow the `callOpen` the server returns. The server also says where the call stands (`callState`), which is all the public pages say about it (§1.10).
   - Create, edit, invite, remove, return to draft, submit and delete need an open call.
   - **Withdraw** (from `submitted` only) is allowed in phases `cfp_open`, `reviewing` and `deciding`, whether or not the call is open. Withdrawal mail goes to every confirmed contributor and to `contactEmail`, with the proposal's link and, in the standard text, its title; pending invitees get the notice without the title (§1.2).
   - **Confirm** needs an open call and work that is not withdrawn. **Decline and leave** are always allowed, whatever the status or phase.
@@ -138,6 +138,7 @@ The call was published in November 2026 at <https://elo27.eliterature.org/>. `pa
 
 - **Curatorial pitches** go by email. They are in the configuration as `otherFormats`, which the conference page lists and nothing else uses.
 - **Submissions are in English or Spanish** (`languages`). The interface is also in Portuguese.
+- **The invitation** (§1.10) is in the configuration too: the line "ELO's first conference in Latin America", the paragraph that invites work on the theme, and three ways to contribute. "Talks & ideas" holds the paper, the lightning talk, the panel and the artist talk; "Art & performance" the reading or performance and the work for the exhibition; "Workshops" the workshop. The wording is the design preview's (`docs/design/visitor-preview/copy.js`), in English and Spanish. Curatorial pitches are in no group.
 - **No minimum length.** The call gives only maxima, so its formats have no `minWords`. An abstract must still be there: an empty one is refused with `required`, not `too_few_words`. The interface says "up to 300 words". A format that does set `minWords` behaves as before.
 - **A number field may have a range** (`min`, `max` on the field). Outside it, submitting is refused with `out_of_range`.
 - **A number field may take whole numbers only** (`integer` on the field, as the workshop's participants do). A fraction is refused with `not_integer`. A configuration whose whole-number field has no whole number between its two ends (15.1 to 15.9) is refused: nobody could answer it.
@@ -150,7 +151,7 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 - **Who.** Configuration changes are human-only: agents are refused, whoever they act for.
   - **Chairs do everything.** The `chair` and `admin` roles and site admins are one group (`isConferenceChair`). In the app a chair may do whatever an admin may: save any valid configuration, and move the phase (§1.3). The `admin` role stays in the data and means nothing more than `chair`. Track chairs and reviewers may not open the screen.
   - **The screen offers the stage-one values**, the same to every chair. They are defined once, in `packages/schema/src/settings.ts`, which the screen renders from:
-    - the conference: title, theme, host, place, modality, contact email, website, dates, the "provisional" mark
+    - the conference: title, theme, what sets the edition apart and the invitation (both optional; §1.10), host, place, modality, contact email, website, dates, the "provisional" mark
     - the four deadlines
     - the presenter cap's number and the bio word limit (where the conference has those rules)
     - of each existing format: name, description, what the abstract is called, its fewest and most words, minutes on the program, fewest and most people
@@ -161,7 +162,8 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
     - of each existing agreement: title, text, link and version ("Agreements", below)
     - of each email the app sends to the people on a proposal: its subject and its text, in English, Spanish and Portuguese ("Emails", below). These are offered whether or not the conference has written any, and whichever of the three languages are its own.
     - the names and descriptions of formats not submitted here, and the names of existing tracks and topics
-  - **Everything else has no screen:** adding, removing, reordering or re-keying anything, review pools and criteria included; the year, time zone and languages; adding or removing an agreement, and its key; a field's kind, options, `identifying` and `public`; a format's review pool and its own blind mode. It is done by importing a configuration, and the screen says so. Through the API a chair's save of any of it is taken like any other, under the rules below: there is no longer a list of what a chair may not change, and no 403 with paths. The slug is never changed by a save (400 `slug_mismatch`).
+    - of each existing way to contribute (§1.10): its name and its line. Under its name the screen says which formats it leads to.
+  - **Everything else has no screen:** adding, removing, reordering or re-keying anything, review pools and criteria included; the year, time zone and languages; adding or removing an agreement, and its key; a field's kind, options, `identifying` and `public`; a format's review pool and its own blind mode; adding or removing a way to contribute, and which formats it holds. It is done by importing a configuration, and the screen says so. Through the API a chair's save of any of it is taken like any other, under the rules below: there is no longer a list of what a chair may not change, and no 403 with paths. The slug is never changed by a save (400 `slug_mismatch`).
 - **Submitted work stays valid.** A save is checked, under the conference's row lock, against every proposal that has been sent in and not withdrawn or turned down, with the validation the submit path uses. If one of them would gain a problem it does not have now, nothing is saved: 409 `submitted_work_invalid`, with the count, the counts by problem, and the IDs of those the person may manage as a chair (their own and conflicted work is only counted). Every chair is held to it, whatever the change: a format that submitted proposals use cannot be removed.
   - **Drafts never block.** The review says how many drafts would gain a problem.
 - **A save and a write wait for each other.** A save holds the conference's row for update while it checks. Every write to a submission, or to who is on it, shares that row before it reads or writes anything about the proposal. So a write is checked against the configuration in force when it commits, and a save never checks work that is changing under it.
@@ -242,13 +244,61 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 - **Review before saving.** `POST …/config/preview` saves nothing and answers with the changed values (before and after), problems by value (what the schema refuses, and a mode that may no longer show names), what blocks, and what warns: drafts affected, a call that this would open or close at that moment (closing stops starting, editing and submitting proposals and confirming invitations; withdrawing follows the phase, §1.3, and declining is always possible), a deadline moved into the past. The screen always shows this before "Save changes", and offers no save while something blocks.
 - **The form stays open while a save is on its way.** What was reviewed is what is saved. Whatever is typed in the meantime stays in the form as an unsaved change to the saved configuration, the page says so without taking focus from the person typing, and it is reviewed in its turn before it can be saved.
 - **Two people at once.** A save names the configuration it started from (`If-Match`, a token of the stored configuration, given by `GET …/settings`). When that is no longer the stored one the save is refused with 409 `stale`, and the screen offers to reload; what was typed stays in the form.
-- **Deadlines keep their offset.** A deadline is shown and edited as its date, its time and its UTC offset, each as stored. The offset changes only when someone writes another one. As it is typed, the screen says which instant it is in the conference's time zone and in the reader's.
+- **Deadlines keep their offset.** A deadline is shown and edited as its date, its time and its UTC offset, each as stored. The offset changes only when someone writes another one. As it is typed, the screen says which instant it is in the conference's time zone and in the reader's. The pages people read show a deadline as it was written (§1.10).
 - **Texts** are edited in each language of the conference; the default language is required. (An email's wording is the exception on both counts: it is offered in the three languages mail goes out in, and each stands alone, falling back to the standard text.) The screen offers a text in those languages only: there a chair may change it, clear it, or write one that was missing. A text in any other language would add a language to the conference, which has no screen, like the list of languages itself.
 - **Audit.** One `conference.config_updated` entry per save, with every changed value's path, before and after, and how many drafts were affected. A configuration holds no personal data.
 - **Unsaved changes survive a reload.** What a chair has typed and not saved is kept in that browser, under their own id, like unsaved text in the proposal editor: it is back after a reload or a closed tab, with a notice and a way to discard it, and it goes on save, on discard and on sign-out. It follows the form: what was typed while a save was on its way is still unsaved, so that part stays kept, and only that part. It is kept as typed, by setting, not as a configuration: it goes back on top of whatever is stored now, exactly as after "Reload the settings", an edit to something that is no longer a setting is dropped, and the review before saving shows every change against the stored value.
 - **Not yet:**
   - a screen for adding or removing formats, fields, languages, review pools, criteria and agreements. That is done by importing a configuration, by someone with access to the server.
   - the CLI's `import-config` applies neither the submitted-work check, nor the one for anonymized review, nor the one for an agreement's version.
+
+### 1.10 The invitation, and deadlines as the call states them
+The front page and a conference's own page are where people arrive. What they show of a conference comes from its configuration and from what the server says about its call, never from its slug. Only the identity (colours, fonts, contour art) goes by `dressedAs(slug)`.
+
+- **A conference may invite.** Three optional parts of a configuration make up its invitation. Stored configurations without them stay valid and need no migration.
+  - `distinction`: one line per language that says what sets the edition apart.
+  - `invitation`: a short paragraph per language that says what work the call welcomes.
+  - `contributionGroups`: the ways to contribute. Each has a `key`, a `name` and a `summary` per language, and `formats`: keys of formats the call offers, submitted here or not. Every key must exist, a format is in one group at most, and a group has at least one.
+  - Like every text of a configuration they need the conference's main language, and they are public.
+- **Which pages.** A conference whose configuration holds any of the three *invites* (`invites()` in `apps/web/src/invitation.ts`).
+  - The **front page** features one conference: the one whose call is open, else the one furthest from the archive, else the most recent. If that conference invites, the front page is its invitation, and the other conferences follow as compact cards. It then wears that conference's identity, if it has one.
+  - The **conference page** of a conference that invites begins with the same invitation and goes on with its formats and its deadlines.
+  - A conference that does not invite is shown as before on both: a card under the heading "Conferences" on the front page, and its own page with its title as the heading.
+- **What an invitation shows**, in this order:
+  1. the conference's title and where its call stands
+  2. the theme, as the page's heading
+  3. the main action
+  4. the dates, the place, the host and the `distinction`
+  5. the `invitation`
+  6. a link to the full call (`website`)
+  7. when proposals are due
+  8. "Ways to contribute": the languages proposals may be in, then each group with a link to its first format on the conference page
+  9. "Already involved?": a link to the person's own proposals and two to the sign-in page, for reviewers and for organizers. Everyone signs in the same way; what a person may do follows from their roles.
+  10. the conference's website again, in the footer
+  - The conference page adds what it always showed: the coordinates, the days left while the call is open, and "Manage submissions" for the conference's chairs.
+- **Two languages.** Each text is followed by its echo in the conference's other language, as on the rest of the public pages. The echo is hidden from assistive technology.
+- **Where the call stands** is one of three states, decided by the server's clock (`callState` in `packages/schema/src/call.ts`) and sent with the list of conferences and with each conference:
+
+  | State | When | The invitation says | Main action |
+  |---|---|---|---|
+  | `open` | `isCallOpen` (§1.3) | "Call for proposals" | "Start a proposal", to the Start page |
+  | `upcoming` | phase `cfp_open` before `submissionsOpen`, or phase `draft` before `submissionsClose` | "Call opening soon", and the day submissions open | "Prepare a proposal", to the formats on the conference page |
+  | `closed` | `submissionsClose` has passed, or the conference is in a later phase | "Submissions closed", and "The submission window has closed." in place of the due date | "View my proposals", to "My submissions" |
+
+  - `callState` is for display. What people may do is still decided by `isCallOpen` and the policy.
+  - **The chip** on the front page says the phase's name, with one exception: "Call for proposals open" is said only while the call is open. In phase `cfp_open` before the opening date it says "Call opening soon", and after the closing date "Submissions closed".
+- **A deadline is shown as its call states it.** A deadline is stored with the offset it was written with (§1.9). The pages show the date and the time as written, and say which clock that is (`statedDeadline` in `packages/schema/src/deadline.ts`):
+
+  | Written offset | Clock | Shown as (English) |
+  |---|---|---|
+  | the offset the conference's time zone has at that instant, daylight saving included | the conference's | "Feb 28, 2026, 11:59 PM (America/New_York)", as before |
+  | −12:00 | anywhere on Earth | "Feb 14, 2027, 11:59 PM, anywhere on Earth (AoE)"; "… AoE" on the invitation |
+  | any other | that offset | "Apr 30, 2027, 11:59 PM (UTC−08:00)"; "(UTC)" for none |
+
+  - The conference's own clock is asked first, so a conference whose deadlines are written in its own offset reads exactly as it did.
+  - **Where:** the invitation, the conference page (its hero, the sentence about when the call runs, and the timeline), the editor's deadline line and "My submissions".
+  - **The visitor's own time** stays beside it where it was: in the timeline whenever it reads differently, and in the editor.
+  - **Not yet in mail.** The receipt email still gives the closing date in the conference's time zone ([issue #16](https://github.com/AMSUCF/ELOchair/issues/16)). So does the settings screen, which shows the instant in the conference's time zone and in the reader's as it is typed.
 
 ## 2. Contracts
 
@@ -306,7 +356,7 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
 | `GET /api/me/invitations` | person | pending invitations (also answerable while signed in) |
 | `POST /api/me/invitations/:submissionId/answer` | person | same as above, by session |
 | `PUT /api/me/profile` | person | strict |
-| `GET /api/conferences/:slug` | anyone who can see the conference | configuration, phase and `callOpen` (server clock) |
+| `GET /api/conferences/:slug` | anyone who can see the conference | configuration, phase, `callOpen` and `callState` (server clock; §1.10) |
 | `GET /api/conferences/:slug/settings` | chair or admin (human) | configuration and its token; §1.9 |
 | `POST /api/conferences/:slug/config/preview` | chair or admin (human) | the configuration as it would be saved; saves nothing; §1.9 |
 | `PUT /api/conferences/:slug/config` | chair or admin (human) | whole configuration, `If-Match` required (428 without); 409 `stale`, `reviewers_assigned`, `agreement_version_required` or `submitted_work_invalid`; row-locked, audited; §1.9 |
@@ -350,7 +400,7 @@ Write routes have a 64 KB body limit (256 KB for a whole configuration) and 60 w
 - **Tiers:** tier M gets metadata. The contributors in the metadata view carry `status`, and the view also includes `participationMode`, `issueCodes` and the self-identification warning count. Tier C gets exactly what its owner would see.
 
 ### 2.5 Fixtures and the dry run
-- **`seedOpenCall(db, { slug, now })`** clones ELO 2027 with deadlines relative to the clock and the phase set to `cfp_open`. Development and the e2e tests use it, so they exercise what people will really be offered, on any date.
+- **`seedOpenCall(db, { slug, now })`** clones ELO 2027 with deadlines relative to the clock, each written in the offset the configuration writes it in (so the closing date is stated anywhere on Earth, §1.10), and the phase set to `cfp_open`. Development and the e2e tests use it, so they exercise what people will really be offered, on any date.
 - **`seedTestCall(db, { slug, now })`** does the same with a made-up call (`apps/server/src/fixture-call.ts`) whose formats and limits never change. Server tests use it, so a decision by a conference's organisers never breaks a test that is about something else.
 - **Dry run:** `import-config <file> --slug elo2027-dryrun --window <open>/<close>`. It is human-only and audited, and the runbook shows the exact command.
 
@@ -426,7 +476,8 @@ These were set aside on purpose, with the reason for each.
 
 **From the Barranquilla call, not yet built**
 - **Per-paper panel abstracts as separate items.** The call asks for 150-word abstracts of three to four papers or five to six lightning talks, plus a 150-word rationale. For now they share one field (§1.8); adding `panelItems` is tracked in [issue #15](https://github.com/AMSUCF/ELOchair/issues/15).
-- **Bio lengths by format** ([issue #17](https://github.com/AMSUCF/ELOchair/issues/17)), and deadlines shown as "anywhere on Earth" ([issue #16](https://github.com/AMSUCF/ELOchair/issues/16)).
+- **Bio lengths by format** ([issue #17](https://github.com/AMSUCF/ELOchair/issues/17)).
+- **The closing date stated as "anywhere on Earth" in the receipt email.** The pages state it so (§1.10); the email still gives it in the conference's time zone ([issue #16](https://github.com/AMSUCF/ELOchair/issues/16)).
 
 **Not needed for the January launch**
 - **Transferring ownership.** Chairs can reassign it in the database, with an audit row.

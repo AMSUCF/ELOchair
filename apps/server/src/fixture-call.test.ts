@@ -1,8 +1,8 @@
-import { ConferenceConfig, conferences } from "@elochair/schema";
+import { ConferenceConfig, conferences, statedDeadline } from "@elochair/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fixtureCall, seedOpenCall, seedTestCall } from "./fixtures";
-import { getConference } from "./repo";
-import { makeTestApp, type TestApp } from "./testkit";
+import { getConference, saveConference } from "./repo";
+import { call, makeTestApp, type TestApp } from "./testkit";
 
 let t: TestApp;
 beforeAll(async () => {
@@ -75,5 +75,68 @@ describe("the fixture call", () => {
     expect(new Date(devCall?.config.deadlines.submissionsClose ?? 0).getTime()).toBeGreaterThan(
       now.getTime(),
     );
+  });
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+
+describe("a seeded call's deadlines", () => {
+  it("are the same instants as ever, each written on the clock its configuration writes it on", async () => {
+    const now = new Date("2027-02-01T12:00:00Z");
+    const { slug } = await seedTestCall(t.db, { slug: "stated-call", now });
+    const config = (await getConference(t.db, slug))?.config;
+    if (!config) throw new Error("the call was seeded");
+    const seeded = config.deadlines;
+    // Opened yesterday, closing in thirty days, then sixty and ninety.
+    expect(
+      [
+        seeded.submissionsOpen,
+        seeded.submissionsClose,
+        seeded.notification,
+        seeded.finalMaterials,
+      ].map((iso) => (Date.parse(iso) - now.getTime()) / DAY),
+    ).toEqual([-1, 30, 60, 90]);
+    // The fixture call closes anywhere on Earth and writes its other dates in Bogotá's offset:
+    // so does a call seeded from it, and the pages state each deadline on that clock.
+    expect(seeded).toEqual({
+      submissionsOpen: "2027-01-31T07:00:00.000-05:00",
+      submissionsClose: "2027-03-03T00:00:00.000-12:00",
+      notification: "2027-04-02T07:00:00.000-05:00",
+      finalMaterials: "2027-05-02T07:00:00.000-05:00",
+    });
+    const clock = (iso: string) => statedDeadline(iso, config.timezone).clock;
+    expect(clock(seeded.submissionsClose)).toBe("aoe");
+    expect(clock(seeded.submissionsOpen)).toBe("conference");
+    expect(clock(seeded.notification)).toBe("conference");
+    expect(clock(seeded.finalMaterials)).toBe("conference");
+  });
+});
+
+describe("where a call stands, by the server's clock", () => {
+  it("tells the list and the conference's page the same: yet to open, open, closed", async () => {
+    const opened = new Date("2027-02-01T12:00:00Z");
+    const { slug } = await seedTestCall(t.db, { slug: "standing-call", now: opened });
+    const standing = async (at: Date) => {
+      t.setNow(at);
+      const list = await call(t.public, "GET", "/api/conferences");
+      const listed = list.json.conferences.find((k: { slug: string }) => k.slug === slug);
+      const page = (await call(t.public, "GET", `/api/conferences/${slug}`)).json;
+      expect([page.callState, page.callOpen]).toEqual([listed.callState, listed.callOpen]);
+      return [listed.callState, listed.callOpen];
+    };
+    try {
+      // It opened a day before `opened` and closes thirty days after it.
+      expect(await standing(new Date(opened.getTime() - 2 * DAY))).toEqual(["upcoming", false]);
+      expect(await standing(opened)).toEqual(["open", true]);
+      expect(await standing(new Date(opened.getTime() + 30 * DAY - 1))).toEqual(["open", true]);
+      expect(await standing(new Date(opened.getTime() + 30 * DAY))).toEqual(["closed", false]);
+      // Once the conference has moved on, its call is closed whatever the dates say.
+      const k = await getConference(t.db, slug);
+      if (!k) throw new Error("the call was seeded");
+      await saveConference(t.db, k.config, "reviewing");
+      expect(await standing(opened)).toEqual(["closed", false]);
+    } finally {
+      t.setNow(new Date("2027-02-01T12:00:00Z"));
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { elo2027 } from "./conferences";
 import { ConferenceConfig, type ConferenceConfigInput, effectiveBlindMode } from "./config";
+import { statedDeadline } from "./deadline";
 import { validateSubmission } from "./validate";
 
 /*
@@ -65,6 +66,64 @@ describe("the ELO 2027 call's details", () => {
     };
     walk(elo2027, "elo2027");
     expect(missing).toEqual([]);
+  });
+});
+
+describe("the ELO 2027 invitation", () => {
+  // The wording of the design preview (docs/design/visitor-preview/copy.js), which the front
+  // page and the conference page show.
+  it("says what sets this edition apart, and invites work on the theme", () => {
+    expect(config.distinction).toMatchObject({
+      en: "ELO’s first conference in Latin America",
+      es: "Primer congreso de ELO en América Latina",
+    });
+    expect(config.invitation).toMatchObject({
+      en: "We invite work that engages attention as a political, ecological and poetic condition, and the practices through which electronic literature trains, reshapes and resists the overload that keeps it fragmented.",
+      es: "Invitamos propuestas que aborden la atención como condición política, ecológica y poética, y las prácticas con las que la literatura electrónica la entrena, la transforma y resiste la sobrecarga que la mantiene fragmentada.",
+    });
+  });
+
+  it("names three ways to contribute, each with the formats its line lists", () => {
+    expect(
+      config.contributionGroups.map((g) => [g.key, g.name.en, g.name.es, g.formats.join(" ")]),
+    ).toEqual([
+      ["ideas", "Talks & ideas", "Charlas e ideas", "talk lightning panel artist_talk"],
+      ["art", "Art & performance", "Arte y performance", "performance exhibition"],
+      ["workshops", "Workshops", "Talleres", "workshop"],
+    ]);
+    expect(config.contributionGroups.map((g) => [g.summary.en, g.summary.es])).toEqual([
+      [
+        "Papers, lightning talks, panels and artist talks.",
+        "Ponencias, charlas relámpago, paneles y charlas de artista.",
+      ],
+      [
+        "Readings, performances and exhibition works.",
+        "Lecturas, performances y obras para la exposición.",
+      ],
+      [
+        "Hands-on sessions for interaction and discussion.",
+        "Sesiones prácticas de interacción y diálogo.",
+      ],
+    ]);
+    // Every format submitted here is in a group. The one taken by email is in none: no line
+    // of the invitation names it.
+    const grouped = config.contributionGroups.flatMap((g) => g.formats);
+    expect([...grouped].sort()).toEqual(config.submissionTypes.map((t) => t.key).sort());
+    expect(grouped).not.toContain("curatorial_pitch");
+  });
+
+  it("states its deadlines as the call does: the closing one anywhere on Earth", () => {
+    const stated = (key: keyof typeof config.deadlines) => {
+      const { wallClock, clock } = statedDeadline(config.deadlines[key], config.timezone);
+      return `${wallClock.toISOString().slice(0, 16)} ${clock}`;
+    };
+    // The call says "February 14, 2027, 23:59 anywhere on Earth". In Bogotá that instant is
+    // 6:59 on the 15th, which is not what a page should show first.
+    expect(stated("submissionsClose")).toBe("2027-02-14T23:59 aoe");
+    // The others are written on the conference's own clock.
+    expect(stated("submissionsOpen")).toBe("2027-01-11T00:00 conference");
+    expect(stated("notification")).toBe("2027-04-30T23:59 conference");
+    expect(stated("finalMaterials")).toBe("2027-05-31T23:59 conference");
   });
 });
 

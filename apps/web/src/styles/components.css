@@ -34,6 +34,46 @@
   content: " / ";
 }
 
+/*
+ * The echo on a line of its own, under what it echoes: where the pair is a sentence or the
+ * label of a button, and "one / other" on one line would be hard to read.
+ */
+.echo-below {
+  display: block;
+}
+
+.echo-below::before {
+  content: none;
+}
+
+/* A text and its echo below, as one block: in a button, a link or a line (Pair in ui.tsx). */
+.pair {
+  display: block;
+  text-align: start;
+}
+
+/*
+ * A link that holds a pair. The underline is its text's: on the link itself it would run
+ * under the echo too, which is decoration and no part of the link's name.
+ */
+a.paired {
+  text-decoration: none;
+}
+
+a.paired .pair-text {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+a.paired:hover .pair-text {
+  text-decoration-thickness: 2px;
+}
+
+/* On a filled button the echo takes the button's own colour: the accent is behind it. */
+.button:not(.secondary) .echo {
+  color: inherit;
+}
+
 /* A numbered section heading with a hairline under it. */
 .section-head {
   display: flex;

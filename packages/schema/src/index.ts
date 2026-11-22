@@ -2,6 +2,7 @@ export * from "./call";
 export * from "./cap";
 export * as conferences from "./conferences";
 export * from "./config";
+export * from "./deadline";
 export * from "./domain";
 export * from "./dressing";
 export * from "./i18n";

@@ -1,9 +1,12 @@
+import { dressedAs } from "@elochair/schema/pure";
 import { Link } from "react-router";
-import type { ConferenceSummary } from "../api";
-import { formatDateRange } from "../format";
+import type { ConferenceDetail, ConferenceSummary } from "../api";
+import { formatDateRange, themeClass } from "../format";
 import { useT } from "../i18n";
-import { modalityKey, phaseKey, phaseTone } from "../labels";
-import { Localized, LocalizedEcho, PageHeading, Sheet } from "../ui";
+import { invites } from "../invitation";
+import { AlreadyInvolved, InvitationHero, WaysToContribute } from "../invitationParts";
+import { chipKey, chipTone, modalityKey } from "../labels";
+import { FooterLink, Localized, LocalizedEcho, PageHeading, Sheet } from "../ui";
 import { useApi } from "../useApi";
 
 /** Later phases of a live conference come first; a draft or an archived one last. */
@@ -31,17 +34,50 @@ export function pickFeatured(all: ConferenceSummary[]): ConferenceSummary | unde
   )[0];
 }
 
-/** A theme of a few words is set large; a sentence reads as prose. */
-export const themeClass = (theme: string) => (theme.length > 48 ? "hero-theme long" : "hero-theme");
-
+/**
+ * The front page. For the conference it features it is that conference's invitation to its
+ * call, where the conference's configuration holds one (invitation.ts); the other conferences
+ * follow, compactly. A featured conference without an invitation is a card under the page's
+ * own heading, as before.
+ */
 export function HomePage() {
-  const { lang, t } = useT();
+  const { t } = useT();
   const res = useApi<{ conferences: ConferenceSummary[] }>("/api/conferences");
   const all = res?.ok ? res.data.conferences : [];
   const featured = pickFeatured(all);
+  // What the featured conference's own page reads: an invitation shows more than the list has.
+  const detail = useApi<ConferenceDetail>(featured ? `/api/conferences/${featured.slug}` : null);
   const others = all.filter((k) => k !== featured);
-  const quiet = res?.ok && all.length > 0 && others.length === 0;
 
+  // The page has one heading, and which one depends on what it features: nothing is headed
+  // until that is known, so that the heading takes focus once and keeps it.
+  if (!res || (featured && !detail)) {
+    return (
+      <div className="home">
+        <Sheet>
+          <p role="status">{t("loading")}</p>
+        </Sheet>
+      </div>
+    );
+  }
+
+  if (featured && detail?.ok && invites(detail.data.config)) {
+    const website = detail.data.config.website;
+    return (
+      // The page wears the identity of the conference it invites to, if that one has any.
+      <div className="home" data-dressed={dressedAs(featured.slug)}>
+        <InvitationHero detail={detail.data} />
+        <Sheet wide>
+          <WaysToContribute detail={detail.data} number="01" />
+          <AlreadyInvolved />
+          <Others list={others} />
+        </Sheet>
+        {website && <FooterLink href={website} k="inviteWebsite" />}
+      </div>
+    );
+  }
+
+  const quiet = res.ok && all.length > 0 && others.length === 0;
   return (
     <div className="home">
       <header className="hero hero-home">
@@ -53,37 +89,43 @@ export function HomePage() {
       {/* With one conference and nothing else to say, the hero is the page. */}
       {!quiet && (
         <Sheet>
-          {!res && <p role="status">{t("loading")}</p>}
-          {res && !res.ok && <p role="alert">{t("errorGeneric")}</p>}
-          {res?.ok && all.length === 0 && <p>{t("homeEmpty")}</p>}
-          {others.length > 0 && (
-            <>
-              <h2 className="eyebrow">{t("homeOthers")}</h2>
-              <ul className="cards">
-                {others.map((k) => (
-                  <li key={k.slug} className="card">
-                    <h3>
-                      <Link to={`/${lang}/c/${k.slug}`}>
-                        <Localized text={k.title} />
-                      </Link>
-                    </h3>
-                    <p className="meta">
-                      <Localized text={k.location} /> · {t(modalityKey(k.modality))}
-                    </p>
-                    <p className="meta">{formatDateRange(k.dates.start, k.dates.end, lang)}</p>
-                    <p>
-                      <span className="badge" data-tone={phaseTone(k.phase)}>
-                        {t(phaseKey(k.phase))}
-                      </span>
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          {!res.ok && <p role="alert">{t("errorGeneric")}</p>}
+          {res.ok && all.length === 0 && <p>{t("homeEmpty")}</p>}
+          <Others list={others} />
         </Sheet>
       )}
     </div>
+  );
+}
+
+/** The conferences the page does not feature, as compact cards. */
+function Others({ list }: { list: ConferenceSummary[] }) {
+  const { lang, t } = useT();
+  if (list.length === 0) return null;
+  return (
+    <>
+      <h2 className="eyebrow">{t("homeOthers")}</h2>
+      <ul className="cards">
+        {list.map((k) => (
+          <li key={k.slug} className="card">
+            <h3>
+              <Link to={`/${lang}/c/${k.slug}`}>
+                <Localized text={k.title} />
+              </Link>
+            </h3>
+            <p className="meta">
+              <Localized text={k.location} /> · {t(modalityKey(k.modality))}
+            </p>
+            <p className="meta">{formatDateRange(k.dates.start, k.dates.end, lang)}</p>
+            <p>
+              <span className="badge" data-tone={chipTone(k)}>
+                {t(chipKey(k))}
+              </span>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -93,8 +135,8 @@ function Featured({ k }: { k: ConferenceSummary }) {
   return (
     <section className="feature" aria-labelledby="featured-title">
       <p>
-        <span className="badge" data-tone={phaseTone(k.phase)}>
-          {t(phaseKey(k.phase))}
+        <span className="badge" data-tone={chipTone(k)}>
+          {t(chipKey(k))}
         </span>
       </p>
       <h2 id="featured-title">

@@ -59,10 +59,11 @@ import { useUnsaved } from "../useUnsaved";
  * Conference settings for chairs (spec 02, §1.9). The screen shows the stage-one values
  * (stageOneSettings): existing values, and the wording of the emails the app sends, whether the
  * conference has written its own or not, in the three languages mail goes out in; the same for
- * every chair. Formats, fields, languages, review pools, criteria and agreements are added or
- * removed by importing a configuration, and the page says so. It keeps what was typed apart from the configuration, and saves nothing
- * that has not been reviewed: the server says what a save would change, what is wrong with it,
- * what it would do to submitted work, and only then offers "Save changes".
+ * every chair. Formats, fields, languages, review pools, criteria, agreements and the ways to
+ * contribute are added or removed by importing a configuration, and the page says so. It keeps
+ * what was typed apart from the configuration, and saves nothing that has not been reviewed:
+ * the server says what a save would change, what is wrong with it, what it would do to
+ * submitted work, and only then offers "Save changes".
  *
  * What was typed and not saved is also kept in this browser (unsaved.ts), as in the proposal
  * editor, so that a reload or a closed tab does not lose a long round of changes.
@@ -92,6 +93,8 @@ type Review = {
 const LABELS: Record<SettingId, MessageKey> = {
   title: "settingsLabel_title",
   theme: "settingsLabel_theme",
+  distinction: "settingsLabel_distinction",
+  invitation: "settingsLabel_invitation",
   host: "settingsLabel_host",
   location: "settingsLabel_location",
   modality: "settingsLabel_modality",
@@ -136,9 +139,20 @@ const LABELS: Record<SettingId, MessageKey> = {
   "agreement.version": "settingsLabel_agreement_version",
   "other.name": "settingsLabel_other_name",
   "other.description": "settingsLabel_other_description",
+  "group.name": "settingsLabel_group_name",
+  "group.summary": "settingsLabel_group_summary",
   "track.name": "settingsLabel_track_name",
   "topic.label": "settingsLabel_topic_label",
 };
+
+/**
+ * The invitation's two texts (the front page and the top of the conference page show them),
+ * each with the hint that says where it appears. They come after the title and the theme.
+ */
+const INVITATION_TEXTS = [
+  { id: "distinction", hint: "settingsDistinctionHint" },
+  { id: "invitation", hint: "settingsInvitationHint" },
+] as const satisfies readonly { id: SettingId; hint: MessageKey }[];
 
 /** How a pool's reviewers are shown the authors: the choices, most hidden first. */
 const BLIND_MODES = ["double", "single", "open"] as const satisfies readonly BlindMode[];
@@ -193,6 +207,7 @@ const sectionOf = (path: string) => {
   return list === "submissionTypes" ||
     list === "reviewPools" ||
     list === "otherFormats" ||
+    list === "contributionGroups" ||
     list === "messages" ||
     list === "agreements"
     ? `${list}.${key}`
@@ -506,6 +521,9 @@ function SettingsForm({
     } else if (list === "otherFormats") {
       const other = config.otherFormats.find((x) => x.key === key);
       if (other) context.push(text(other.name));
+    } else if (list === "contributionGroups") {
+      const group = config.contributionGroups.find((x) => x.key === key);
+      if (group) context.push(text(group.name));
     } else if (list === "tracks") {
       const track = config.tracks.find((x) => x.key === key);
       if (track) context.push(text(track.name));
@@ -565,10 +583,13 @@ function SettingsForm({
   const under = (prefix: string) => settings.filter((s) => s.path.startsWith(prefix));
   const profile = settings.filter(
     (s) =>
-      !/^(deadlines|rules|submissionTypes|reviewPools|messages|agreements|otherFormats|tracks|topics)\./.test(
+      !/^(deadlines|rules|submissionTypes|reviewPools|messages|agreements|otherFormats|contributionGroups|tracks|topics)\./.test(
         s.path,
       ),
   );
+  // The conference's own texts lead: its title and theme, then the invitation's two.
+  const named = (s: Setting) => s.id === "title" || s.id === "theme";
+  const invitationText = (s: Setting) => INVITATION_TEXTS.some((x) => x.id === s.id);
   const rules = under("rules.");
   const emails = under("messages.");
 
@@ -586,6 +607,17 @@ function SettingsForm({
       ),
     ].join(" ");
   };
+
+  /** The formats a way to contribute leads to, by their names: submitted here or not. */
+  const formatsOf = (keys: string[]): string =>
+    keys
+      .flatMap((key) => {
+        const format =
+          config.submissionTypes.find((x) => x.key === key) ??
+          config.otherFormats.find((x) => x.key === key);
+        return format ? [text(format.name)] : [];
+      })
+      .join(", ");
 
   const section = (key: string, title: ReactNode, body: ReactNode) => (
     <details
@@ -644,7 +676,25 @@ function SettingsForm({
         <ErrorSummary issues={issues} title={t("settingsFixFirst")} where={nameOf} />
 
         <h2>{t("settingsSectionConference")}</h2>
-        <div className="stack wide">{controls(profile)}</div>
+        <div className="stack wide">
+          {controls(profile.filter(named))}
+          {INVITATION_TEXTS.map(({ id, hint }) => {
+            const hintId = `${fieldId(id)}-hint`;
+            return (
+              <fieldset key={id}>
+                <legend>{t(LABELS[id])}</legend>
+                <p className="setting-hint" id={hintId}>
+                  {t(hint)}
+                </p>
+                {controls(
+                  profile.filter((s) => s.id === id),
+                  hintId,
+                )}
+              </fieldset>
+            );
+          })}
+          {controls(profile.filter((s) => !named(s) && !invitationText(s)))}
+        </div>
 
         <h2>{t("settingsSectionDeadlines")}</h2>
         <p className="setting-hint" id="settings-offset-hint">
@@ -770,6 +820,25 @@ function SettingsForm({
                 `otherFormats.${other.key}`,
                 text(other.name),
                 controls(under(`otherFormats.${other.key}.`)),
+              ),
+            )}
+          </>
+        )}
+
+        {config.contributionGroups.length > 0 && (
+          <>
+            <h2>{t("settingsSectionWays")}</h2>
+            <p className="section-intro">{t("settingsWaysIntro")}</p>
+            {config.contributionGroups.map((group) =>
+              section(
+                `contributionGroups.${group.key}`,
+                text(group.name),
+                <>
+                  <p className="meta">
+                    {t("settingsWayFormats", { formats: formatsOf(group.formats) })}
+                  </p>
+                  {controls(under(`contributionGroups.${group.key}.`))}
+                </>,
               ),
             )}
           </>
@@ -978,12 +1047,12 @@ function Control({
       {s.kind === "longtext" ? (
         <textarea
           {...common}
-          // Guidelines, emails and agreements run to paragraphs; the other long texts are a
-          // sentence or two.
+          // Guidelines, emails, agreements and the invitation run to paragraphs; the other
+          // long texts are a sentence or two.
           rows={
             s.id === "message.body"
               ? 8
-              : s.id === "pool.guidelines" || s.id === "agreement.text"
+              : s.id === "pool.guidelines" || s.id === "agreement.text" || s.id === "invitation"
                 ? 6
                 : 3
           }

@@ -16,6 +16,10 @@ export const settingsEn = {
   settingsSectionEmails: "Emails",
   settingsSectionAgreements: "Agreements",
   settingsSectionOther: "Formats not submitted here",
+  settingsSectionWays: "Ways to contribute",
+  settingsWaysIntro:
+    "The front page and the conference page list these under “Ways to contribute”, each with a link to its formats. Adding or removing one, or moving a format to another, is done by importing a configuration.",
+  settingsWayFormats: "It leads to these formats: {formats}.",
   settingsSectionTracks: "Tracks",
   settingsSectionTopics: "Topics",
   settingsField: "Field: {name}",
@@ -29,6 +33,12 @@ export const settingsEn = {
   settingsCriterion: "Criterion: {name}",
   settingsLabel_title: "Title",
   settingsLabel_theme: "Theme",
+  settingsLabel_distinction: "What sets this edition apart",
+  settingsLabel_invitation: "Invitation",
+  settingsDistinctionHint:
+    "Optional. One line, shown with the dates and the place on the front page and at the top of the conference page.",
+  settingsInvitationHint:
+    "Optional. A short paragraph that says what work the call welcomes. The front page and the conference page begin with it, in the reader's language where you have written it and otherwise in the conference's main language.",
   settingsLabel_host: "Host institution",
   settingsLabel_location: "Place",
   settingsLabel_modality: "How people take part",
@@ -154,6 +164,8 @@ export const settingsEn = {
     "New version of {agreements}. Everyone who submits a proposal or confirms an invitation from now on accepts the new version. What people have already accepted stays recorded against the old one. Nobody is emailed, and proposals already submitted are not affected. Someone who has a proposal or an invitation open right now has to reload the page before they can accept.",
   settingsLabel_other_name: "Name",
   settingsLabel_other_description: "Description",
+  settingsLabel_group_name: "Name",
+  settingsLabel_group_summary: "What it includes",
   settingsLabel_track_name: "Name",
   settingsLabel_topic_label: "Name",
   settingsInLanguage: "{label} ({language})",

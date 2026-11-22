@@ -119,6 +119,9 @@ describe("what the settings screen offers", () => {
       "otherFormats.pitch.description.es",
       "tracks.main.name.en",
       "topics.sound.label.en",
+      // The invitation's two texts, although this conference has written neither.
+      "distinction.en",
+      "invitation.es",
     ]) {
       expect(offered, path).toContain(path);
     }
@@ -233,6 +236,12 @@ describe("what the settings screen offers", () => {
       "tracks",
       "title",
       "title.en.extra",
+      // Of the invitation, its texts in the conference's languages; no group where there is none.
+      "distinction",
+      "invitation",
+      "invitation.pt",
+      "contributionGroups",
+      "contributionGroups.talks.name.en",
       // Of an email, its texts only, and only in a language the app writes mail in.
       "messages",
       "messages.invitation",
@@ -797,6 +806,204 @@ describe("the agreements", () => {
     expect(refusals((c) => withSetting(c, "agreements.privacy.version", undefined))).toEqual([
       { path: "agreements.0.version" },
     ]);
+  });
+});
+
+/*
+ * The invitation (the front page and the top of the conference page): what sets the edition
+ * apart, the paragraph that invites, and of each existing group of formats its name and its
+ * line. Which formats a group holds is not offered: regrouping is an import, like formats.
+ */
+describe("the invitation and the ways to contribute", () => {
+  /** The made-up conference with an invitation and two groups, one of them only in English. */
+  const invited = ConferenceConfig.parse({
+    ...input,
+    distinction: { en: "The first meeting on the island", es: "El primer encuentro en la isla" },
+    invitation: { en: "Bring what you made.\nWe will listen." },
+    contributionGroups: [
+      {
+        key: "talks",
+        name: { en: "Talking", es: "Hablar" },
+        summary: { en: "Talks of every length.", es: "Charlas de cualquier duración." },
+        formats: ["talk"],
+      },
+      {
+        key: "elsewhere",
+        name: { en: "By email" },
+        summary: { en: "Pitches, sent by email." },
+        formats: ["pitch"],
+      },
+    ],
+  });
+  const at = (c: ConferenceConfig, pattern: RegExp) =>
+    stageOneSettings(c)
+      .filter((s) => pattern.test(s.path))
+      .map((s) => [s.path, s.id, s.kind, s.optional, s.value]);
+  const refusals = (candidate: unknown) => {
+    const parsed = ConferenceConfig.safeParse(candidate);
+    return parsed.success
+      ? []
+      : parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          ...(issue.code === "custom" && issue.params ? { params: issue.params } : {}),
+        }));
+  };
+
+  it("offers what sets the edition apart and the invitation in each language, written or not", () => {
+    expect(at(invited, /^(distinction|invitation)\./)).toEqual([
+      ["distinction.en", "distinction", "text", true, "The first meeting on the island"],
+      ["distinction.es", "distinction", "text", true, "El primer encuentro en la isla"],
+      ["invitation.en", "invitation", "longtext", true, "Bring what you made.\nWe will listen."],
+      ["invitation.es", "invitation", "longtext", true, undefined],
+    ]);
+    // A conference that has neither is offered both all the same, to be written.
+    expect(config).not.toHaveProperty("distinction");
+    expect(config).not.toHaveProperty("invitation");
+    expect(at(config, /^(distinction|invitation)\./)).toEqual([
+      ["distinction.en", "distinction", "text", true, undefined],
+      ["distinction.es", "distinction", "text", true, undefined],
+      ["invitation.en", "invitation", "longtext", true, undefined],
+      ["invitation.es", "invitation", "longtext", true, undefined],
+    ]);
+    // They come with the conference's own texts, straight after its theme.
+    const order = stageOneSettings(config).map((s) => s.id);
+    expect(order.indexOf("distinction")).toBe(order.lastIndexOf("theme") + 1);
+  });
+
+  it("lists every group's name and its line in each language, and nothing else of a group", () => {
+    expect(at(invited, /^contributionGroups\./)).toEqual([
+      ["contributionGroups.talks.name.en", "group.name", "text", false, "Talking"],
+      ["contributionGroups.talks.name.es", "group.name", "text", false, "Hablar"],
+      ["contributionGroups.elsewhere.name.en", "group.name", "text", false, "By email"],
+      ["contributionGroups.elsewhere.name.es", "group.name", "text", false, undefined],
+      [
+        "contributionGroups.talks.summary.en",
+        "group.summary",
+        "longtext",
+        false,
+        "Talks of every length.",
+      ],
+      [
+        "contributionGroups.talks.summary.es",
+        "group.summary",
+        "longtext",
+        false,
+        "Charlas de cualquier duración.",
+      ],
+      [
+        "contributionGroups.elsewhere.summary.en",
+        "group.summary",
+        "longtext",
+        false,
+        "Pitches, sent by email.",
+      ],
+      ["contributionGroups.elsewhere.summary.es", "group.summary", "longtext", false, undefined],
+    ]);
+    // A conference without groups has no such settings: a group is not added here.
+    expect(config.contributionGroups).toEqual([]);
+    expect(at(config, /^contributionGroups\./)).toEqual([]);
+    // Which formats a group holds has no control: regrouping is an import.
+    expect(settingAt(invited, "contributionGroups.talks.formats")).toEqual(["talk"]);
+  });
+
+  it("writes an invitation where there is none, and clears it language by language", () => {
+    const written = withSetting(config, "invitation.en", "Come as you are.");
+    expect(configChanges(config, written)).toEqual([
+      { path: "invitation.en", after: "Come as you are." },
+    ]);
+    expect(ConferenceConfig.parse(written).invitation).toEqual({ en: "Come as you are." });
+    // Cleared in its last language, the conference has no invitation at all, as before.
+    const cleared = withSetting(written, "invitation.en", undefined);
+    expect(cleared).not.toHaveProperty("invitation");
+    expect(configChanges(config, cleared)).toEqual([]);
+    // One language of two goes, and the other stays.
+    const half = withSetting(invited, "distinction.es", undefined);
+    expect(half.distinction).toEqual({ en: "The first meeting on the island" });
+    expect(ConferenceConfig.safeParse(half).success).toBe(true);
+  });
+
+  it("changes a group's name and line by path, and never adds or regroups one", () => {
+    let next = withSetting(invited, "contributionGroups.elsewhere.name.es", "Por correo");
+    next = withSetting(next, "contributionGroups.talks.summary.en", "Talks, long and short.");
+    expect(configChanges(invited, next)).toEqual([
+      {
+        path: "contributionGroups.talks.summary.en",
+        before: "Talks of every length.",
+        after: "Talks, long and short.",
+      },
+      { path: "contributionGroups.elsewhere.name.es", after: "Por correo" },
+    ]);
+    expect(ConferenceConfig.safeParse(next).success).toBe(true);
+    const same = withSetting(invited, "contributionGroups.nope.name.en", "Another");
+    expect(configChanges(invited, same)).toEqual([]);
+    // Regrouping through the API is one change, named by the list it changes.
+    const regrouped = structuredClone(invited);
+    regrouped.contributionGroups.reverse();
+    expect(configChanges(invited, regrouped)).toEqual([
+      { path: "contributionGroups", before: ["talks", "elsewhere"], after: ["elsewhere", "talks"] },
+    ]);
+  });
+
+  it("the schema takes a conference without them, and then it holds no groups", () => {
+    expect(refusals(input)).toEqual([]);
+    expect(config.contributionGroups).toEqual([]);
+    // A stored configuration from before these existed is read the same way.
+    const { contributionGroups: _, ...stored } = config;
+    expect(ConferenceConfig.parse(stored)).toEqual(config);
+  });
+
+  it("the schema needs each of these texts in the conference's main language", () => {
+    const named = (path: string) => [
+      { path, params: { code: "default_language_required", leaf: "en" } },
+    ];
+    expect(refusals({ ...input, distinction: { es: "Solo en español." } })).toEqual(
+      named("distinction"),
+    );
+    expect(refusals({ ...input, invitation: {} })).toEqual(named("invitation"));
+    expect(refusals({ ...input, invitation: { en: "" } })).toEqual([{ path: "invitation.en" }]);
+    const group = (change: Record<string, unknown>) => ({
+      ...input,
+      contributionGroups: [
+        { key: "talks", name: { en: "T" }, summary: { en: "S" }, formats: ["talk"], ...change },
+      ],
+    });
+    expect(refusals(group({}))).toEqual([]);
+    expect(refusals(group({ name: { es: "Hablar" } }))).toEqual(named("contributionGroups.0.name"));
+    expect(refusals(group({ summary: { es: "Charlas." } }))).toEqual(
+      named("contributionGroups.0.summary"),
+    );
+  });
+
+  it("a group names formats the call offers, submitted here or not, and no format twice", () => {
+    const groups = (...formats: string[][]) => ({
+      ...input,
+      contributionGroups: formats.map((keys, i) => ({
+        key: `group_${i}`,
+        name: { en: "Group" },
+        summary: { en: "What is in it." },
+        formats: keys,
+      })),
+    });
+    // "talk" is submitted here and "pitch" goes by email: both are formats of the call.
+    expect(refusals(groups(["talk", "pitch"]))).toEqual([]);
+    expect(refusals(groups(["talk"], ["pitch"]))).toEqual([]);
+    // A format may be in no group.
+    expect(refusals(groups(["pitch"]))).toEqual([]);
+    expect(refusals(groups(["talk", "poster"]))).toEqual([
+      { path: "contributionGroups.0.formats.1" },
+    ]);
+    expect(refusals(groups(["talk"], ["pitch", "talk"]))).toEqual([
+      { path: "contributionGroups.1.formats.1" },
+    ]);
+    expect(refusals(groups(["talk", "talk"]))).toEqual([
+      { path: "contributionGroups.0.formats.1" },
+    ]);
+    // A group without formats would lead nowhere.
+    expect(refusals(groups([]))).toEqual([{ path: "contributionGroups.0.formats" }]);
+    // Two groups cannot share a key: a setting is named by it.
+    const twice = groups(["talk"], ["pitch"]);
+    twice.contributionGroups[1] = { ...twice.contributionGroups[1]!, key: "group_0" };
+    expect(refusals(twice)).toEqual([{ path: "contributionGroups.1.key" }]);
   });
 });
 

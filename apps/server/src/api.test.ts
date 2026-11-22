@@ -199,8 +199,10 @@ describe("conference configuration", () => {
     expect(elo2026.theme.en).toMatch(/^Who is watching/);
     // The server's answer, as on the conference's own page: an archived call is not open.
     expect(elo2026.callOpen).toBe(false);
+    expect(elo2026.callState).toBe("closed");
     const detail = await call(t.public, "GET", "/api/conferences/elo2026");
     expect(detail.json.callOpen).toBe(elo2026.callOpen);
+    expect(detail.json.callState).toBe(elo2026.callState);
   });
 
   it("serves the public CFP configuration", async () => {

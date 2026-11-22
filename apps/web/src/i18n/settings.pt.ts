@@ -18,6 +18,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsSectionEmails: "Emails",
   settingsSectionAgreements: "Acordos",
   settingsSectionOther: "Formatos que não se submetem aqui",
+  settingsSectionWays: "Formas de participar",
+  settingsWaysIntro:
+    "A página inicial e a página do congresso mostram-nas em «Formas de participar», cada uma com uma ligação para os seus formatos. Para acrescentar ou retirar uma, ou passar um formato para outra, é preciso importar uma configuração.",
+  settingsWayFormats: "Leva a estes formatos: {formats}.",
   settingsSectionTracks: "Linhas temáticas",
   settingsSectionTopics: "Tópicos",
   settingsField: "Campo: {name}",
@@ -32,6 +36,12 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsCriterion: "Critério: {name}",
   settingsLabel_title: "Título",
   settingsLabel_theme: "Tema",
+  settingsLabel_distinction: "O que distingue esta edição",
+  settingsLabel_invitation: "Convite",
+  settingsDistinctionHint:
+    "Opcional. Uma linha que aparece junto das datas e do local, na página inicial e no início da página do congresso.",
+  settingsInvitationHint:
+    "Opcional. Um parágrafo breve que diz que trabalhos a chamada acolhe. A página inicial e a página do congresso começam com ele, no idioma de quem lê se o tiver escrito nesse idioma e, se não, no idioma principal do congresso.",
   settingsLabel_host: "Instituição anfitriã",
   settingsLabel_location: "Local",
   settingsLabel_modality: "Como se participa",
@@ -157,6 +167,8 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "Versão nova de {agreements}. Todas as pessoas que submetam uma proposta ou confirmem um convite a partir de agora aceitam a versão nova. O que já foi aceite continua registado com a anterior. Não é enviado nenhum email, e as propostas já submetidas não são afetadas. Quem tiver agora mesmo uma proposta ou um convite aberto tem de voltar a carregar a página antes de poder aceitar.",
   settingsLabel_other_name: "Nome",
   settingsLabel_other_description: "Descrição",
+  settingsLabel_group_name: "Nome",
+  settingsLabel_group_summary: "O que inclui",
   settingsLabel_track_name: "Nome",
   settingsLabel_topic_label: "Nome",
   settingsInLanguage: "{label} ({language})",

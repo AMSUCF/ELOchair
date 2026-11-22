@@ -332,3 +332,8 @@ main {
   flex-wrap: wrap;
   gap: 0 20px;
 }
+
+/* Where a conference's page puts the link to its own site: it sits among the footer's links. */
+.footer-slot {
+  display: contents;
+}

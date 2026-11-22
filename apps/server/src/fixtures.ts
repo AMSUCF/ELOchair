@@ -542,7 +542,22 @@ export async function seedSandbox(
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** A call that is open relative to `now`: opened yesterday, closing in 30 days, phase cfp_open. */
+/**
+ * The instant `ms`, written in the offset that `like` is written in. A seeded call then states
+ * each deadline on the clock its configuration does (anywhere on Earth for the closing date of
+ * the two calls here, the conference's own for the others), which is how the pages show it.
+ */
+function writtenLike(ms: number, like: string): string {
+  const offset = /([+-])(\d{2}):(\d{2})$/.exec(like);
+  if (!offset) return new Date(ms).toISOString();
+  const minutes = (offset[1] === "-" ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3]));
+  return new Date(ms + minutes * 60_000).toISOString().replace("Z", offset[0]);
+}
+
+/**
+ * A call that is open relative to `now`: opened yesterday, closing in 30 days, phase cfp_open.
+ * Its deadlines are those instants, each in the offset the base configuration wrote it in.
+ */
 async function seedCall(
   db: Db,
   base: ConferenceConfigInput,
@@ -550,7 +565,8 @@ async function seedCall(
 ): Promise<{ conferenceId: string; slug: string }> {
   const { slug } = opts;
   const t = opts.now.getTime();
-  const iso = (ms: number) => new Date(ms).toISOString();
+  const at = (ms: number, deadline: keyof ConferenceConfigInput["deadlines"]) =>
+    writtenLike(ms, base.deadlines[deadline]);
   const date = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   const conf = await saveConference(
     db,
@@ -559,10 +575,10 @@ async function seedCall(
       slug,
       placeholder: true,
       deadlines: {
-        submissionsOpen: iso(t - DAY_MS),
-        submissionsClose: iso(t + 30 * DAY_MS),
-        notification: iso(t + 60 * DAY_MS),
-        finalMaterials: iso(t + 90 * DAY_MS),
+        submissionsOpen: at(t - DAY_MS, "submissionsOpen"),
+        submissionsClose: at(t + 30 * DAY_MS, "submissionsClose"),
+        notification: at(t + 60 * DAY_MS, "notification"),
+        finalMaterials: at(t + 90 * DAY_MS, "finalMaterials"),
       },
       dates: { start: date(t + 120 * DAY_MS), end: date(t + 123 * DAY_MS) },
     },

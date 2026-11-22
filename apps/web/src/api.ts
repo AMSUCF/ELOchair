@@ -1,4 +1,5 @@
 import type {
+  CallState,
   ConferenceConfig,
   ConferencePhase,
   ContributionRole,
@@ -63,6 +64,8 @@ export type ConferenceSummary = {
   placeholder: boolean;
   /** Decided by the server clock. */
   callOpen: boolean;
+  /** Where the call stands: open, yet to open, or closed. Decided by the server clock too. */
+  callState: CallState;
 };
 
 export type ConferenceDetail = {
@@ -71,6 +74,8 @@ export type ConferenceDetail = {
   config: ConferenceConfig;
   /** Decided by the server clock. */
   callOpen: boolean;
+  /** Where the call stands: open, yet to open, or closed. Decided by the server clock too. */
+  callState: CallState;
 };
 
 export type Me =

@@ -1,20 +1,27 @@
 import type { ConferenceConfig } from "@elochair/schema";
 import { effectiveBlindMode, localize } from "@elochair/schema/pure";
-import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useParams } from "react-router";
 import type { ConferenceDetail, Me } from "../api";
 import {
+  clockName,
   daysUntil,
+  deadlineText,
   formatCoordinates,
   formatDateRange,
   formatDateTime,
   hasMinimum,
+  statedWhen,
+  themeClass,
   viewerTimeZone,
 } from "../format";
 import { useT } from "../i18n";
+import { formatAnchor, invites } from "../invitation";
+import { AlreadyInvolved, InvitationHero, WaysToContribute } from "../invitationParts";
 import { deadlineKey, modalityKey, reviewKey } from "../labels";
 import {
   Eyebrow,
+  FooterLink,
   Localized,
   LocalizedEcho,
   PageHeading,
@@ -24,7 +31,6 @@ import {
   Stat,
 } from "../ui";
 import { useApi } from "../useApi";
-import { themeClass } from "./Home";
 
 const DEADLINES = [
   "submissionsOpen",
@@ -36,10 +42,30 @@ const DEADLINES = [
 const two = (n: number) => String(n).padStart(2, "0");
 const range = (min: number, max: number) => (min === max ? String(min) : `${min}–${max}`);
 
+/**
+ * Takes people to the part of the page that the address names ("#formats", "#format-talk"),
+ * once the page is there: the invitation's links lead to them, from the front page and from
+ * the top of this one. That part takes focus as well as the view, so that reading and the
+ * keyboard go on from it. The browser cannot do this by itself: the page is drawn after the
+ * address has changed.
+ */
+function useHashTarget(ready: boolean) {
+  const { hash, key } = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` changes with every navigation, so that taking the same link again goes there again
+  useEffect(() => {
+    if (!ready || hash.length < 2) return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView();
+  }, [ready, hash, key]);
+}
+
 export function ConferencePage() {
   const { slug } = useParams();
   const { lang, t } = useT();
   const res = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
+  useHashTarget(Boolean(res?.ok));
 
   if (!res) {
     return (
@@ -62,19 +88,36 @@ export function ConferencePage() {
   }
   const c = res.data.config;
   const fb = c.defaultLanguage;
-  // Sections are numbered as on the conference's site; tracks and topics only when present.
-  const numbers = { tracks: 3, topics: c.tracks.length > 0 ? 4 : 3 };
+  // A conference whose configuration holds an invitation begins with it; another begins as
+  // it always did.
+  const inviting = invites(c);
+  // Sections are numbered as on the conference's site. The ways to contribute come first
+  // where there are any; tracks and topics are numbered only when present.
+  const ways = c.contributionGroups.length > 0 ? 1 : 0;
+  const numbers = {
+    formats: ways + 1,
+    deadlines: ways + 2,
+    tracks: ways + 3,
+    topics: ways + (c.tracks.length > 0 ? 4 : 3),
+  };
 
   return (
     <article className="conference">
-      <Hero detail={res.data} />
+      {inviting ? (
+        <InvitationHero detail={res.data} own>
+          <ManageLink slug={res.data.slug} />
+        </InvitationHero>
+      ) : (
+        <Hero detail={res.data} />
+      )}
       <Sheet wide>
         {c.placeholder && (
           <p className="notice" role="note">
             {t("confPlaceholder")}
           </p>
         )}
-        {c.website && (
+        {/* The invitation has the link to the full call already: it is not shown twice. */}
+        {c.website && !inviting && (
           <div className="call-link">
             <p>
               <a className="button secondary" href={c.website} rel="noreferrer">
@@ -85,8 +128,10 @@ export function ConferencePage() {
           </div>
         )}
 
+        <WaysToContribute detail={res.data} own number="01" />
+
         <section aria-labelledby="formats">
-          <SectionHeading id="formats" k="confFormats" number="01" />
+          <SectionHeading id="formats" k="confFormats" number={two(numbers.formats)} />
           <ol className="formats">
             {c.submissionTypes.map((type, i) => {
               const pool = c.reviewPools.find((p) => p.key === type.reviewPool);
@@ -102,7 +147,7 @@ export function ConferencePage() {
                       </span>
                     )}
                   </div>
-                  <h3>
+                  <h3 id={formatAnchor(type.key)} tabIndex={-1}>
                     <Localized text={type.name} fallback={fb} />
                     <LocalizedEcho text={type.name} />
                   </h3>
@@ -159,7 +204,7 @@ export function ConferencePage() {
                   </span>
                   <span className="tag">{t("confNotHere")}</span>
                 </div>
-                <h3>
+                <h3 id={formatAnchor(other.key)} tabIndex={-1}>
                   <Localized text={other.name} fallback={fb} />
                   <LocalizedEcho text={other.name} />
                 </h3>
@@ -171,7 +216,7 @@ export function ConferencePage() {
           </ol>
         </section>
 
-        <Deadlines config={c} />
+        <Deadlines config={c} number={two(numbers.deadlines)} />
 
         {c.tracks.length > 0 && (
           <section aria-labelledby="tracks">
@@ -198,7 +243,9 @@ export function ConferencePage() {
           </section>
         )}
         <p className="meta contact">{t("confContact", { email: c.contactEmail })}</p>
+        {inviting && <AlreadyInvolved />}
       </Sheet>
+      {inviting && c.website && <FooterLink href={c.website} k="inviteWebsite" />}
     </article>
   );
 }
@@ -213,6 +260,8 @@ function Hero({ detail }: { detail: ConferenceDetail }) {
   // For display only: the device clock never decides whether the call is open (spec 02 §1.3).
   const [now] = useState(() => Date.now());
   const days = daysUntil(c.deadlines.submissionsClose, now);
+  // As the call states it: the date and time as written, and the clock they are on.
+  const close = statedWhen(c.deadlines.submissionsClose, lang, c.timezone);
 
   return (
     <header className="hero">
@@ -245,8 +294,8 @@ function Hero({ detail }: { detail: ConferenceDetail }) {
         </div>
         <div>
           <Eyebrow>{t(deadlineKey("submissionsClose"))}</Eyebrow>
-          <p className="fact">{formatDateTime(c.deadlines.submissionsClose, lang, c.timezone)}</p>
-          <p className="fact-sub">{c.timezone}</p>
+          <p className="fact">{close.when}</p>
+          <p className="fact-sub">{clockName(close, c.timezone, t)}</p>
           {detail.callOpen && (
             <p className="countdown">
               <span className="countdown-number">{days}</span>{" "}
@@ -274,8 +323,8 @@ function SubmissionStatus({
   open: boolean;
 }) {
   const { lang, t } = useT();
-  // Always say which clock a deadline is on.
-  const at = (iso: string) => `${formatDateTime(iso, lang, c.timezone)} (${c.timezone})`;
+  // Always say which clock a deadline is on: the one it was written on.
+  const at = (iso: string) => deadlineText(iso, lang, c.timezone, t);
   const text = open
     ? t("confSubmitOpen", { date: at(c.deadlines.submissionsClose) })
     : phase === "draft"
@@ -289,22 +338,30 @@ function SubmissionStatus({
   return <p className="status-line">{text}</p>;
 }
 
-/** The four deadlines and the conference itself, as a timeline. */
-function Deadlines({ config: c }: { config: ConferenceConfig }) {
+/**
+ * The four deadlines and the conference itself, as a timeline. Each deadline is shown as the
+ * call states it, on the clock it was written on, and then on the visitor's own.
+ */
+function Deadlines({ config: c, number }: { config: ConferenceConfig; number: string }) {
   const { lang, t } = useT();
   const mine = viewerTimeZone();
   return (
     <section aria-labelledby="deadlines">
-      <SectionHeading id="deadlines" k="confDeadlines" number="02" />
+      <SectionHeading id="deadlines" k="confDeadlines" number={number} />
       <ol className="timeline">
         {DEADLINES.map((key) => {
-          const theirs = formatDateTime(c.deadlines[key], lang, c.timezone);
+          const stated = statedWhen(c.deadlines[key], lang, c.timezone);
+          const theirs = stated.when;
           const ours = formatDateTime(c.deadlines[key], lang, mine);
           return (
             <li key={key} className={key === "submissionsClose" ? "key" : undefined}>
               <Eyebrow>{t(deadlineKey(key))}</Eyebrow>
               <p className="when">{theirs}</p>
-              <p className="tz">{t("confConferenceTime", { tz: c.timezone })}</p>
+              <p className="tz">
+                {stated.clock === "conference"
+                  ? t("confConferenceTime", { tz: c.timezone })
+                  : clockName(stated, c.timezone, t)}
+              </p>
               {ours !== theirs && (
                 <>
                   <p>{ours}</p>
@@ -326,15 +383,32 @@ function Deadlines({ config: c }: { config: ConferenceConfig }) {
   );
 }
 
+/** Whether the person signed in manages this conference's submissions (its chairs do). */
+function useChairs(slug: string): boolean {
+  const me = useApi<Me>("/api/me");
+  return Boolean(
+    me?.ok &&
+      me.data.kind === "person" &&
+      (me.data.siteAdmin ||
+        me.data.roles.some((r) => r.conference === slug && r.role !== "reviewer")),
+  );
+}
+
+/** "Manage submissions", for the conference's chairs: beside the invitation's main action. */
+function ManageLink({ slug }: { slug: string }) {
+  const { lang, t } = useT();
+  if (!useChairs(slug)) return null;
+  return (
+    <Link className="button secondary" to={`/${lang}/c/${slug}/manage`}>
+      {t("confManageLink")}
+    </Link>
+  );
+}
+
 /** "Submit a proposal" while the call is open; "Manage submissions" for the conference's chairs. */
 function CallActions({ slug, open }: { slug: string; open: boolean }) {
   const { lang, t } = useT();
-  const me = useApi<Me>("/api/me");
-  const chairs =
-    me?.ok &&
-    me.data.kind === "person" &&
-    (me.data.siteAdmin ||
-      me.data.roles.some((r) => r.conference === slug && r.role !== "reviewer"));
+  const chairs = useChairs(slug);
   if (!open && !chairs) return null;
   return (
     <div className="actions">

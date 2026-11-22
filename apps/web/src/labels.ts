@@ -1,5 +1,6 @@
 import type {
   BlindMode,
+  CallState,
   ConferenceConfig,
   ConferencePhase,
   ConferenceRole,
@@ -64,6 +65,27 @@ export const issueLabelKey = (c: IssueCode): MessageKey => `issueLabel_${c}`;
 /** The chip tone for a conference phase. The chip's text carries the meaning; this only supports it. */
 export const phaseTone = (p: ConferencePhase): "good" | "info" | "quiet" =>
   p === "cfp_open" ? "good" : p === "archived" || p === "draft" ? "quiet" : "info";
+
+/** Where a call stands, as the invitation says it: "Call for proposals", "Call opening soon". */
+export const callStateKey = (s: CallState): MessageKey => `callState_${s}`;
+
+/** The two things a conference's chip is decided by: its phase, and where its call stands. */
+type Standing = { phase: ConferencePhase; callState: CallState };
+
+/** A call that its phase calls open while nobody can submit: before it opens, or after it closes. */
+const notOpenYetOrAnyMore = (k: Standing) => k.phase === "cfp_open" && k.callState !== "open";
+
+/**
+ * What a conference's chip says. It is the phase's name, except that "Call for proposals open"
+ * is said only while the server says the call is open: before the opening date the call is
+ * opening soon, and after the closing date submissions are closed.
+ */
+export const chipKey = (k: Standing): MessageKey =>
+  notOpenYetOrAnyMore(k) ? callStateKey(k.callState) : phaseKey(k.phase);
+
+/** The tone that goes with chipKey. */
+export const chipTone = (k: Standing): "good" | "info" | "quiet" =>
+  notOpenYetOrAnyMore(k) ? (k.callState === "upcoming" ? "info" : "quiet") : phaseTone(k.phase);
 
 /** The chip tone for a contributor's status; the text still says which it is. */
 export const contribTone = (s: ContributionStatus): "good" | "warn" | "quiet" =>

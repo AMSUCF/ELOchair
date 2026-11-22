@@ -10,6 +10,7 @@ import {
   ConferenceConfig,
   ConferencePhase,
   CreateSubmissionInput,
+  callState,
   findType,
   isCallOpen,
   OneLine,
@@ -108,6 +109,7 @@ function summary(k: ConferenceRow, now: Date) {
     placeholder: c.placeholder,
     // The server clock decides, here as on the conference's own page.
     callOpen: isCallOpen(c, k.phase, now),
+    callState: callState(c, k.phase, now),
   };
 }
 
@@ -131,9 +133,16 @@ export const conferenceRoutes = new Hono<AppEnv>()
   .get("/:slug", async (c) => {
     const k = await getConference(c.get("deps").db, c.req.param("slug"));
     if (!k || !visible(c.get("viewer"), k)) return c.json({ error: "not_found" }, 404);
-    // The server clock decides whether the call is open; the browser only displays it.
-    const callOpen = isCallOpen(k.config, k.phase, c.get("deps").now());
-    return c.json({ slug: k.slug, phase: k.phase, config: k.config, callOpen });
+    // The server clock decides whether the call is open, and whether it has yet to open or has
+    // closed; the browser only displays it.
+    const now = c.get("deps").now();
+    return c.json({
+      slug: k.slug,
+      phase: k.phase,
+      config: k.config,
+      callOpen: isCallOpen(k.config, k.phase, now),
+      callState: callState(k.config, k.phase, now),
+    });
   })
   .get("/:slug/settings", async (c) => {
     const { k } = await chairInPerson(c);

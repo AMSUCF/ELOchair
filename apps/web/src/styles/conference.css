@@ -409,3 +409,157 @@
   background: none;
   box-shadow: none;
 }
+
+/*
+ * The invitation to a conference's call (invitationParts.tsx): the front page for the
+ * conference it features, and the top of that conference's own page. On the band: the theme
+ * as the headline, the main action, when and where; then, on glass, the invitation itself.
+ */
+.invitation-grid {
+  display: grid;
+  gap: 24px;
+}
+
+/* The headline is the theme: its first word heavy, the rest light and in the accent colour. */
+.invitation .headline-rest {
+  display: block;
+  font-weight: 300;
+  color: var(--band-accent);
+}
+
+/* A theme that is a sentence reads as prose, as it does under a conference's title. */
+.invitation .headline.long {
+  max-width: 44rem;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(1.2rem, 1rem + 1vw, 1.6rem);
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.invitation-lead .actions {
+  margin: 20px 0 0;
+}
+
+/* When and where: quiet lines under the action. */
+.invitation-event {
+  margin-top: 20px;
+  display: grid;
+  gap: 2px;
+  font-size: 0.95rem;
+}
+
+.invitation-event p {
+  margin: 0;
+}
+
+.invitation-event p:first-child {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.invitation-card {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 20px;
+  border: 1px solid var(--band-line);
+  border-radius: var(--radius-l);
+  background: var(--band-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+.invitation-card p {
+  margin: 0;
+}
+
+.invitation-text {
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.invitation-text .echo-below {
+  margin-top: 10px;
+  font-size: 1rem;
+}
+
+/* An invitation's buttons hold two lines each: the text, and its echo in a smaller size. */
+.invitation .actions .button {
+  justify-content: space-between;
+  padding-block: 10px;
+  line-height: 1.25;
+}
+
+.invitation .button .echo-below {
+  font-size: 0.875rem;
+}
+
+/* The way to the full call is as wide as the card. */
+.invitation-card .actions .button {
+  flex: 1;
+}
+
+/* When proposals are due: a link to the deadlines, as tall as anything people tap. */
+.invitation-due .fact a {
+  display: inline-block;
+  min-height: var(--touch);
+  padding-block: 4px;
+}
+
+.invitation-due .fact .echo-below {
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.invitation-closed {
+  font-weight: 500;
+}
+
+@media (min-width: 52rem) {
+  .invitation-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 40px;
+    align-items: center;
+  }
+
+  .invitation-card {
+    padding: 28px;
+  }
+}
+
+/* Ways to contribute: a card for each group of formats, with the way to them. */
+.way h3 {
+  font-size: 1.35rem;
+  margin-bottom: 8px;
+}
+
+.way p {
+  margin: 0 0 4px;
+}
+
+/* "Already involved?": the ways back in, as a quiet row under a hairline. */
+.involved {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.involved ul {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+}
+
+.involved + .eyebrow {
+  margin-top: 40px;
+}
+
+/* A part of the page that a link leads to shows clear of the edge of the screen. */
+.conference h2[id],
+.conference h3[id] {
+  scroll-margin-top: 20px;
+}

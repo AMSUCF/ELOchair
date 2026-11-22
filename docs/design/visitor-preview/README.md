@@ -2,6 +2,10 @@
 
 The preview leads with **Ecologies of Attention / Ecologías de la atención** and an invitation to writers, artists and researchers. [elo27.eliterature.org](https://elo27.eliterature.org/) remains the conference landing page and the home of the official CFP; ELOchair helps people contribute.
 
+## What the app implements
+
+The app's front page now is this preview's opening view for the conference whose call is open, and that conference's own page begins with the same invitation: the eyebrow with the state of the call, the theme in two languages, the main action for each state, the dates and place, the line about Latin America, the invitation, "Read the CFP", the due date as the call states it, "Ways to contribute", "Already involved?" and the conference website. The wording is in the conference's configuration (`packages/schema/src/conferences/elo2027.ts`) and in the app's message catalogs, drawn in the app's own identity ([visual-identity.md](../visual-identity.md); spec 02, §1.10). The rest remains a design study: the formats browser with its selector and detail panel, the key-dates page, the sign-in variations with their intended next step, EN·ES as a third position of the language switch, and the preview options.
+
 ## Conference theme and bilingual interface
 
 The page uses the conference's fixed forest palette, contour artwork, glass navigation, lime format selection, glass detail panel and metric tiles. These styles are extracted into [theme.css](theme.css) from the conference website's inline styling; the preview does not depend on the conference site serving a separate CSS file.
