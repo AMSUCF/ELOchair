@@ -659,7 +659,7 @@ test.describe("conference settings", () => {
     await expectTouchTarget(modes.locator("label.choice").first());
     // The one thing about this choice that cannot be undone is said under it.
     await expect(modes).toContainText(
-      "An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors.",
+      "An anonymized review stays anonymized once a reviewer has been assigned, even if they are removed again: after that, it can no longer be changed to show the authors.",
     );
     await expect(section.getByLabel("Reviews per proposal")).toHaveValue(
       String(pool.reviewsPerSubmission),
@@ -1307,14 +1307,14 @@ test.describe("conference settings", () => {
     const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
     await expect(summary).toBeFocused();
     const why =
-      "Reviewers are already assigned to proposals that are reviewed anonymized here. They and the authors were told that the review is anonymized, so the authors cannot be shown now.";
+      "Reviewers have already been assigned to proposals that are reviewed anonymized here. They and the authors were told that the review is anonymized, so the authors cannot be shown now.";
     await expect(summary).toContainText(`${poolName} · How authors appear to reviewers: ${why}`);
     await expect(modes.locator(".field-error")).toHaveText(why);
     for (const radio of await modes.getByRole("radio").all()) {
       await expect(radio).toHaveAttribute("aria-invalid", "true");
       // Each choice says the rule, then why this change is refused.
       await expect(radio).toHaveAccessibleDescription(
-        `An anonymized review stays anonymized once reviewers are assigned: after that, it can no longer be changed to show the authors. ${why}`,
+        `An anonymized review stays anonymized once a reviewer has been assigned, even if they are removed again: after that, it can no longer be changed to show the authors. ${why}`,
       );
     }
     await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
@@ -1871,5 +1871,379 @@ test.describe("conference settings", () => {
       );
     }
     await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+  });
+
+  /*
+   * Assignments (spec 03, §1.3). They are here because this file has a chair signed in, who
+   * chairs the sandbox too: nobody signs in below, and no conference's phase is moved.
+   *
+   * The sandbox is in review, and other tests read what two of its reviewers are assigned
+   * (reviewer-1 in smoke.spec.ts, reviewer-30 in review.spec.ts). This test keeps clear of both,
+   * by rule and not by luck:
+   * - of each committee it takes the first proposal on the Assignments list that neither of the
+   *   two reviews, and on that proposal's page the first reviewer offered who is neither of them;
+   * - a reviewer who is offered is not on the proposal, so the only assignment this test ever
+   *   removes is the one it has just made. No seeded assignment is released.
+   * Every proposal therefore ends with the reviewers it had (checked at the end), each of the
+   * two reviewers taken has the number of proposals they had, and what the other tests read
+   * (a reviewer's own list, the guard on anonymity) never changes. The one trace is a released
+   * row for each pair, which counts nowhere; both formats had reviewers already.
+   */
+  test("a chair sees where reviewers are missing, assigns one on the proposal's page, and removes them again", async () => {
+    test.slow();
+    const SANDBOX = "sandbox";
+    const KEPT = ["reviewer-1@example.org", "reviewer-30@example.org"];
+    type Holder = { personId: string; displayName: string | null; email: string };
+    type Listed = {
+      key: string;
+      needed: number;
+      proposals: number;
+      short: number;
+      items: { id: string; title: string; reviewers: Holder[]; short: boolean }[];
+      nextCursor: string | null;
+    };
+    type Section = {
+      needed: number;
+      assigned: Holder[];
+      takes: string;
+      candidates: (Holder & { assigned: number; maxLoad: number | null; full: boolean })[];
+    };
+    const got = async <T>(path: string) => (await (await chair.request.get(path)).json()) as T;
+    const sectionOf = (slug: string, id: string) =>
+      got<Section>(`/api/conferences/${slug}/assignments/submissions/${id}`);
+    const loadOf = async (personId: string) =>
+      (
+        await got<{ reviewers: { personId: string; assigned: number }[] }>(
+          `/api/conferences/${SANDBOX}/people`,
+        )
+      ).reviewers.find((r) => r.personId === personId)?.assigned;
+    /** One of the page's widths: nothing scrolls sideways at either. */
+    const atBothWidths = async (check: () => Promise<void>) => {
+      await check();
+      await chair.setViewportSize({ width: 360, height: 800 });
+      await check();
+      await chair.setViewportSize({ width: 390, height: 844 });
+    };
+
+    // The open call first: its closing date has not passed, so nobody can be assigned yet. The
+    // page says so, and lists what was submitted, each proposal still short of reviewers.
+    await chair.goto(`/en/c/${CALL}/manage`);
+    const link = chair.getByRole("link", { name: "Assignments", exact: true });
+    await expectTouchTarget(link);
+    await link.click();
+    await expect(chair).toHaveURL(new RegExp(`/en/c/${CALL}/assignments$`));
+    // A new page: its heading takes focus.
+    await expect(chair.getByRole("heading", { level: 1, name: "Assignments" })).toBeFocused();
+    await expect(
+      chair.getByText(
+        "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first. To assign or remove a reviewer, open the proposal. Nothing is assigned automatically, and nobody is emailed.",
+      ),
+    ).toBeVisible();
+    await expect(
+      chair.getByText(
+        "The call has not closed yet, so no reviewer can be assigned. The proposals submitted so far are listed.",
+      ),
+    ).toBeVisible();
+    // The reading sent in by the test above: nobody reviews it, and it says how many it needs.
+    const waiting = chair
+      .locator("ul.cards > li")
+      .filter({ has: chair.getByRole("link", { name: "A reading for forty words" }) });
+    await expect(waiting.locator(".badge")).toHaveText(/^Needs (1|\d+) more$/);
+    await expect(waiting.getByText(/^Reviewers: 0 of \d+$/)).toBeVisible();
+    await expect(waiting.getByText("No reviewer yet")).toBeVisible();
+    await expectTouchTarget(waiting.getByRole("link"));
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+    // Its own page says the same where a reviewer would be assigned, and offers nobody.
+    await waiting.getByRole("link").click();
+    await expect(chair).toHaveURL(/\/en\/s\/[0-9a-f-]+#reviewers$/);
+    const early = chair.getByRole("region", { name: "Reviewers" });
+    await expect(early.getByRole("heading", { level: 2, name: "Reviewers" })).toBeFocused();
+    await expect(
+      early.getByText(
+        "No reviewer can be assigned yet: the call has not closed. Reviewers can be assigned once its closing date has passed, or once the conference is in review.",
+      ),
+    ).toBeVisible();
+    await expect(
+      early.getByText(/will be able to read this proposal once the conference is in review/),
+    ).toBeVisible();
+    await expect(early.getByRole("button")).toHaveCount(0);
+
+    // The sandbox: its call closed long ago, and it is in review. Which proposals and reviewers
+    // this test takes is decided by the rule above, from what the server lists.
+    const listed = await got<{ excluded: number; callClosed: boolean; pools: Listed[] }>(
+      `/api/conferences/${SANDBOX}/assignments?limit=200`,
+    );
+    expect(listed.callClosed).toBe(true);
+    const names = (await stored(chair, SANDBOX)).config.reviewPools;
+    const taken: {
+      committee: string;
+      proposal: Listed["items"][number];
+      reviewer: Section["candidates"][number];
+      before: Section;
+      load: number;
+    }[] = [];
+    for (const pool of listed.pools) {
+      for (const proposal of pool.items) {
+        if (proposal.reviewers.some((r) => KEPT.includes(r.email))) continue;
+        const before = await sectionOf(SANDBOX, proposal.id);
+        const reviewer = before.candidates.find((c) => !KEPT.includes(c.email));
+        if (!reviewer) continue;
+        taken.push({
+          committee: names.find((x) => x.key === pool.key)?.name.en ?? "",
+          proposal,
+          reviewer,
+          before,
+          load: (await loadOf(reviewer.personId)) ?? -1,
+        });
+        break;
+      }
+    }
+    expect(taken.map((x) => x.committee)).toEqual(names.map((x) => x.name.en));
+    // Between them the two show both ways of assigning: someone who has reached the number of
+    // proposals they said they would take is asked about first, anyone else is one press.
+    expect(taken.map((x) => x.reviewer.full).sort()).toEqual([false, true]);
+
+    await chair.goto(`/en/c/${SANDBOX}/manage`);
+    await chair.getByRole("link", { name: "Assignments", exact: true }).click();
+    await expect(chair.getByRole("heading", { level: 1, name: "Assignments" })).toBeFocused();
+    await expect(chair.getByText("The call has not closed yet")).toHaveCount(0);
+    for (const [i, pool] of listed.pools.entries()) {
+      const part = chair.getByRole("region", { name: names[i]?.name.en ?? "", exact: true });
+      // How many proposals, how many still short, and what the committee asks for.
+      const short =
+        pool.short === 0
+          ? "None still needs reviewers."
+          : pool.short === 1
+            ? "1 still needs reviewers."
+            : `${pool.short} still need reviewers.`;
+      await expect(part.locator("p").first()).toHaveText(
+        `${pool.proposals} proposals. ${short} This committee asks for ${pool.needed} reviewers for each proposal.`,
+      );
+      // A long list comes a page at a time.
+      const shown = Math.min(50, pool.proposals);
+      await expect(part.locator("ul.cards > li")).toHaveCount(shown);
+      if (pool.proposals > 50) {
+        await expect(part.getByText(`Showing 50 of ${pool.proposals}`)).toBeVisible();
+        const more = part.getByRole("button", { name: "Show more" });
+        await expectTouchTarget(more);
+        await more.focus();
+        await chair.keyboard.press("Enter");
+        const next = Math.min(100, pool.proposals);
+        await expect(part.getByText(`Showing ${next} of ${pool.proposals}`)).toBeVisible();
+        await expect(part.locator("ul.cards > li")).toHaveCount(next);
+        // The first new proposal takes focus, so the keyboard goes on from there.
+        await expect(part.locator("ul.cards > li").nth(50).getByRole("link")).toBeFocused();
+      }
+      // Each proposal says how many reviewers it has of those it needs, and who they are.
+      const first = pool.items[0];
+      if (!first) throw new Error("a committee of the sandbox has no proposal");
+      const card = part.locator("ul.cards > li").first();
+      await expect(card.getByRole("link")).toHaveText(first.title);
+      await expect(
+        card.getByText(`Reviewers: ${first.reviewers.length} of ${pool.needed}`),
+      ).toBeVisible();
+      await expect(card.locator(".badge")).toHaveText(
+        first.short ? /^Needs \d+ more$/ : "Has its reviewers",
+      );
+      await expect(card.locator("p.meta").last()).toHaveText(
+        first.reviewers.map((r) => r.displayName ?? r.email).join(", ") || "No reviewer yet",
+      );
+    }
+    // The committees are a list of links at the top, each to its own part of the page.
+    const jump = chair.getByRole("navigation", { name: "Committees" });
+    const second = names[1]?.name.en ?? "";
+    await expectTouchTarget(jump.getByRole("link", { name: second }));
+    await jump.getByRole("link", { name: second }).click();
+    await expect(chair.getByRole("heading", { level: 2, name: second })).toBeFocused();
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+
+    for (const { committee, proposal, reviewer, before } of taken) {
+      const name = reviewer.displayName ?? reviewer.email;
+      // From the list to the proposal's page, at the part where its reviewers are.
+      await chair.goto(`/en/c/${SANDBOX}/assignments`);
+      const part = chair.getByRole("region", { name: committee, exact: true });
+      // (By the link's own id: two of the sandbox's made-up titles may be alike.)
+      const open = chair.locator(`[id="proposal-${proposal.id}"]`);
+      while ((await open.count()) === 0) {
+        const shown = await part.locator("ul.cards > li").count();
+        await part.getByRole("button", { name: "Show more" }).click();
+        await expect(part.locator("ul.cards > li")).not.toHaveCount(shown);
+      }
+      await expect(open).toHaveText(proposal.title);
+      await open.click();
+      await expect(chair).toHaveURL(new RegExp(`/en/s/${proposal.id}#reviewers$`));
+      const section = chair.getByRole("region", { name: "Reviewers" });
+      await expect(section.getByRole("heading", { level: 2, name: "Reviewers" })).toBeFocused();
+      // What assigning does, in a sentence, and that it mails nobody.
+      await expect(
+        section.getByText(
+          /^A reviewer you assign here can read this proposal from then on, (anonymized: without the authors' names|with the authors' names and affiliations)\. Nobody is emailed when you assign or remove a reviewer\.$/,
+        ),
+      ).toBeVisible();
+      await expect(
+        section.getByText(
+          `Reviewers assigned: ${before.assigned.length} of ${before.needed}. Committee: ${committee}. It asks for ${before.needed} reviewers for each proposal.`,
+        ),
+      ).toBeVisible();
+      const said = section.getByRole("status").first();
+      await expect(said).toHaveText("");
+      const reviewing = section.getByRole("list", { name: "Reviewers", exact: true });
+      await expect(reviewing.getByRole("listitem")).toHaveCount(before.assigned.length);
+
+      // A long list of reviewers has a box to find one by name: accents and capitals aside.
+      const offered = section.getByRole("list", { name: "Assign a reviewer" });
+      const find = section.getByLabel("Find a reviewer by name or email address");
+      if (before.candidates.length > 8) {
+        await expectTouchTarget(find);
+        await find.fill(name.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase());
+        await expect(
+          offered.getByRole("listitem").filter({ hasText: reviewer.email }),
+        ).toBeVisible();
+        await expect(section.getByText(/^Showing \d+ of \d+$/)).toBeVisible();
+        await find.fill("zzzz no such person");
+        await expect(section.getByText("No reviewer matches what you typed.")).toBeVisible();
+        await expect(offered.getByRole("listitem")).toHaveCount(0);
+        await find.fill(reviewer.email);
+        await expect(offered.getByRole("listitem")).toHaveCount(1);
+      } else {
+        await expect(find).toHaveCount(0);
+      }
+      const row = offered.getByRole("listitem").filter({ hasText: reviewer.email });
+      // Their load beside the most they said they would take, and the languages they review in.
+      await expect(
+        row.getByText(
+          new RegExp(`^${reviewer.assigned} assigned of ${reviewer.maxLoad} · Reviews in: `),
+        ),
+      ).toBeVisible();
+      const assign = row.getByRole("button", { name: `Assign ${name} to this proposal` });
+      await expectTouchTarget(assign);
+      await expectAccessibleInBothThemes(chair);
+      await atBothWidths(() => expectNoHorizontalScroll(chair));
+
+      if (reviewer.full) {
+        // They have reached their number: the page says so in a line, and asks before assigning.
+        await expect(
+          row.getByText("Has reached the number of proposals they said they would take."),
+        ).toBeVisible();
+        await assign.click();
+        const question = row.getByRole("heading", { name: `Assign ${name} all the same?` });
+        await expect(question).toBeFocused();
+        await expect(
+          row.getByText(
+            `${name} said they would take at most ${reviewer.maxLoad} proposals, and has ${reviewer.assigned}. That number is what they offered, not a limit: you can still assign them.`,
+          ),
+        ).toBeVisible();
+        await expect(assign).toHaveCount(0);
+        const yes = row.getByRole("button", { name: "Yes, assign" });
+        await expectTouchTarget(yes);
+        await expectAccessibleInBothThemes(chair);
+        await atBothWidths(() => expectNoHorizontalScroll(chair));
+        // "No" changes nothing, and gives focus back to the button that asked.
+        await row.getByRole("button", { name: "No, go back" }).click();
+        await expect(assign).toBeFocused();
+        expect((await sectionOf(SANDBOX, proposal.id)).assigned).toEqual(before.assigned);
+        // The request does not arrive: the question stays, and says so.
+        await chair.route("**/assignments/submissions/*/reviewers", (route) => route.abort());
+        await assign.click();
+        await yes.click();
+        await expect(row.getByRole("status")).toHaveText(
+          "The server did not confirm this. Please try again.",
+        );
+        await chair.unroute("**/assignments/submissions/*/reviewers");
+        await yes.click();
+      } else {
+        await expect(row.getByText("Has reached the number of proposals")).toHaveCount(0);
+        await assign.click();
+      }
+      // Done: the page says so where it was done, and the line takes focus.
+      await expect(said).toHaveText(
+        `${name} is now a reviewer of this proposal. Nobody was emailed.`,
+      );
+      await expect(said).toBeFocused();
+      await expect(
+        section.getByText(
+          `Reviewers assigned: ${before.assigned.length + 1} of ${before.needed}.`,
+          { exact: false },
+        ),
+      ).toBeVisible();
+      const mine = reviewing.getByRole("listitem").filter({ hasText: reviewer.email });
+      await expect(mine.getByText(/^Assigned /)).toBeVisible();
+      // No longer offered: they are on it.
+      await expect(
+        section.getByRole("button", { name: `Assign ${name} to this proposal` }),
+      ).toHaveCount(0);
+      expect(await loadOf(reviewer.personId)).toBe(reviewer.assigned + 1);
+
+      // Removing asks first, in place, and says what will happen.
+      const remove = mine.getByRole("button", { name: `Remove from this proposal: ${name}` });
+      await expect(remove).toHaveText("Remove from this proposal");
+      await expectTouchTarget(remove);
+      await remove.click();
+      await expect(
+        mine.getByRole("heading", { name: `Remove ${name} from this proposal?` }),
+      ).toBeFocused();
+      await expect(
+        mine.getByText(
+          `${name} will no longer be able to read this proposal, and it will no longer count as one of theirs. They are not told by email. You can assign them again later.`,
+        ),
+      ).toBeVisible();
+      await expectAccessibleInBothThemes(chair);
+      await atBothWidths(() => expectNoHorizontalScroll(chair));
+      await mine.getByRole("button", { name: "No, go back" }).click();
+      await expect(remove).toBeFocused();
+      expect((await sectionOf(SANDBOX, proposal.id)).assigned).toHaveLength(
+        before.assigned.length + 1,
+      );
+      await remove.click();
+      await mine.getByRole("button", { name: "Yes, remove" }).click();
+      await expect(said).toHaveText(`${name} was removed from this proposal. Nobody was emailed.`);
+      await expect(said).toBeFocused();
+      await expect(reviewing.getByRole("listitem")).toHaveCount(before.assigned.length);
+      // They can be assigned again: offered once more, with the number they had.
+      await expect(
+        section.getByRole("button", { name: `Assign ${name} to this proposal` }),
+      ).toBeVisible();
+
+      // As it was found: the proposal has the reviewers it had, and the reviewer their number.
+      const after = await sectionOf(SANDBOX, proposal.id);
+      expect(after.assigned).toEqual(before.assigned);
+      expect(after.candidates).toEqual(before.candidates);
+      expect(await loadOf(reviewer.personId)).toBe(reviewer.assigned);
+    }
+
+    // In Spanish and in Portuguese the section is in that language, and says "committee".
+    const [{ proposal, committee }] = taken as [(typeof taken)[number], ...unknown[]];
+    for (const [lang, title, does, asks] of [
+      [
+        "es",
+        "Quienes revisan",
+        "Quien asignes aquí podrá leer esta propuesta desde ese momento",
+        `Comité: ${committee}. Pide`,
+      ],
+      [
+        "pt",
+        "Quem revê",
+        "Quem atribuir aqui poderá ler esta proposta a partir desse momento",
+        `Comissão: ${committee}. Pede`,
+      ],
+    ] as const) {
+      await chair.goto(`/${lang}/s/${proposal.id}`);
+      const section = chair.getByRole("region", { name: title });
+      await expect(section.getByText(does, { exact: false })).toBeVisible();
+      await expect(section.getByText(asks, { exact: false })).toBeVisible();
+      await expectNoHorizontalScroll(chair);
+    }
+    await chair.goto(`/es/c/${SANDBOX}/assignments`);
+    await expect(chair.getByRole("heading", { level: 1, name: "Asignaciones" })).toBeVisible();
+    await chair.goto(`/pt/c/${SANDBOX}/assignments`);
+    await expect(chair.getByRole("heading", { level: 1, name: "Atribuições" })).toBeVisible();
+    await expectNoHorizontalScroll(chair);
+
+    // The whole list is as it was found: every proposal with the reviewers it had.
+    expect(
+      await got<{ pools: Listed[] }>(`/api/conferences/${SANDBOX}/assignments?limit=200`),
+    ).toEqual(listed);
   });
 });

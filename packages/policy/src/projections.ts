@@ -1,5 +1,4 @@
 import {
-  type Assignment,
   type BlindMode,
   type Contribution,
   type ContributionRole,
@@ -214,7 +213,8 @@ function core(s: Submission): SubmissionCore {
   };
 }
 
-const reviewerIds = (assignments: Assignment[]) => assignments.map((a) => a.reviewerId).sort();
+/** Who reviews it now: a reviewer whose assignment was released is not among them. */
+const reviewerIds = (rec: SubmissionRecord) => rec.assignments.map((a) => a.reviewerId).sort();
 const issueCodes = (rec: SubmissionRecord) =>
   [
     ...new Set(
@@ -283,7 +283,7 @@ export function renderSubmission(
         })),
         issueCodes: issueCodes(rec),
         selfIdWarningCount: selfIdCount(rec),
-        ...(access === "metadata" ? { assignedReviewerIds: reviewerIds(rec.assignments) } : {}),
+        ...(access === "metadata" ? { assignedReviewerIds: reviewerIds(rec) } : {}),
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         submittedAt: s.submittedAt,
@@ -366,7 +366,7 @@ export function renderSubmission(
         }),
         issueCodes: issueCodes(rec),
         selfIdWarningCount: selfIdCount(rec),
-        assignedReviewerIds: reviewerIds(rec.assignments),
+        assignedReviewerIds: reviewerIds(rec),
         conflictCount: rec.conflicts.length,
       };
   }

@@ -2,7 +2,7 @@ import type { ConferenceConfig } from "@elochair/schema";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "./db/client";
-import { contributions, submissions } from "./db/schema";
+import { assignmentReleases, contributions, reviewerProfiles, submissions } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { RateLimiter } from "./ratelimit";
 import { grantRole, lockConference, shareConference } from "./repo";
@@ -17,6 +17,8 @@ import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
  * Since chairs can be removed (spec 03, §1.2), a change made as a chair also takes the
  * conference's roles lock and reads the chair again, before the conference's row: the one lock
  * order is written in services/roles.ts and in spec 02, §1.9, and checked here route by route.
+ * Assigning a reviewer and releasing one (spec 03, §1.3) are a chair's changes to one proposal:
+ * they take the proposal's row first, like a write to it, and then go on like any chair's.
  *
  * The in-memory database runs one transaction at a time, so nothing can be made to wait there.
  * The first part checks what can be seen without waiting: what a save decides after a write has
@@ -146,6 +148,9 @@ const statusOf = async (w: World, submissionId: string, email: string) => {
 
 // Statements as the query builder writes them.
 const LOCKS_SUBMISSION = /from "submissions" .* for update$/;
+// A proposal's row as assigning a reviewer and releasing one take it: in order with the owner's
+// writes and with each other, and passed by a foreign key's check (services/assignments.ts).
+const LOCKS_PROPOSAL = /from "submissions" .* for no key update$/;
 const SHARES_CONFERENCE = /from "conferences" .* for share$/;
 const LOCKS_CONFERENCE = /from "conferences" .* for update$/;
 const READS_TEAM = /from "contributions"/;
@@ -164,7 +169,7 @@ const READS_ROLES = /from "conference_roles"/;
  * be running when the next one begins.
  */
 const WRITES_AS_CHAIR =
-  /^(insert into|update|delete from) "(conferences|people|role_invitations|role_invitation_sends|conference_roles|reviewer_profiles|assignments|audit_log)"|^insert into "outbox"/;
+  /^(insert into|update|delete from) "(conferences|people|role_invitations|role_invitation_sends|conference_roles|reviewer_profiles|assignments|assignment_releases|audit_log)"|^insert into "outbox"/;
 
 describe("a settings save and writes to submitted work", () => {
   let w: World;
@@ -450,13 +455,21 @@ describe("what is done as a chair, and the locks it takes", () => {
   afterAll(() => w.t.close());
 
   /**
-   * The one order (services/roles.ts): an invitation's row, the roles lock, the conference's
-   * row, the locks that count the day's invitations. Each lock a request takes comes after
-   * every earlier kind it takes, and nothing is written before the last of them.
+   * The one order (services/roles.ts): the row of what is changed (an invitation's, or a
+   * proposal's), the roles lock, the conference's row, the locks that count the day's
+   * invitations. Each lock a request takes comes after every earlier kind it takes, and nothing
+   * is written before the last of them.
    */
   function expectOrder(what: string, sent: string[], roles: RegExp | null) {
     const at = (re: RegExp) => first(sent, re);
-    const invitation = at(LOCKS_INVITATION);
+    // No request takes the rows of both, and none takes two rows of either.
+    expect(
+      sent.filter(
+        (q) => LOCKS_INVITATION.test(q) || LOCKS_SUBMISSION.test(q) || LOCKS_PROPOSAL.test(q),
+      ).length,
+      `${what}: one row at most`,
+    ).toBeLessThanOrEqual(1);
+    const invitation = Math.max(at(LOCKS_INVITATION), at(LOCKS_SUBMISSION), at(LOCKS_PROPOSAL));
     const role = roles ? at(roles) : -1;
     const conference = Math.max(at(SHARES_CONFERENCE), at(LOCKS_CONFERENCE));
     const counting = at(COUNTS_INVITATIONS);
@@ -592,6 +605,126 @@ describe("what is done as a chair, and the locks it takes", () => {
       expect(order.invitation, email).toBeGreaterThanOrEqual(0);
       expect(first(sent, SHARES_CONFERENCE), email).toBeGreaterThan(order.invitation);
       if (roles) expect(order.role, email).toBeGreaterThan(order.invitation);
+    }
+  });
+
+  it("assigning a reviewer and releasing one: the proposal's row, the roles lock and the chair read again, then the conference's row", async () => {
+    const owner = await w.person("locks-chairs-author@example.org", "Ava Authorperson");
+    const s = await submit(w, owner, await talk(w, owner, "A talk that gets a reviewer"));
+    const email = "locks-chairs-reviewer@example.org";
+    await w.person(email, "Rhea Reviewerperson");
+    const reviewerId = await personId(w.t, email);
+    const becomeReviewer = async () => {
+      await grantRole(w.t.db, {
+        conferenceId: w.conferenceId,
+        personId: reviewerId,
+        role: "reviewer",
+        scope: [pool],
+      });
+      await w.t.db
+        .insert(reviewerProfiles)
+        .values({
+          conferenceId: w.conferenceId,
+          personId: reviewerId,
+          pools: [pool],
+          languages: ["en"],
+        })
+        .onConflictDoNothing();
+    };
+    await becomeReviewer();
+    const on = (rest = "") => at(w.slug, `assignments/submissions/${s.id}/reviewers${rest}`);
+    // Reviewers are assigned once the call has closed: in review it has, whatever the dates say.
+    expect(
+      (await asChair("PUT", at(w.slug, "phase"), { phase: "reviewing", from: "cfp_open" })).status,
+    ).toBe(200);
+    try {
+      /** Each change in turn: what it is, how it is asked for, its answer, and its roles lock. */
+      const steps: [string, () => Promise<{ status: number }>, number, RegExp][] = [
+        ["assign", () => asChair("POST", on(), { reviewerId }), 204, SHARES_ROLES],
+        ["release", () => asChair("DELETE", on(`/${reviewerId}`)), 204, SHARES_ROLES],
+        // Assigned again: a new assignment, under the same locks.
+        ["assign again", () => asChair("POST", on(), { reviewerId }), 204, SHARES_ROLES],
+        // Refused under them too: what is refused was read as it is when the others commit.
+        ["assign twice", () => asChair("POST", on(), { reviewerId }), 409, SHARES_ROLES],
+      ];
+      for (const [what, run, status, roles] of steps) {
+        let answered = { status: 0 };
+        const sent = await w.t.statements(async () => {
+          answered = await run();
+        });
+        expect(answered.status, what).toBe(status);
+        const proposal = first(sent, LOCKS_PROPOSAL);
+        // Never "for update": a removal's record of a release must be able to point to it.
+        expect(first(sent, LOCKS_SUBMISSION), what).toBe(-1);
+        const role = first(sent, roles);
+        const conference = first(sent, SHARES_CONFERENCE);
+        expect(proposal, `${what}: the proposal's row`).toBeGreaterThanOrEqual(0);
+        expect(role, `${what}: the roles lock`).toBeGreaterThan(proposal);
+        // The chair's roles are read again after the lock, and before the conference's row.
+        const reread = sent.findIndex((q, i) => i > role && READS_ROLES.test(q));
+        expect(reread, `${what}: reads the chair again`).toBeGreaterThan(role);
+        expect(conference, `${what}: the conference's row`).toBeGreaterThan(reread);
+        // Nothing but that one proposal and the conference is locked, and the roles lock is
+        // taken once, shared: an assignment changes nobody's role.
+        expect(
+          sent.filter((q) => / for (no key update|update|share)$/.test(q)),
+          what,
+        ).toHaveLength(2);
+        expect(
+          sent.filter((q) => /pg_advisory/.test(q)),
+          what,
+        ).toHaveLength(1);
+        // Who is assigned to what is read, and anything written, only under all three.
+        expect(first(sent, /from "assignments"/), what).toBeGreaterThan(conference);
+        const write = first(sent, WRITES_AS_CHAIR);
+        if (status === 204) {
+          const order = expectOrder(what, sent, roles);
+          expect(order.write, what).toBeGreaterThan(conference);
+          // Made, an assignment is inserted; released, it is deleted, and its record written.
+          expect(sent[order.write], what).toMatch(
+            what === "release" ? /^delete from "assignments"/ : /^insert into "assignments"/,
+          );
+          if (what === "release") {
+            expect(first(sent, /^insert into "assignment_releases"/), what).toBeGreaterThan(
+              order.write,
+            );
+          }
+        } else {
+          expect(write, `${what}: writes nothing`).toBe(-1);
+        }
+      }
+      // Removing the reviewer's role releases the assignment under the roles lock, exclusive,
+      // and takes no row: it changes who holds a role, and waits for every assignment under way.
+      let removed = { status: 0 };
+      const sent = await w.t.statements(async () => {
+        removed = await asChair("DELETE", PEOPLE(`/${reviewerId}/roles/reviewer`), {
+          assignments: 1,
+        });
+      });
+      expect(removed.status).toBe(204);
+      const order = expectOrder("remove a reviewer", sent, LOCKS_ROLES);
+      expect(sent.filter((q) => / for (no key update|update|share)$/.test(q))).toEqual([]);
+      expect(first(sent, /^delete from "assignments"/)).toBeGreaterThan(order.role);
+      expect(first(sent, /^insert into "assignment_releases"/)).toBeGreaterThan(
+        first(sent, /^delete from "assignments"/),
+      );
+      const records = await w.t.db
+        .select()
+        .from(assignmentReleases)
+        .where(eq(assignmentReleases.reviewerId, reviewerId));
+      expect(records.map((r) => r.reason)).toEqual(["chair", "role_removed"]);
+    } finally {
+      // The call is open again, for the tests that write to a proposal.
+      expect(
+        (
+          await asChair("PUT", at(w.slug, "phase"), {
+            phase: "cfp_open",
+            from: "reviewing",
+            force: true,
+            reason: "Back as it was",
+          })
+        ).status,
+      ).toBe(200);
     }
   });
 

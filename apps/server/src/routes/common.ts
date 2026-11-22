@@ -1,4 +1,5 @@
 import type { PersonViewer } from "@elochair/policy";
+import { Id } from "@elochair/schema";
 import type { Context } from "hono";
 import { type AuditEntry, audit } from "../audit";
 import type { AppEnv } from "../context";
@@ -23,6 +24,18 @@ export class RateLimited extends Refusal {
   constructor(readonly entry: AuditEntry) {
     super(429, "rate_limited");
   }
+}
+
+/**
+ * An id from the address, as the database writes ids: in lower case. An id may be typed in
+ * capitals and still name the same row, and what is compared with it (the caller's own id, a
+ * reviewer's assignments, who is on a proposal) must not be fooled by that. One that is no id
+ * names nothing: 404, as for one that is unknown.
+ */
+export function idParam(value: string | undefined): string {
+  const parsed = Id.safeParse(value);
+  if (!parsed.success) throw new Refusal(404, "not_found");
+  return parsed.data.toLowerCase();
 }
 
 export function refuse(c: Context<AppEnv>, r: Refusal) {

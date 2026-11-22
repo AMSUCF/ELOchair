@@ -280,6 +280,12 @@ export function ManagePage() {
             {t("managePeopleLink")}
           </Link>
         )}
+        {/* Who reviews what, and where reviewers are missing: for the same chairs (§1.3). */}
+        {mayConfigure && (
+          <Link className="button secondary" to={`/${lang}/c/${slug}/assignments`}>
+            {t("manageAssignmentsLink")}
+          </Link>
+        )}
       </p>
       {mayConfigure && <PhaseControl slug={slug} phase={conf.data.phase} onMoved={reread} />}
       <Filters config={config} onApply={setQuery} />

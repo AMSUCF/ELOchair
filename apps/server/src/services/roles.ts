@@ -16,21 +16,30 @@ import { Refusal } from "../routes/common";
  * the changes already under way, which commit as a chair's, and every change that comes after it
  * finds the role gone and is refused.
  *
- * Which changes: saving the configuration, moving the phase, and on the People page inviting,
- * sending again, cancelling and removing. A new route that writes because its caller is a chair
+ * Which changes: saving the configuration, moving the phase, on the People page inviting,
+ * sending again, cancelling and removing, and on a proposal's page assigning a reviewer and
+ * releasing one (services/assignments.ts). A new route that writes because its caller is a chair
  * does the same. Reads are checked once, when they are asked for; a CSV export is a read, and
  * what it writes is the record that it was made.
  *
  * ONE LOCK ORDER EVERYWHERE (spec 02, §1.9). A transaction takes what it needs of these, in
  * this order, and never goes back for an earlier one:
- *   1. the row of what it changes: a submission's, or a role invitation's (for update);
+ *   1. the row of what it changes: a submission's, or a role invitation's (for update). Who
+ *      reviews a proposal is changed under that proposal's row;
  *   2. the conference's roles lock (lockRoles): shared to act as a chair, exclusive to change
- *      who holds a role;
+ *      who holds a role (removing a reviewer's role releases their assignments under it);
  *   3. the conference's row: shared by a write (shareConference), for update by a configuration
  *      save or a phase move (lockConference, movePhase);
  *   4. the locks that count a day's invitations: the sender's, then the address's.
  * No transaction holds the rows of two submissions, of two invitations or of two conferences.
  * So nothing waits for a lock while it holds one that comes later, and the orders cannot cross.
+ *
+ * One more lock is taken by the database itself, in no order of ours: writing a row checks its
+ * foreign keys, which takes a key-share lock on each row it points to. Only a lock "for update"
+ * makes that wait. A reviewer's removal writes the records of the assignments it releases under
+ * the roles lock, and each points to a proposal. So the two writes that hold a proposal's row
+ * and then ask for the roles lock (assigning a reviewer, releasing one) take that row "for no
+ * key update": the removal's check passes it, and neither waits for the other.
  */
 
 export type RolesLock = "shared" | "exclusive";

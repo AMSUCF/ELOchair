@@ -4,6 +4,7 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "./db/client";
 import {
+  assignmentReleases,
   assignments,
   auditLog,
   conferenceRoles,
@@ -1509,8 +1510,15 @@ describe("removing a role", () => {
   let chair: string;
   let chairId: string;
   const slug = "sandbox";
+  /** A reviewer's assignments: the table holds those that stand, and no others. */
   const assignmentsOf = async (reviewerId: string) =>
     t.db.select().from(assignments).where(eq(assignments.reviewerId, reviewerId));
+  /** The record of the assignments a reviewer was released from. */
+  const releasedOf = async (reviewerId: string) =>
+    t.db.select().from(assignmentReleases).where(eq(assignmentReleases.reviewerId, reviewerId));
+  /** The sandbox's assignments. */
+  const activeAssignments = async () =>
+    t.db.select().from(assignments).where(eq(assignments.conferenceId, s.conferenceId));
 
   beforeAll(async () => {
     s = await seedSandbox(t.db, { submissions: 60 });
@@ -1528,10 +1536,7 @@ describe("removing a role", () => {
     expect(page.trackChairs.map((x) => x.email).sort()).toEqual([...s.trackChairEmails].sort());
     for (const x of page.trackChairs) expect(x.tracks).toHaveLength(1);
     // This chair wrote nothing and has no conflict: every assignment is counted.
-    const all = await t.db
-      .select()
-      .from(assignments)
-      .where(eq(assignments.conferenceId, s.conferenceId));
+    const all = await activeAssignments();
     expect(page.reviewers.reduce((n, r) => n + r.assigned, 0)).toBe(all.length);
     expect(all.length).toBe(s.assignmentCount);
     for (const r of page.reviewers.slice(0, 5)) {
@@ -1543,14 +1548,16 @@ describe("removing a role", () => {
     expect(JSON.stringify(page)).not.toMatch(/review(s|ed|Count)\b/i);
   });
 
-  it("removing a reviewer deletes their assignments and their reviewer profile, and nothing else", async () => {
+  it("removing a reviewer releases their assignments and deletes their reviewer profile, and nothing else", async () => {
     const page = await listed(chair, slug);
     const victim = page.reviewers.find((r) => r.assigned >= 2);
     if (!victim) throw new Error("no reviewer with assignments in the sandbox");
     const mine = await assignmentsOf(victim.personId);
     expect(mine).toHaveLength(victim.assigned);
     const snapshot = async () => ({
+      // A release takes the assignment out of its table and writes its record to another.
       assignments: (await t.db.select().from(assignments)).length,
+      releases: (await t.db.select().from(assignmentReleases)).length,
       roles: (await t.db.select().from(conferenceRoles)).length,
       profiles: (await t.db.select().from(reviewerProfiles)).length,
       people: (await t.db.select().from(people)).length,
@@ -1596,6 +1603,7 @@ describe("removing a role", () => {
     expect(after).toEqual({
       ...before,
       assignments: before.assignments - victim.assigned,
+      releases: before.releases + victim.assigned,
       // The role and the profile granted above at the other conference are still there.
       roles: before.roles - 1 + 1,
       profiles: before.profiles - 1 + 1,
@@ -1616,6 +1624,26 @@ describe("removing a role", () => {
         ),
     ).toEqual([]);
     expect(await assignmentsOf(victim.personId)).toEqual([]);
+    // Each of their assignments is released, because their role was removed: a record for
+    // each, of the same proposal, made by whoever made it, ended by this chair.
+    const gone = await releasedOf(victim.personId);
+    const byAssignment = <T extends { assignmentId: string }>(rows: T[]) =>
+      [...rows].sort((a, b) => a.assignmentId.localeCompare(b.assignmentId));
+    expect(byAssignment(gone).map(({ id: _id, ...record }) => record)).toEqual(
+      byAssignment(
+        mine.map((a) => ({
+          conferenceId: a.conferenceId,
+          submissionId: a.submissionId,
+          reviewerId: a.reviewerId,
+          assignmentId: a.id,
+          assignedByPersonId: a.assignedByPersonId,
+          assignedAt: a.createdAt,
+          releasedByPersonId: chairId,
+          releasedAt: NOW,
+          reason: "role_removed",
+        })),
+      ),
+    );
     // Their conflicts stay: they are facts about people, not about the role.
     expect(
       await t.db.select().from(conflicts).where(eq(conflicts.personId, victim.personId)),
@@ -1637,6 +1665,19 @@ describe("removing a role", () => {
       targetType: "person",
       details: { role: "reviewer", pools: victim.pools, assignments: victim.assigned },
     });
+    // And one row for each release, with the proposal, the reviewer and the reason.
+    const releases = (await auditRows("assignment.released")).filter(
+      (r) => (r.details as { reviewerId: string }).reviewerId === victim.personId,
+    );
+    expect(releases.map((r) => [r.actorPersonId, r.conferenceId, r.targetType, r.details])).toEqual(
+      mine.map(() => [
+        chairId,
+        s.conferenceId,
+        "submission",
+        { reviewerId: victim.personId, reason: "role_removed" },
+      ]),
+    );
+    expect(releases.map((r) => r.targetId).sort()).toEqual(mine.map((a) => a.submissionId).sort());
     // The reviewer sees none of the proposals any more.
     const cookie = await signIn(t, victim.email);
     const list = await call(t.public, "GET", `/api/conferences/${slug}/submissions?limit=500`, {
@@ -1648,14 +1689,40 @@ describe("removing a role", () => {
       (await remove({ cookie: chair }, victim.personId, "reviewer", { assignments: 0 }, slug))
         .status,
     ).toBe(404);
+    // Given the role again (invited again, they would accept), nothing comes back by itself:
+    // the releases stand, their count is 0, and they see none of those proposals.
+    await grantRole(t.db, {
+      conferenceId: s.conferenceId,
+      personId: victim.personId,
+      role: "reviewer",
+      scope: victim.pools,
+    });
+    try {
+      const back = (await listed(chair, slug)).reviewers.find(
+        (r) => r.personId === victim.personId,
+      );
+      expect(back).toMatchObject({ assigned: 0, maxLoad: null });
+      const again = await call(t.public, "GET", `/api/conferences/${slug}/submissions?limit=500`, {
+        cookie,
+      });
+      expect(again.json.items.filter((x: { view: string }) => x.view === "reviewer")).toEqual([]);
+      for (const a of mine.slice(0, 2)) {
+        expect(
+          (await call(t.public, "GET", `/api/submissions/${a.submissionId}`, { cookie })).status,
+        ).toBe(404);
+      }
+    } finally {
+      expect(
+        (await remove({ cookie: chair }, victim.personId, "reviewer", { assignments: 0 }, slug))
+          .status,
+      ).toBe(204);
+    }
+    expect(await releasedOf(victim.personId)).toHaveLength(mine.length);
   });
 
   it("a chair who is an author never learns from the counts who reviews their own proposal", async () => {
     // An author who is no reviewer becomes a chair. Their own proposal has reviewers.
-    const all = await t.db
-      .select()
-      .from(assignments)
-      .where(eq(assignments.conferenceId, s.conferenceId));
+    const all = await activeAssignments();
     const subs = await t.db
       .select()
       .from(submissions)

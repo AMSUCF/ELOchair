@@ -1,6 +1,5 @@
 import { projectPeople } from "@elochair/policy";
 import {
-  Id,
   InvitationTokenInput,
   RemovableRole,
   RoleInvitationAnswerInput,
@@ -18,21 +17,9 @@ import {
   resendRoleInvitation,
   roleInvitationInfo,
 } from "../services/people";
-import { Refusal, writer } from "./common";
+import { idParam, Refusal, writer } from "./common";
 import { chairInPerson } from "./conferences";
 import { guardLinkRoute } from "./invitations";
-
-/**
- * An id from the address, as the database writes ids: in lower case. An id may be typed in
- * capitals and still name the same row, and what is compared with it here (the caller's own id,
- * a reviewer's assignments) must not be fooled by that. One that is no id names nothing: 404,
- * as for one that is unknown.
- */
-function idParam(value: string | undefined): string {
-  const parsed = Id.safeParse(value);
-  if (!parsed.success) throw new Refusal(404, "not_found");
-  return parsed.data.toLowerCase();
-}
 
 /**
  * People and invitations (spec 03, §1.2), mounted at /api/conferences/:slug/people. Every route

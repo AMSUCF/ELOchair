@@ -179,6 +179,13 @@ export const conflicts = pgTable(
   ],
 );
 
+/**
+ * One reviewer on one proposal (spec 03, §1.3): at most one row for the two. The table holds
+ * the assignments that stand, and nothing else, as it always has: whatever reads it reads the
+ * ones that count, in this version of the app and in every earlier one. Taking a reviewer off a
+ * proposal deletes the row and writes the record of it to `assignment_releases`, in the same
+ * transaction.
+ */
 export const assignments = pgTable(
   "assignments",
   {
@@ -194,8 +201,61 @@ export const assignments = pgTable(
       .references(() => submissions.id, { onDelete: "cascade" }),
     createdAt: created(),
     dueAt: ts("due_at"),
+    /** The chair who made it. Null on rows from before this column, and on seeded ones. */
+    assignedByPersonId: uuid("assigned_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [unique("assignments_reviewer_submission").on(t.reviewerId, t.submissionId)],
+);
+
+/**
+ * The record of every assignment that was released (spec 03, §1.3): what the assignment was,
+ * and when, why and by whom it ended. A row here gives nobody anything. It is read for three
+ * things only, all in services/assignments.ts: that a proposal has had a reviewer (the guard on
+ * anonymity, and the rule that such a proposal keeps its format), and who left a proposal
+ * because of a conflict (never offered for it again).
+ *
+ * What survives what:
+ * - The record of who reviewed a proposal goes with the proposal, as its assignments do
+ *   (`submission_id`, cascade): an owner deleting a draft never fails on it, and nothing is left
+ *   of a proposal that is gone.
+ * - A person's deletion does not fail on it either, and does not take the record away: their
+ *   id becomes null (`reviewer_id`, `assigned_by_person_id`, `released_by_person_id`), and the
+ *   proposal keeps the fact that it has had a reviewer.
+ * - `assignment_id` is the id the row in `assignments` had. That row is gone, so it is no
+ *   foreign key.
+ */
+export const assignmentReleases = pgTable(
+  "assignment_releases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    reviewerId: uuid("reviewer_id").references(() => people.id, { onDelete: "set null" }),
+    assignmentId: uuid("assignment_id").notNull(),
+    assignedByPersonId: uuid("assigned_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    assignedAt: ts("assigned_at").notNull(),
+    releasedByPersonId: uuid("released_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    releasedAt: ts("released_at").notNull(),
+    reason: text("reason").notNull(),
+  },
+  (t) => [
+    check(
+      "assignment_releases_reason_check",
+      sql`${t.reason} in ('chair','conflict','expertise','time','role_removed')`,
+    ),
+    index("assignment_releases_submission_idx").on(t.submissionId),
+    index("assignment_releases_conference_idx").on(t.conferenceId),
+  ],
 );
 
 export const loginTokens = pgTable("login_tokens", {

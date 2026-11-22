@@ -145,6 +145,7 @@ function submission(
     submissionId: id,
     createdAt: at(-10),
     dueAt: null,
+    assignedByPersonId: null,
   }));
   const conflicts: Conflict[] = (v.conflicted ?? []).map((personId, i) => ({
     id: uuid(8000 + n * 10 + i),
@@ -155,7 +156,14 @@ function submission(
     kind: "declared",
     declaredBy: "chair",
   }));
-  return { config: CONFIG, submission: s, contributions, assignments, conflicts };
+  return {
+    config: CONFIG,
+    phase: "reviewing",
+    submission: s,
+    contributions,
+    assignments,
+    conflicts,
+  };
 }
 
 describe("who may see the People page", () => {
@@ -489,6 +497,26 @@ describe("how many proposals a reviewer has, as a chair may know it", () => {
       submissions,
     });
     expect(projectPeople(author, rec, NOW)?.reviewers.map((r) => r.assigned)).toEqual([2, 2]);
+  });
+
+  it("does not count an assignment that was released: it is no longer one", () => {
+    // Releasing removes the assignment (its record is kept elsewhere). What is left is counted.
+    const chair = chairOf(CONFERENCE, uuid(11));
+    const kept = submission(1, { reviewers: [reviewer, other] });
+    const before = submission(2, { reviewers: [reviewer] });
+    expect(assignedCount(chair, reviewer, [kept, before])).toBe(2);
+    const after = { ...before, assignments: [] };
+    expect(assignedCount(chair, reviewer, [kept, after])).toBe(1);
+    expect(assignedCount(chair, other, [kept, after])).toBe(1);
+  });
+
+  it("is the same in every phase: a load is a load before reviewers can read", () => {
+    const chair = chairOf(CONFERENCE, uuid(11));
+    const submissions = [submission(1, { reviewers: [reviewer] })];
+    for (const phase of ["draft", "cfp_open", "reviewing", "archived"]) {
+      const there = submissions.map((s) => ({ ...s, phase }));
+      expect(assignedCount(chair, reviewer, there), phase).toBe(1);
+    }
   });
 
   it("cannot be used by a chair to find who reviews their own proposal", () => {

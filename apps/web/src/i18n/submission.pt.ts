@@ -253,9 +253,9 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   phaseDoes_draft:
     "O congresso fica oculto para toda a gente, exceto para quem o preside e para os agentes que tenha configurado para ele, e ninguém pode iniciar, editar, submeter ou retirar uma proposta; cada pessoa continua a ver as suas próprias propostas.",
   phaseDoes_cfp_open:
-    "O congresso é público, e podem ser iniciadas, editadas e submetidas propostas entre as datas de abertura e de encerramento indicadas na configuração.",
+    "O congresso é público, e podem ser iniciadas, editadas e submetidas propostas entre as datas de abertura e de encerramento indicadas na configuração. Nesta fase, quem revê não pode abrir as propostas que lhe estão atribuídas.",
   phaseDoes_reviewing:
-    "A chamada está fechada, digam as datas o que disserem: ninguém pode iniciar, editar ou submeter uma proposta, nem confirmar um convite, mas uma proposta submetida ainda pode ser retirada.",
+    "A chamada está fechada, digam as datas o que disserem: ninguém pode iniciar, editar ou submeter uma proposta, nem confirmar um convite, mas uma proposta submetida ainda pode ser retirada. Quem revê pode abrir as propostas que lhe estão atribuídas.",
   phaseDoes_deciding:
     "O que cada pessoa pode fazer é o mesmo que em «{reviewing}»: a chamada está fechada e uma proposta submetida ainda pode ser retirada; a lista de congressos mostra a nova fase.",
   phaseDoes_confirming: "A chamada está fechada e uma proposta submetida já não pode ser retirada.",

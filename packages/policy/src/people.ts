@@ -7,7 +7,7 @@ import {
   type RoleInvitation,
   roleInvitationState,
 } from "@elochair/schema";
-import { type SubmissionContext, submissionAccess } from "./access";
+import { isReviewable, type SubmissionContext, submissionAccess } from "./access";
 import { isConferenceChair, type PersonViewer, type Viewer } from "./viewer";
 
 /*
@@ -105,7 +105,10 @@ export function reviewerPools(scope: readonly string[], poolKeys: readonly strin
 
 /**
  * How many proposals are assigned to a reviewer, as one chair may know it: counted over the
- * submissions that chair manages as a chair (submissionAccess), and no others.
+ * submissions that chair manages as a chair (submissionAccess), and no others. An assignment
+ * that was released is no longer one, so it is not counted; and neither is one to a proposal its
+ * reviewers no longer read (a withdrawn one): that is nobody's work. It is the reviewer's load wherever a chair is
+ * shown one (the People page, and the list a chair assigns from).
  */
 export function assignedCount(
   viewer: PersonViewer,
@@ -114,13 +117,15 @@ export function assignedCount(
 ): number {
   let n = 0;
   for (const s of submissions) {
+    if (!isReviewable(s.submission)) continue;
     if (!s.assignments.some((a) => a.reviewerId === reviewerId)) continue;
     if (submissionAccess(viewer, s) === "chair") n += 1;
   }
   return n;
 }
 
-const byName = <T extends RoleHolder>(list: T[]): T[] =>
+/** By name, then by address: the same order every time, whatever order they were given in. */
+export const byName = <T extends RoleHolder>(list: T[]): T[] =>
   [...list].sort(
     (a, b) =>
       (a.displayName ?? "").localeCompare(b.displayName ?? "", "en") ||

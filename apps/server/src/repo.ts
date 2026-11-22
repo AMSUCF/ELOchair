@@ -272,7 +272,33 @@ export async function grantRole(
     });
 }
 
-/** Everything packages/policy needs to project every submission of a conference. */
+/**
+ * A conference's assignments. The table holds the ones that stand, and nothing else: one that
+ * was released is deleted from it, and its record kept in `assignment_releases` (spec 03, §1.3;
+ * services/assignments.ts). So there is nothing to leave out here, and a released reviewer is a
+ * stranger to the proposal everywhere at once: in what they may read, in who a chair is told
+ * reviews it, and in every count.
+ */
+export async function loadAssignments(db: Db, conferenceId: string): Promise<Assignment[]> {
+  const rows = await db
+    .select()
+    .from(assignments)
+    .where(eq(assignments.conferenceId, conferenceId));
+  return rows.map((a) => ({
+    id: a.id,
+    conferenceId: a.conferenceId,
+    reviewerId: a.reviewerId,
+    submissionId: a.submissionId,
+    createdAt: iso(a.createdAt),
+    dueAt: isoOrNull(a.dueAt),
+    assignedByPersonId: a.assignedByPersonId,
+  }));
+}
+
+/**
+ * Everything packages/policy needs to project every submission of a conference: each with its
+ * assignments (loadAssignments) and the phase the conference row holds.
+ */
 export async function loadSubmissionRecords(
   db: Db,
   conference: ConferenceRow,
@@ -299,10 +325,7 @@ export async function loadSubmissionRecords(
     ? await db.select().from(people).where(inArray(people.id, personIds))
     : [];
   const peopleById = new Map(peopleRows.map((p) => [p.id, toPerson(p)]));
-  const assigns = await db
-    .select()
-    .from(assignments)
-    .where(eq(assignments.conferenceId, conference.id));
+  const assigns = await loadAssignments(db, conference.id);
   const confls = await db.select().from(conflicts).where(eq(conflicts.conferenceId, conference.id));
 
   const bySub = <T extends { submissionId: string | null }>(rows: T[]) => {
@@ -346,14 +369,6 @@ export async function loadSubmissionRecords(
       updatedAt: iso(s.updatedAt),
       submittedAt: isoOrNull(s.submittedAt),
     };
-    const subAssignments: Assignment[] = (assignsBySub.get(s.id) ?? []).map((a) => ({
-      id: a.id,
-      conferenceId: a.conferenceId,
-      reviewerId: a.reviewerId,
-      submissionId: a.submissionId,
-      createdAt: iso(a.createdAt),
-      dueAt: isoOrNull(a.dueAt),
-    }));
     const subConflicts: Conflict[] = confls
       .filter(
         (c) =>
@@ -370,9 +385,10 @@ export async function loadSubmissionRecords(
       }));
     return {
       config: conference.config,
+      phase: conference.phase,
       submission,
       contributions: cs,
-      assignments: subAssignments,
+      assignments: assignsBySub.get(s.id) ?? [],
       conflicts: subConflicts,
       people: peopleById,
     };

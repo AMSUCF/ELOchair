@@ -5,13 +5,16 @@
  */
 import {
   type Assignment,
+  CONFERENCE_PHASES,
   type ConferenceConfig,
+  type ConferencePhase,
   ConferenceConfig as ConfigSchema,
   type Conflict,
   type Contribution,
   conferences,
   effectiveBlindMode,
   type Person,
+  reviewersCanRead,
   type Submission,
   type SubmissionStatus,
 } from "@elochair/schema";
@@ -72,6 +75,8 @@ type Built = {
 
 type Scenario = {
   config: ConferenceConfig;
+  /** The phase the conference is in: any of them, unless a test says otherwise. */
+  phase: ConferencePhase;
   typePick: number;
   nContrib: number;
   statuses: Contribution["status"][];
@@ -80,18 +85,36 @@ type Scenario = {
   unknownField: boolean;
 };
 
-const scenario: fc.Arbitrary<Scenario> = fc.record({
-  config: fc.constantFrom(...CONFIGS),
-  typePick: fc.nat(),
-  nContrib: fc.integer({ min: 1, max: 6 }),
-  statuses: fc.array(fc.constantFrom<Contribution["status"]>("confirmed", "invited", "declined"), {
-    minLength: 6,
-    maxLength: 6,
-  }),
-  status: fc.constantFrom(...NOT_PUBLISHED),
-  ids: fc.uniqueArray(fc.uuid(), { minLength: 12, maxLength: 12 }),
-  unknownField: fc.boolean(),
-});
+/** The phases in which an assigned reviewer reads (spec 03, §1.3), and those before them. */
+const READING = CONFERENCE_PHASES.filter(reviewersCanRead);
+const BEFORE_REVIEW = CONFERENCE_PHASES.filter((p) => !reviewersCanRead(p));
+
+const scenarioIn = (phases: readonly ConferencePhase[]): fc.Arbitrary<Scenario> =>
+  fc.record({
+    config: fc.constantFrom(...CONFIGS),
+    phase: fc.constantFrom(...phases),
+    typePick: fc.nat(),
+    nContrib: fc.integer({ min: 1, max: 6 }),
+    statuses: fc.array(
+      fc.constantFrom<Contribution["status"]>("confirmed", "invited", "declined"),
+      { minLength: 6, maxLength: 6 },
+    ),
+    status: fc.constantFrom(...NOT_PUBLISHED),
+    ids: fc.uniqueArray(fc.uuid(), { minLength: 12, maxLength: 12 }),
+    unknownField: fc.boolean(),
+  });
+
+/**
+ * A proposal with one assigned reviewer, at a conference in any phase. What a chair, an agent, a
+ * contributor and the public are given does not depend on the phase, and every property below
+ * that uses this scenario shows it. What a reviewer is given does: the properties about what a
+ * reviewer reads use `reading`.
+ */
+const scenario = scenarioIn(CONFERENCE_PHASES);
+/** The same, at a conference that is in review or past it: the reviewer reads the proposal. */
+const reading = scenarioIn(READING);
+/** The same, at a conference that is not in review yet. */
+const beforeReview = scenarioIn(BEFORE_REVIEW);
 
 const COUNTRIES = ["AR", "BR", "CL", "MX", "PE", "UY"];
 
@@ -114,6 +137,7 @@ function orcidMarker(seed: number): string {
 
 function build({
   config,
+  phase,
   typePick,
   nContrib,
   statuses,
@@ -239,10 +263,18 @@ function build({
     submittedAt: now,
   };
   const assignments: Assignment[] = [
-    { id: id(11), conferenceId, reviewerId, submissionId, createdAt: now, dueAt: null },
+    {
+      id: id(11),
+      conferenceId,
+      reviewerId,
+      submissionId,
+      createdAt: now,
+      dueAt: null,
+      assignedByPersonId: null,
+    },
   ];
   return {
-    rec: { config, submission, contributions, assignments, conflicts: [], people },
+    rec: { config, phase, submission, contributions, assignments, conflicts: [], people },
     conferenceId,
     reviewerId,
     chairId,
@@ -255,6 +287,7 @@ function build({
 const example = (over: Partial<Scenario> = {}): Built =>
   build({
     config: CONFIGS[1]!,
+    phase: "reviewing",
     typePick: 0,
     nContrib: 3,
     statuses: ["confirmed", "invited", "declined", "confirmed", "confirmed", "confirmed"],
@@ -326,10 +359,23 @@ function valuesIn(out: unknown, values: Iterable<string>): string[] {
   return [...found].sort();
 }
 
+/**
+ * The record as it is once its one assignment has been released: the assignment is gone (its
+ * record is kept elsewhere, where the policy does not read), whatever the reason was.
+ */
+function released(b: Built): SubmissionRecord {
+  return { ...b.rec, assignments: [] };
+}
+/** Someone with the same roles and no tie to the proposal: an id no scenario uses. */
+const strangerLike = (viewer: PersonViewer): PersonViewer => ({
+  ...viewer,
+  personId: "99999999-9999-4999-8999-999999999999",
+});
+
 describe("reviewers", () => {
   it("never see what their submission type's blind mode hides, nor anyone unconfirmed", () => {
     fc.assert(
-      fc.property(scenario, (s) => {
+      fc.property(reading, (s) => {
         const b = build(s);
         const out = projectSubmission(reviewer(b), b.rec);
         expect(out?.view).toBe("reviewer");
@@ -351,8 +397,10 @@ describe("reviewers", () => {
 
   it("see nothing when unassigned, conflicted, or outside their pool", () => {
     fc.assert(
-      fc.property(scenario, fc.nat({ max: 3 }), (s, how) => {
+      fc.property(reading, fc.nat({ max: 3 }), (s, how) => {
         const b = build(s);
+        // Assigned, in the pool, without a conflict, in a phase of review: the reviewer reads it.
+        expect(projectSubmission(reviewer(b), b.rec)?.view).toBe("reviewer");
         let viewer = reviewer(b);
         if (how === 0) b.rec.assignments = [];
         if (how === 1 || how === 2) {
@@ -374,9 +422,73 @@ describe("reviewers", () => {
     );
   });
 
+  it("read their assignments once the conference is in review, and not before", () => {
+    // Spec 03, §1.3: a chair assigns from the day the call closes; the reviewer opens the
+    // proposal once the phase is `reviewing`. On each side of that line, the same assignment.
+    expect(BEFORE_REVIEW).toEqual(["draft", "cfp_open"]);
+    expect(READING).toEqual([
+      "reviewing",
+      "deciding",
+      "confirming",
+      "scheduling",
+      "published",
+      "archived",
+    ]);
+    fc.assert(
+      fc.property(beforeReview, fc.constantFrom(...READING), (s, later) => {
+        const b = build(s);
+        const stranger = strangerLike(reviewer(b));
+        // Before review, the assigned reviewer gets what a stranger with the same role gets.
+        expect(submissionAccess(reviewer(b), b.rec)).toBe("none");
+        expect(submissionAccess(reviewer(b), b.rec)).toBe(submissionAccess(stranger, b.rec));
+        expect(projectSubmission(reviewer(b), b.rec)).toBeNull();
+        expect(projectCheck(reviewer(b), b.rec, 0)).toBeNull();
+        // The phase is all that stands in the way: in review the very same record is theirs.
+        const inReview = { ...b.rec, phase: later };
+        expect(projectSubmission(reviewer(b), inReview)?.view).toBe("reviewer");
+        expect(projectSubmission(stranger, inReview)).toBeNull();
+        // A chair's view of it is the same on both sides, the reviewer's id included.
+        expect(projectSubmission(chair(b), b.rec)).toEqual(projectSubmission(chair(b), inReview));
+        expect(findLeaks(projectSubmission(chair(b), b.rec), [b.reviewerId])).toEqual([
+          b.reviewerId,
+        ]);
+      }),
+      RUNS,
+    );
+  });
+
+  it("a phase that is not one is not a phase of review", () => {
+    const b = example();
+    for (const phase of ["", "nonsense", "REVIEWING", "reviewing "]) {
+      expect(projectSubmission(reviewer(b), { ...b.rec, phase }), phase).toBeNull();
+    }
+  });
+
+  it("released from a proposal, get what a stranger gets", () => {
+    fc.assert(
+      fc.property(reading, (s) => {
+        const b = build(s);
+        // Assigned, they read it. Released, the assignment is no longer there.
+        expect(projectSubmission(reviewer(b), b.rec)?.view).toBe("reviewer");
+        const rec = released(b);
+        const stranger = strangerLike(reviewer(b));
+        expect(submissionAccess(reviewer(b), rec)).toBe("none");
+        expect(submissionAccess(reviewer(b), rec)).toBe(submissionAccess(stranger, rec));
+        expect(projectSubmission(reviewer(b), rec)).toBeNull();
+        // And nobody is told that they ever reviewed it: not a chair, and not a chair's agent.
+        for (const viewer of [chair(b), agent(chair(b), "M", b.conferenceId)]) {
+          const out = projectSubmission(viewer, rec);
+          expect(out && "assignedReviewerIds" in out && out.assignedReviewerIds).toEqual([]);
+          expect(findLeaks(out, [b.reviewerId, b.rec.assignments[0]!.id])).toEqual([]);
+        }
+      }),
+      RUNS,
+    );
+  });
+
   it("get the same view whether or not a cited surname belongs to an author (double-blind)", () => {
     fc.assert(
-      fc.property(scenario, (s) => {
+      fc.property(reading, (s) => {
         const b = build(s);
         if (effectiveBlindMode(b.rec.config, b.rec.submission.typeKey) !== "double") return;
         b.rec.submission.abstract = "As shown before (Quintanilla 2020), electronic literature";
@@ -769,6 +881,7 @@ describe("track chairs", () => {
   it("chair only their own tracks", () => {
     const b = build({
       config: CONFIGS[0]!,
+      phase: "cfp_open",
       typePick: 1,
       nContrib: 1,
       statuses: ["confirmed", "confirmed", "confirmed", "confirmed", "confirmed", "confirmed"],

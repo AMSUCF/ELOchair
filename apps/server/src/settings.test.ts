@@ -10,7 +10,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assignments, auditLog } from "./db/schema";
+import { assignmentReleases, assignments, auditLog } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { createApiToken, getConference, grantRole, saveConference } from "./repo";
 import { configIssues, configToken, reviewConfig } from "./services/settings";
@@ -974,7 +974,10 @@ describe("an anonymized review that has begun stays anonymized", () => {
   let workshop: string;
   let performance: string;
 
-  /** No route assigns reviewers yet: the row is written as the assignment step will write it. */
+  /**
+   * This call is still open, so no chair can assign yet (spec 03, §1.3): the row is written as
+   * the route that assigns writes it. assignments.test.ts makes them through the route.
+   */
   const assign = async (submissionId: string) => {
     await t.db.insert(assignments).values({
       conferenceId: guardId,
@@ -1170,6 +1173,69 @@ describe("an anonymized review that has begun stays anonymized", () => {
       refusal("reviewPools.artistic.blindMode"),
     );
   });
+
+  it("still counts an assignment that was released: the reviewer may have read it, and can be assigned again", async () => {
+    // Every assignment of the conference is released, for each of the reasons there are: its
+    // row leaves `assignments`, and its record is written to `assignment_releases`. A released
+    // assignment counts nowhere else; here it does (spec 03, §1.3), or a chair could release
+    // the reviewers, show names, and assign the same people again.
+    const rows = await t.db.select().from(assignments).where(eq(assignments.conferenceId, guardId));
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    const reasons = ["chair", "conflict", "expertise", "time", "role_removed"] as const;
+    await t.db.delete(assignments).where(eq(assignments.conferenceId, guardId));
+    await t.db.insert(assignmentReleases).values(
+      rows.map((row, i) => ({
+        conferenceId: row.conferenceId,
+        submissionId: row.submissionId,
+        reviewerId: row.reviewerId,
+        assignmentId: row.id,
+        assignedAt: row.createdAt,
+        releasedAt: NOW,
+        reason: reasons[i % reasons.length] ?? "chair",
+      })),
+    );
+    expect(
+      await t.db.select().from(assignments).where(eq(assignments.conferenceId, guardId)),
+    ).toEqual([]);
+    try {
+      // Nobody reviews anything now: a chair's list of the proposals says so.
+      const listed = await call(t.public, "GET", `/api/conferences/${GUARD}/submissions`, {
+        cookie: cookies.chair,
+      });
+      expect(
+        listed.json.items.flatMap((x: { assignedReviewerIds: string[] }) => x.assignedReviewerIds),
+      ).toEqual([]);
+      // The pool whose talk had a reviewer still cannot show names, in the review or the save.
+      const { config, token } = await changed((c) => {
+        poolOf(c, "scientific").blindMode = "single";
+      });
+      const reviewed = await preview("chair", config, token);
+      expect(found(reviewed.json)).toEqual(refusal(POOL));
+      expect(reviewed.json.canSave).toBe(false);
+      const res = await save("chair", config, token);
+      expect(res.status).toBe(409);
+      expect(res.json.error).toBe("reviewers_assigned");
+      expect((await settings("chair", GUARD)).json.token).toBe(token);
+    } finally {
+      // Assigned again, as the tests above left them.
+      await t.db.delete(assignmentReleases).where(eq(assignmentReleases.conferenceId, guardId));
+      await t.db.insert(assignments).values(rows);
+    }
+    // With no record of a release and nobody assigned, the same change would be taken: it is
+    // the record that the guard read.
+    await t.db.delete(assignments).where(eq(assignments.conferenceId, guardId));
+    try {
+      const { config, token } = await changed((c) => {
+        poolOf(c, "scientific").blindMode = "single";
+      });
+      expect((await preview("chair", config, token)).json).toMatchObject({
+        issues: [],
+        canSave: true,
+      });
+    } finally {
+      await t.db.insert(assignments).values(rows);
+    }
+  });
 });
 
 describe("a review never carries anyone's words (house rule 2)", () => {
@@ -1189,15 +1255,16 @@ describe("a review never carries anyone's words (house rule 2)", () => {
   const STATUSES: SubmissionStatus[] = ["draft", "submitted", "accepted", "withdrawn", "rejected"];
 
   /**
-   * A proposal whose every name, address, title and text carries a marker of its own; with a
-   * reviewer assigned, when `assigned`.
+   * A proposal whose every name, address, title and text carries a marker of its own. It has a
+   * reviewer (`assigned: "now"`), had one whose assignment was released (`"before"`: the record
+   * holds no assignment, as the loader would give it), or never had one.
    */
   function record(
     i: number,
     status: SubmissionStatus,
     typeKey: string,
     mine: boolean,
-    assigned: boolean,
+    assigned: "now" | "before" | "never",
   ) {
     const mark = (what: string) => `MARK${what}${i}X`;
     const ownerId = mine
@@ -1246,20 +1313,23 @@ describe("a review never carries anyone's words (house rule 2)", () => {
     ];
     const rec: SubmissionRecord = {
       config,
+      phase: conference.phase,
       submission,
       contributions,
-      assignments: assigned
-        ? [
-            {
-              id: `20000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
-              conferenceId: conference.id,
-              reviewerId: `30000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
-              submissionId: submission.id,
-              createdAt: NOW.toISOString(),
-              dueAt: null,
-            },
-          ]
-        : [],
+      assignments:
+        assigned === "now"
+          ? [
+              {
+                id: `20000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+                conferenceId: conference.id,
+                reviewerId: `30000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+                submissionId: submission.id,
+                createdAt: NOW.toISOString(),
+                dueAt: null,
+                assignedByPersonId: null,
+              },
+            ]
+          : [],
       conflicts: [],
       people: new Map([[ownerId, owner]]),
     };
@@ -1274,7 +1344,12 @@ describe("a review never carries anyone's words (house rule 2)", () => {
       "fieldkey",
       "stray",
     ];
-    return { rec, marks: all.flatMap((what) => [mark(what), mark(what).toLowerCase()]) };
+    return {
+      rec,
+      /** It has, or has had, a reviewer. */
+      ever: assigned !== "never",
+      marks: all.flatMap((what) => [mark(what), mark(what).toLowerCase()]),
+    };
   }
 
   it("answers in paths, codes, counts and IDs only, whatever the proposals hold", () => {
@@ -1285,7 +1360,7 @@ describe("a review never carries anyone's words (house rule 2)", () => {
             status: fc.constantFrom(...STATUSES),
             typeKey: fc.constantFrom(...config.submissionTypes.map((x) => x.key), "gone"),
             mine: fc.boolean(),
-            assigned: fc.boolean(),
+            assigned: fc.constantFrom("now" as const, "before" as const, "never" as const),
           }),
           { minLength: 1, maxLength: 12 },
         ),
@@ -1320,6 +1395,7 @@ describe("a review never carries anyone's words (house rule 2)", () => {
             viewer: chair,
             conference,
             records: built.map((b) => b.rec),
+            everAssigned: new Set(built.filter((b) => b.ever).map((b) => b.rec.submission.id)),
             input: next,
             base: null,
             now: NOW,
@@ -1345,7 +1421,8 @@ describe("a review never carries anyone's words (house rule 2)", () => {
               .map((b) => b.rec.submission.id),
           );
           // A pool that was anonymized and would show names is named exactly when one of its
-          // proposals has a reviewer (no format of the fixture call has a mode of its own).
+          // proposals has, or has had, a reviewer: an assignment that was released still counts
+          // (no format of the fixture call has a mode of its own).
           const reviewedBy = (typeKey: string) =>
             config.submissionTypes.find((x) => x.key === typeKey)?.reviewPool;
           const promised = config.reviewPools
@@ -1353,11 +1430,7 @@ describe("a review never carries anyone's words (house rule 2)", () => {
               (pool, i) =>
                 pool.blindMode === "double" &&
                 modes[i] !== "double" &&
-                built.some(
-                  (b) =>
-                    b.rec.assignments.length > 0 &&
-                    reviewedBy(b.rec.submission.typeKey) === pool.key,
-                ),
+                built.some((b) => b.ever && reviewedBy(b.rec.submission.typeKey) === pool.key),
             )
             .map((pool) => ({
               path: `reviewPools.${pool.key}.blindMode`,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ConferencePhase, isForwardPhaseMove } from "./config";
-import { CONFERENCE_PHASES, canWithdrawIn, nextPhase, previousPhase } from "./phases";
+import {
+  CONFERENCE_PHASES,
+  canWithdrawIn,
+  nextPhase,
+  previousPhase,
+  reviewersCanRead,
+} from "./phases";
 
 describe("the order of the phases", () => {
   it("is the schema's own: the enum is made from the list", () => {
@@ -34,6 +40,18 @@ describe("the order of the phases", () => {
   it("lets a submitted proposal be withdrawn until participants are being confirmed", () => {
     expect(CONFERENCE_PHASES.filter(canWithdrawIn)).toEqual(["cfp_open", "reviewing", "deciding"]);
     expect(canWithdrawIn("nonsense")).toBe(false);
+  });
+
+  it("lets reviewers read their assignments from the phase of review on", () => {
+    expect(CONFERENCE_PHASES.filter(reviewersCanRead)).toEqual([
+      "reviewing",
+      "deciding",
+      "confirming",
+      "scheduling",
+      "published",
+      "archived",
+    ]);
+    for (const not of ["nonsense", "", "Reviewing"]) expect(reviewersCanRead(not), not).toBe(false);
   });
 
   it("steps forward by a move that needs no force, and back by one that does", () => {

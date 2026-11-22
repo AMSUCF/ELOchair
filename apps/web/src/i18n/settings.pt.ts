@@ -79,7 +79,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsBlind_single: "Quem revê vê os nomes e as instituições das pessoas autoras",
   settingsBlind_open: "Quem revê vê os nomes, as instituições e as biografias das pessoas autoras",
   settingsBlindHint:
-    "Uma revisão anónima continua anónima depois de atribuídas as pessoas que reveem: a partir daí, já não pode ser alterada para mostrar as pessoas autoras.",
+    "Uma revisão anónima continua anónima depois de uma proposta ter sido atribuída a alguém para a rever, mesmo que essa pessoa seja retirada depois: a partir daí, já não pode ser alterada para mostrar as pessoas autoras.",
   settingsGuidelinesHint:
     "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
   settingsEmailsIntro:
@@ -227,7 +227,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_min_over_max: "Não pode ser maior do que o valor máximo ao lado.",
   issue_settings_min_not_below_max: "Tem de ser menor do que a pontuação mais alta ao lado.",
   issue_settings_reviewers_assigned:
-    "Já há pessoas atribuídas para rever propostas que aqui são revistas de forma anónima. A elas e às pessoas autoras foi dito que a revisão é anónima, por isso não é possível mostrar agora quem são as pessoas autoras.",
+    "Já foram atribuídas pessoas para rever propostas que aqui são revistas de forma anónima. A elas e às pessoas autoras foi dito que a revisão é anónima, por isso não é possível mostrar agora quem são as pessoas autoras.",
   issue_settings_no_whole_number:
     "Não há nenhum número inteiro entre este valor e o máximo ao lado, por isso ninguém poderia responder.",
   issue_settings_deadline_order: "Não pode ser anterior ao prazo acima.",

@@ -238,3 +238,55 @@ export type RoleInvitation = {
   expiresAt: string;
   nameNeeded: boolean;
 };
+
+/**
+ * A reviewer who can be assigned to a proposal, as a chair who manages it is shown them (the
+ * Reviewers projection in packages/policy). `assigned` counts the proposals that chair manages.
+ */
+export type ReviewerCandidate = RoleHolder & {
+  languages: string[];
+  assigned: number;
+  maxLoad: number | null;
+  /** They have as many proposals as they said they would take: offered all the same, last. */
+  full: boolean;
+};
+
+/** Who reviews a proposal and who could, for a chair who manages it. */
+export type ProposalReviewers = {
+  view: "proposal_reviewers";
+  submissionId: string;
+  /** The review pool of the proposal's format: a "committee" wherever a person reads it. */
+  pool: string | null;
+  needed: number;
+  /** Everyone assigned to it. `blocked`: they can no longer review it, and are not counted. */
+  assigned: (RoleHolder & { assignedAt: string; blocked: boolean })[];
+  takes: "yes" | "call_not_closed" | "not_under_consideration";
+  candidates: ReviewerCandidate[];
+};
+
+/** One proposal on the chairs' Assignments page. */
+export type AssignmentsProposal = {
+  id: string;
+  title: string;
+  typeKey: string;
+  reviewers: RoleHolder[];
+  short: boolean;
+};
+
+/** One review pool on that page: its totals, and one page of its proposals. */
+export type AssignmentsPool = {
+  key: string;
+  needed: number;
+  proposals: number;
+  short: number;
+  items: AssignmentsProposal[];
+  nextCursor: string | null;
+};
+
+export type Assignments = {
+  view: "assignments";
+  callClosed: boolean;
+  /** Proposals not listed: the chair's own, and those they have a conflict with. */
+  excluded: number;
+  pools: AssignmentsPool[];
+};

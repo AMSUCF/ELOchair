@@ -7,21 +7,31 @@ import { formatDateTime } from "../format";
 import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, type IssueCode, issueLabelKey, modeKey, roleKey } from "../labels";
 import { Localized, PageHeading, StatusBadge } from "../ui";
+import { ProposalReviewersSection } from "./ProposalReviewers";
 
 /**
  * A proposal as a chair is given it (the chair projection in packages/policy): everything the
- * owner wrote and everyone on it, in the order of the submission form, with nothing to change.
- * It is what the CSV exports hold, on one page. Chairs never get this view of their own work or
- * of work they have a conflict with: the policy decides that, not this page.
+ * owner wrote and everyone on it, in the order of the submission form, with nothing of it to
+ * change. It is what the CSV exports hold, on one page. Chairs never get this view of their own
+ * work or of work they have a conflict with: the policy decides that, not this page.
+ *
+ * Under the proposal, a chair of the conference finds its reviewers, and assigns and removes
+ * them there (spec 03, §1.3). A track chair is given the proposal and not that part.
  */
 export function ChairProposal({
   sub,
   slug,
+  phase,
   config,
+  managesReviewers,
 }: {
   sub: ChairSubmission;
   slug: string;
+  /** The phase the conference is in. */
+  phase: string;
   config: ConferenceConfig;
+  /** The person looking is a chair of the conference (a chair, an admin or a site admin). */
+  managesReviewers: boolean;
 }) {
   const { lang, t } = useT();
   const fallback = config.defaultLanguage;
@@ -136,6 +146,15 @@ export function ChairProposal({
           );
         })}
       </ul>
+      {managesReviewers && (
+        <ProposalReviewersSection
+          slug={slug}
+          submissionId={sub.id}
+          typeKey={sub.typeKey}
+          phase={phase}
+          config={config}
+        />
+      )}
       <p>
         <Link className="block-link" to={`/${lang}/c/${slug}/manage`}>
           {t("settingsBackToManage")}

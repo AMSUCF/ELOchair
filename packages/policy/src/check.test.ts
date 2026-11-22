@@ -97,6 +97,7 @@ describe("the submission check on long text", () => {
     const now = "2027-02-01T12:00:00Z";
     const rec: SubmissionRecord = {
       config,
+      phase: "cfp_open",
       submission: {
         id: id(100),
         conferenceId: id(101),

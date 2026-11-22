@@ -116,15 +116,66 @@ export const Conflict = z
   });
 export type Conflict = z.infer<typeof Conflict>;
 
+/**
+ * One reviewer on one proposal: at most one for the two. An assignment exists while it stands.
+ * Taking the reviewer off the proposal releases it: the assignment is removed, and a record of
+ * it is kept apart (AssignmentRelease). So whatever reads assignments reads the ones that count,
+ * and a reviewer who was released is a stranger to the proposal again.
+ */
 export const Assignment = z.object({
   id: Id,
   conferenceId: Id,
   reviewerId: Id,
   submissionId: Id,
+  /** When the assignment was made. */
   createdAt: z.iso.datetime({ offset: true }),
   dueAt: z.iso.datetime({ offset: true }).nullable(),
+  /** The chair who made it. Null for one made before this was recorded, or on the server. */
+  assignedByPersonId: Id.nullable(),
 });
 export type Assignment = z.infer<typeof Assignment>;
+
+/**
+ * Why a reviewer was taken off a proposal (spec 03, §1.3):
+ * - `chair`: a chair removed them from the proposal;
+ * - `conflict`: the reviewer said they have a conflict of interest, or know whose work it is.
+ *   They are never offered for that proposal again;
+ * - `expertise`: the reviewer said it is outside what they can judge;
+ * - `time`: the reviewer said they have no time;
+ * - `role_removed`: a chair removed their reviewer's role at the conference.
+ * The three a reviewer gives belong to "I cannot review this", which the next step builds.
+ */
+export const AssignmentReleaseReason = z.enum([
+  "chair",
+  "conflict",
+  "expertise",
+  "time",
+  "role_removed",
+]);
+export type AssignmentReleaseReason = z.infer<typeof AssignmentReleaseReason>;
+
+/**
+ * The record of an assignment that was released: what it was, when and why it ended, and who
+ * ended it. It gives nobody anything: it is what is remembered. A reviewer assigned to the same
+ * proposal again gets a new assignment, and a later release adds another record.
+ */
+export const AssignmentRelease = z.object({
+  id: Id,
+  conferenceId: Id,
+  submissionId: Id,
+  /** Who was released. Null only once that person's record has been deleted. */
+  reviewerId: Id.nullable(),
+  /** The id the assignment had while it stood. */
+  assignmentId: Id,
+  /** Who made the assignment, and when. */
+  assignedByPersonId: Id.nullable(),
+  assignedAt: z.iso.datetime({ offset: true }),
+  /** The person whose act released it: the chair who removed them, or the reviewer themself. */
+  releasedByPersonId: Id.nullable(),
+  releasedAt: z.iso.datetime({ offset: true }),
+  reason: AssignmentReleaseReason,
+});
+export type AssignmentRelease = z.infer<typeof AssignmentRelease>;
 
 /** Per-conference role grants. Scope narrows track chairs to tracks and reviewers to pools. */
 export const ConferenceRole = z.enum(["admin", "chair", "track_chair", "reviewer"]);

@@ -123,6 +123,8 @@ export function SubmissionPage() {
   const [sub, setSub] = useState<MySubmission | ChairSubmission | ReviewerSubmission | null>(null);
   const [conf, setConf] = useState<ConfInfo | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
+  /** The person looking is a chair of the proposal's conference: its reviewers are theirs. */
+  const [chairs, setChairs] = useState(false);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async () => {
@@ -143,6 +145,15 @@ export function SubmissionPage() {
     setSub(s.data);
     setConf(k.data);
     setMe(m.ok && m.data.kind === "person" ? m.data.person : null);
+    // The chair and admin roles and site admins are one group; a track chair is not of it.
+    setChairs(
+      m.ok &&
+        m.data.kind === "person" &&
+        (m.data.siteAdmin ||
+          m.data.roles.some(
+            (r) => r.conference === k.data.slug && (r.role === "admin" || r.role === "chair"),
+          )),
+    );
   }, [id]);
 
   useEffect(() => {
@@ -159,7 +170,16 @@ export function SubmissionPage() {
   }
   // A chair reads the whole proposal: what the exports hold, on one page.
   if (sub.view === "chair") {
-    return <ChairProposal key={sub.id} sub={sub} slug={conf.slug} config={conf.config} />;
+    return (
+      <ChairProposal
+        key={sub.id}
+        sub={sub}
+        slug={conf.slug}
+        phase={conf.phase}
+        config={conf.config}
+        managesReviewers={chairs}
+      />
+    );
   }
   const isOwner = me !== null && sub.ownerPersonId === me.id;
   // A new copy from the server (another proposal, or a reload) starts a fresh editor.
