@@ -53,7 +53,6 @@ export const es: Messages = {
   confMinutes: "{n} minutos",
   confPeopleRange: "{min}–{max} personas",
   confPeopleExact: "{n} personas",
-  confAlsoAsks: "También se solicita",
   confRequired: "obligatorio",
   review_double: "Revisión anónima: quienes revisan no saben quién eres.",
   review_single:
@@ -150,4 +149,13 @@ export const es: Messages = {
   inviteOrganizers: "Acceso de organización",
   inviteSignInNote: "Quienes revisan u organizan acceden con el correo de su invitación.",
   inviteWebsite: "Sitio del congreso",
+  formatLabel: "Formato",
+  formatPosition: "Formato {n} de {total}",
+  formatShowing: "Se muestra {name}: formato {n} de {total}.",
+  formatAsks: "El formulario pide",
+  formatReviewedBy: "Lo revisa",
+  formatStart: "Iniciar esta propuesta",
+  formatOfficial: "Requisitos oficiales de los formatos",
+  formatPrevious: "Anterior",
+  formatNext: "Siguiente",
 };

@@ -83,6 +83,13 @@ describe("the ELO 2027 invitation", () => {
     });
   });
 
+  it("introduces its formats with the preview's sentence", () => {
+    expect(config.formatsIntro).toMatchObject({
+      en: "The theme is a frame for reflection, not a boundary. These are the formats it can take.",
+      es: "El tema es un marco para la reflexión, no un límite. Estos son los formatos que puede tomar.",
+    });
+  });
+
   it("names three ways to contribute, each with the formats its line lists", () => {
     expect(
       config.contributionGroups.map((g) => [g.key, g.name.en, g.name.es, g.formats.join(" ")]),

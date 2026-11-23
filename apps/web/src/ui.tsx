@@ -4,13 +4,14 @@ import {
   createContext,
   type ReactNode,
   type RefObject,
+  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { type Lang, type MessageKey, translate, useT } from "./i18n";
 import { statusKey } from "./labels";
 
@@ -68,17 +69,40 @@ export function PageHeading({
  * the page is there: links lead to such parts from other pages and from the top of the same
  * one. That part takes focus as well as the view, so that reading and the keyboard go on from
  * it. The browser cannot do this by itself: the page is drawn after the address has changed.
+ *
+ * A part inside a block marked `data-arrive-at-start` (a format, in the formats) is shown from
+ * the start of that block, so that people see where they are; the part itself is brought into
+ * view only if it is not in it then.
+ *
+ * What it returns names another part in the address without going there: for a control that
+ * shows the part in place, and keeps the focus (the chooser of the formats).
  */
-export function useHashTarget(ready: boolean) {
-  const { hash, key } = useLocation();
+export function useHashTarget(ready: boolean): (id: string) => void {
+  const { hash, key, search } = useLocation();
+  const navigate = useNavigate();
+  /** The address the page itself is about to set: nobody is taken anywhere for that one. */
+  const inPlace = useRef<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` changes with every navigation, so that taking the same link again goes there again
   useEffect(() => {
-    if (!ready || hash.length < 2) return;
+    const own = inPlace.current === hash;
+    inPlace.current = null;
+    if (own || !ready || hash.length < 2) return;
     const target = document.getElementById(hash.slice(1));
     if (!target) return;
     target.focus({ preventScroll: true });
-    target.scrollIntoView();
+    const block = target.closest("[data-arrive-at-start]");
+    (block ?? target).scrollIntoView();
+    if (block) target.scrollIntoView({ block: "nearest" });
   }, [ready, hash, key]);
+  return useCallback(
+    (id: string) => {
+      const next = `#${id}`;
+      if (next === hash) return;
+      inPlace.current = next;
+      navigate({ search, hash: next }, { replace: true });
+    },
+    [hash, search, navigate],
+  );
 }
 
 /**
@@ -157,7 +181,8 @@ export function Pair({ k, mark, more }: { k: MessageKey; mark?: string; more?: s
 
 /**
  * A numbered section heading with its echo: "Key dates / Fechas clave ........ 02". A link to
- * its id ("#deadlines") lands on it: it can take focus, though it is no tab stop.
+ * its id ("#deadlines") lands on it: it can take focus, though it is no tab stop, and it shows
+ * no focus ring (base.css: that is for controls).
  */
 export function SectionHeading({ id, k, number }: { id: string; k: MessageKey; number?: string }) {
   const { lang, t } = useT();

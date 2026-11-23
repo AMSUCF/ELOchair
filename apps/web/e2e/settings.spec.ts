@@ -12,10 +12,11 @@ import {
  * Conference settings (spec 02, §1.9), as a chair uses them on a phone. The tests share one
  * server with the others and run beside them, so they change only what no other test reads
  * (the length of a reading or performance, the day decisions are sent, a pool's guidelines,
- * the label of one criterion, the end of the Spanish invitation, the Portuguese wording of
- * the notice about a deleted draft, and the wording and limits of one pool's review form with
- * the day reviews are due) and put it back. The tests that read the invitation on the
- * front page read the Spanish one by its beginning. No blind mode is ever saved: other tests read who is shown to reviewers. Of the
+ * the label of one criterion, the end of the Spanish invitation and of the Spanish sentence
+ * that introduces the formats, the Portuguese wording of the notice about a deleted draft,
+ * and the wording and limits of one pool's review form with the day reviews are due) and
+ * put it back. The tests that read the invitation on the front page, or that sentence on
+ * the conference's page, read the Spanish one by its beginning. No blind mode is ever saved: other tests read who is shown to reviewers. Of the
  * emails, the others read the invitation, the receipt, the answer to the owner and the notice
  * to people invited to withdrawn work: those are reworded here only as far as the review step.
  * Nothing about an agreement is ever saved either: the others accept the call's agreements at
@@ -130,6 +131,7 @@ type Stored = {
     rules: { reviewReminderDays?: number };
     distinction?: Record<string, string>;
     invitation?: Record<string, string>;
+    formatsIntro?: Record<string, string>;
     contributionGroups: {
       key: string;
       name: Record<string, string>;
@@ -183,9 +185,18 @@ const SHOWN = {
   open: "Reviewers see the authors' names, affiliations and bios",
 };
 
-/** The format's card on the public page of the call (other cards mention it in their text). */
-const listedFormat = (page: Page) =>
-  page.locator(".formats > li").filter({ has: page.locator("h3", { hasText: FORMAT }) });
+/**
+ * The format's panel on the public page of the call. That page shows one format at a time, so
+ * the format is chosen first.
+ */
+async function shownFormat(page: Page) {
+  const chooser = page.getByRole("combobox", { name: "Format", exact: true });
+  const key = await chooser.locator("option", { hasText: FORMAT }).getAttribute("value");
+  await chooser.selectOption(key ?? "");
+  const panel = page.locator(".format-panel");
+  await expect(panel.getByRole("heading", { level: 3, name: FORMAT })).toBeVisible();
+  return panel;
+}
 
 async function openSettings(page: Page) {
   await page.goto(`/en/c/${CALL}/manage`);
@@ -292,7 +303,7 @@ test.describe("conference settings", () => {
 
     // The public page of the call shows the new values.
     await chair.goto(`/en/c/${CALL}`);
-    await expect(listedFormat(chair)).toContainText("320 words at most");
+    await expect(await shownFormat(chair)).toContainText("320 words at most");
     await expect(chair.locator(".timeline")).toContainText(
       shownInBogota(`${after}T${time}:00-05:00`),
     );
@@ -304,7 +315,7 @@ test.describe("conference settings", () => {
     await chair.getByRole("group", { name: "Decisions sent" }).getByLabel("Date").fill(before);
     await reviewAndSave(chair);
     await chair.goto(`/en/c/${CALL}`);
-    await expect(listedFormat(chair)).toContainText("300 words at most");
+    await expect(await shownFormat(chair)).toContainText("300 words at most");
   });
 
   test("a change that would make a submitted proposal invalid is refused, and says why", async ({
@@ -383,7 +394,7 @@ test.describe("conference settings", () => {
     await chair.getByRole("button", { name: "Review changes" }).click();
     await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
     await chair.goto(`/en/c/${CALL}`);
-    await expect(listedFormat(chair)).toContainText("300 words at most");
+    await expect(await shownFormat(chair)).toContainText("300 words at most");
   });
 
   test("a whole-number field must keep a whole number between its smallest and largest", async () => {
@@ -558,7 +569,7 @@ test.describe("conference settings", () => {
     await reviewAndSave(chair);
     await expect.poll(() => unsavedValues(chair)).toBeNull();
     await chair.goto(`/en/c/${CALL}`);
-    await expect(listedFormat(chair)).toContainText("300 words at most");
+    await expect(await shownFormat(chair)).toContainText("300 words at most");
   });
 
   test("settings that someone else changed meanwhile are reloaded, and what was typed stays", async () => {
@@ -763,16 +774,21 @@ test.describe("conference settings", () => {
     await expect.poll(() => unsavedValues(chair)).toBeNull();
   });
 
-  test("a chair adds to the invitation, the front page says it, and it is put back", async () => {
+  test("a chair adds to the invitation and to the sentence about the formats, the public pages say it, and it is put back", async () => {
     test.slow();
     // Whatever the call says now: the test reads it, adds a sentence to the end of the Spanish
-    // invitation and takes it away again.
+    // invitation, and to the end of the Spanish sentence that introduces the formats, and takes
+    // both away again.
     const before = await stored(chair, CALL);
     const english = before.config.invitation?.en ?? "";
     const was = before.config.invitation?.es ?? "";
     const way = before.config.contributionGroups[0];
     if (!english || !was || !way) throw new Error("the call has no invitation to reword");
     const added = `${was} (Frase de prueba.)`;
+    const introEnglish = before.config.formatsIntro?.en ?? "";
+    const introWas = before.config.formatsIntro?.es ?? "";
+    if (!introEnglish || !introWas) throw new Error("the call has no sentence about its formats");
+    const introAdded = `${introWas} (Otra frase de prueba.)`;
 
     await openSettings(chair);
     // The invitation's two texts are with the conference's own, in each of its languages. A
@@ -791,6 +807,17 @@ test.describe("conference settings", () => {
     await expect(line).toHaveAccessibleDescription(
       /^Optional\. One line, shown with the dates and the place/,
     );
+    // The sentence that introduces the formats is beside them, with its own hint.
+    const intro = chair.getByRole("group", { name: "Introduction to the formats", exact: true });
+    const introSpanish = intro.getByLabel("Introduction to the formats (Español)");
+    await expect(intro.getByLabel("Introduction to the formats (English)")).toHaveValue(
+      introEnglish,
+    );
+    await expect(introSpanish).toHaveValue(introWas);
+    await expect(introSpanish).toHaveAccessibleDescription(
+      /^Optional\. A sentence or two, shown on the conference page above its submission formats/,
+    );
+    await expectTouchTarget(introSpanish);
 
     // The ways to contribute: each existing one in its own section, closed until asked for.
     // Its first line says which formats it leads to; which those are is not offered here.
@@ -819,26 +846,29 @@ test.describe("conference settings", () => {
 
     await spanish.fill(added);
     await expect(chair.getByText("Values changed and not saved yet: 1.")).toBeVisible();
+    await introSpanish.fill(introAdded);
+    await expect(chair.getByText("Values changed and not saved yet: 2.")).toBeVisible();
     await expectAccessibleInBothThemes(chair);
     await expectNoHorizontalScroll(chair);
     await chair.setViewportSize({ width: 360, height: 740 });
     await expectNoHorizontalScroll(chair);
     await chair.setViewportSize({ width: 390, height: 844 });
 
-    // It is reviewed, by name, before anything is saved.
+    // Both are reviewed, by name, before anything is saved.
     await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
     await chair.getByRole("button", { name: "Review changes" }).click();
     const review = chair.getByRole("region", { name: "Review your changes" });
     await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
-    await expect(review.getByRole("listitem")).toHaveCount(1);
+    await expect(review.getByRole("listitem")).toHaveCount(2);
     await expect(review).toContainText("Invitation (Español)");
     await expect(review).toContainText("(Frase de prueba.)");
+    await expect(review).toContainText("Introduction to the formats (Español)");
+    await expect(review).toContainText("(Otra frase de prueba.)");
     await chair.getByRole("button", { name: "Save changes" }).click();
     await expect(chair.getByRole("status")).toHaveText("Settings saved.");
-    expect((await stored(chair, CALL)).config.invitation).toEqual({
-      ...before.config.invitation,
-      es: added,
-    });
+    const saved = (await stored(chair, CALL)).config;
+    expect(saved.invitation).toEqual({ ...before.config.invitation, es: added });
+    expect(saved.formatsIntro).toEqual({ ...before.config.formatsIntro, es: introAdded });
 
     // The front page says it: in Spanish as the invitation, in English as its echo. The
     // English one is as it was.
@@ -855,8 +885,41 @@ test.describe("conference settings", () => {
     const actions = chair.locator(".invitation-lead .actions");
     await expect(actions.getByRole("link", { name: "Start a proposal" })).toBeVisible();
     await expectTouchTarget(actions.getByRole("link", { name: "Manage submissions" }));
+    // Above its formats that page has the sentence about them: in English, and in Spanish as
+    // its echo; and the other way round in Spanish.
+    await expect(chair.locator(".formats-intro")).toContainText(introEnglish);
+    await expect(chair.locator(".formats-intro .echo")).toHaveText(introAdded);
     await expectAccessibleInBothThemes(chair);
     await expectNoHorizontalScroll(chair);
+    await chair.goto(`/es/c/${CALL}`);
+    await expect(chair.locator(".formats-intro")).toContainText(introAdded);
+    await expect(chair.locator(".formats-intro .echo")).toHaveText(introEnglish);
+
+    // Checked here because this file has someone signed in, and the start page shows its form
+    // only to them: "Start this proposal" in a format's panel begins the form with that format,
+    // and the person may still choose another. Nothing is started.
+    const types = before.config.submissionTypes;
+    const [firstFormat, lastFormat] = [types[0], types.at(-1)];
+    if (!firstFormat || !lastFormat || firstFormat === lastFormat) {
+      throw new Error("the call has fewer than two formats");
+    }
+    await chair.goto(`/en/c/${CALL}`);
+    await chair.getByRole("combobox", { name: "Format", exact: true }).selectOption(lastFormat.key);
+    const startThis = chair
+      .locator(".format-panel")
+      .getByRole("link", { name: "Start this proposal", exact: true });
+    await expectTouchTarget(startThis);
+    await startThis.click();
+    await expect(chair).toHaveURL(new RegExp(`/en/c/${CALL}/submit\\?format=${lastFormat.key}$`));
+    await expect(chair.getByRole("heading", { level: 1, name: "Start a proposal" })).toBeFocused();
+    const chosen = chair.locator('input[name="typeKey"]:checked');
+    await expect(chosen).toHaveCount(1);
+    await expect(chosen).toHaveValue(lastFormat.key);
+    await chair.locator(`input[name="typeKey"][value="${firstFormat.key}"]`).check();
+    await expect(chosen).toHaveValue(firstFormat.key);
+    // An address that names no format of the call begins with the first, as the page always did.
+    await chair.goto(`/en/c/${CALL}/submit?format=no_such_format`);
+    await expect(chosen).toHaveValue(firstFormat.key);
 
     // Back exactly as it was, for the tests that run beside this one.
     await openSettings(chair);
@@ -864,9 +927,14 @@ test.describe("conference settings", () => {
       .getByRole("group", { name: "Invitation", exact: true })
       .getByLabel("Invitation (Español)")
       .fill(was);
+    await chair
+      .getByRole("group", { name: "Introduction to the formats", exact: true })
+      .getByLabel("Introduction to the formats (Español)")
+      .fill(introWas);
     await reviewAndSave(chair);
     const after = await stored(chair, CALL);
     expect(after.config.invitation).toEqual(before.config.invitation);
+    expect(after.config.formatsIntro).toEqual(before.config.formatsIntro);
     expect(after.config.contributionGroups).toEqual(before.config.contributionGroups);
     expect(after.token).toBe(before.token);
     await expect.poll(() => unsavedValues(chair)).toBeNull();

@@ -328,6 +328,11 @@ const ConferenceConfigShape = z.object({
    * the conference's own page lead with it. Like every text of a configuration it is public.
    */
   invitation: LocalizedText.optional(),
+  /**
+   * A sentence that introduces the call's formats ("These are the forms a proposal can take").
+   * The conference's own page shows it above its formats.
+   */
+  formatsIntro: LocalizedText.optional(),
   host: z.string().min(1),
   location: LocalizedText,
   modality: Modality,
@@ -432,6 +437,7 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
   text(["theme"], c.theme);
   text(["distinction"], c.distinction);
   text(["invitation"], c.invitation);
+  text(["formatsIntro"], c.formatsIntro);
   text(["location"], c.location);
   for (const [i, t] of c.tracks.entries()) text(["tracks", i, "name"], t.name);
   for (const [i, t] of c.topics.entries()) text(["topics", i, "label"], t.label);

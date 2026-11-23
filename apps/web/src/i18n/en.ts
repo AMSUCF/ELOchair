@@ -52,7 +52,6 @@ export const en = {
   confMinutes: "{n} minutes",
   confPeopleRange: "{min}–{max} people",
   confPeopleExact: "{n} people",
-  confAlsoAsks: "Also asks for",
   confRequired: "required",
   review_double: "Anonymized review: reviewers do not see who you are.",
   review_single: "Reviewers see names and affiliations, but not bios or contact details.",
@@ -149,6 +148,15 @@ export const en = {
   inviteSignInNote:
     "Reviewers and organizers sign in with the email address from their invitation.",
   inviteWebsite: "Conference website",
+  formatLabel: "Format",
+  formatPosition: "Format {n} of {total}",
+  formatShowing: "Showing {name}: format {n} of {total}.",
+  formatAsks: "The form asks for",
+  formatReviewedBy: "Reviewed by",
+  formatStart: "Start this proposal",
+  formatOfficial: "Official format requirements",
+  formatPrevious: "Previous",
+  formatNext: "Next",
 } as const;
 
 export type MessageKey = keyof typeof en;

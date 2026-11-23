@@ -15,10 +15,11 @@ import type { ConferenceConfigInput } from "../config";
  * Not from the call, and still stand-ins: the day submissions open, the notification and
  * final-materials dates, and the agreements.
  *
- * The invitation, the line about Latin America and the ways to contribute are the wording of
- * the design preview (docs/design/visitor-preview/copy.js), in English and Spanish. It was
- * checked against the conference site's source on 2026-11-16; the invitation is new copy based
- * on the call's theme statement, not a quotation. Each group holds the formats its line names.
+ * The invitation, the line about Latin America, the sentence that introduces the formats and
+ * the ways to contribute are the wording of the design preview
+ * (docs/design/visitor-preview/copy.js), in English and Spanish. It was checked against the
+ * conference site's source on 2026-11-16; the invitation is new copy based on the call's theme
+ * statement, not a quotation. Each group holds the formats its line names.
  *
  * The Spanish theme is the call's own wording. The other Spanish text and all the Portuguese
  * are machine-drafted and need review by native speakers.
@@ -42,6 +43,11 @@ export const elo2027: ConferenceConfigInput = {
     en: "We invite work that engages attention as a political, ecological and poetic condition, and the practices through which electronic literature trains, reshapes and resists the overload that keeps it fragmented.",
     es: "Invitamos propuestas que aborden la atención como condición política, ecológica y poética, y las prácticas con las que la literatura electrónica la entrena, la transforma y resiste la sobrecarga que la mantiene fragmentada.",
     pt: "Convidamos propostas que abordem a atenção como condição política, ecológica e poética, e as práticas com que a literatura eletrónica a treina, a transforma e resiste à sobrecarga que a mantém fragmentada.",
+  },
+  formatsIntro: {
+    en: "The theme is a frame for reflection, not a boundary. These are the formats it can take.",
+    es: "El tema es un marco para la reflexión, no un límite. Estos son los formatos que puede tomar.",
+    pt: "O tema é um quadro para a reflexão, não um limite. Estes são os formatos que pode assumir.",
   },
   host: "Universidad del Norte",
   location: {

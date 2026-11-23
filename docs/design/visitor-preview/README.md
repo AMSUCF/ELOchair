@@ -4,7 +4,18 @@ The preview leads with **Ecologies of Attention / Ecologías de la atención** a
 
 ## What the app implements
 
-The app's front page now is this preview's opening view for the conference whose call is open, and that conference's own page begins with the same invitation: the eyebrow with the state of the call, the theme in two languages, the main action for each state, the dates and place, the line about Latin America, the invitation, "Read the CFP", the due date as the call states it, "Ways to contribute", "Already involved?" and the conference website. The wording is in the conference's configuration (`packages/schema/src/conferences/elo2027.ts`) and in the app's message catalogs, drawn in the app's own identity ([visual-identity.md](../visual-identity.md); spec 02, §1.10). The rest remains a design study: the formats browser with its selector and detail panel, the key-dates page, the sign-in variations with their intended next step, EN·ES as a third position of the language switch, and the preview options.
+The app's front page now is this preview's opening view for the conference whose call is open, and that conference's own page begins with the same invitation: the eyebrow with the state of the call, the theme in two languages, the main action for each state, the dates and place, the line about Latin America, the invitation, "Read the CFP", the due date as the call states it, "Ways to contribute", "Already involved?" and the conference website. The wording is in the conference's configuration (`packages/schema/src/conferences/elo2027.ts`) and in the app's message catalogs, drawn in the app's own identity ([visual-identity.md](../visual-identity.md); spec 02, §1.10).
+
+The formats view is in the app too, as the "Submission formats" section of every conference's page: the sentence that introduces the formats, the languages line and the link to the official requirements; then one format at a time, chosen from the list on a wide screen or from the "Format" select on a phone, in one panel with its name, its figures, its description, "Start this proposal", and "Previous" and "Next". It differs from the preview where the app goes by a conference's configuration rather than by this page's own copy:
+
+- The figures are the ones the configuration holds for a format (the abstract's words, the minutes, the people on a proposal). The bio's length is one limit for the whole conference there, so it is not a figure of a format.
+- The tag on a row is the committee that reviews the format, where the preview says "Academic" or "Artistic". A format that is not submitted here says "Not submitted here" where the preview says "By email": the configuration does not say how such a format is sent.
+- The panel also says what the form asks for, and who reviews the format and how. The preview has no such lines; the app's conference page always said them.
+- A description is shown in the language of the page, not in both. Names, the sentence that introduces the formats, and buttons are paired, as elsewhere in the app.
+- "Start this proposal" is the only filled button of the panel; "Previous" and "Next" are both outlined.
+- Labels and tags are 13px at least, where the preview sets them at 11px.
+
+The rest remains a design study: the key-dates page, the sign-in variations with their intended next step, EN·ES as a third position of the language switch, and the preview options.
 
 ## Conference theme and bilingual interface
 

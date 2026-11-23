@@ -9,8 +9,9 @@ import {
   formatDateRange,
   isShortTheme,
 } from "./format";
+import { formatAnchor } from "./formats";
 import { type Lang, translate, useT } from "./i18n";
-import { formatAnchor, headlineParts, languageChoice, mainAction } from "./invitation";
+import { headlineParts, languageChoice, mainAction } from "./invitation";
 import { callStateKey, modalityKey } from "./labels";
 import {
   Echo,
@@ -201,6 +202,24 @@ export function InvitationHero({
 }
 
 /**
+ * "Proposals in English or Spanish.": the languages a proposal may be written in, named in the
+ * language of the page, with the same line in the other language under it when there is a
+ * choice to tell of.
+ */
+export function ProposalLanguages({ languages }: { languages: readonly string[] }) {
+  const { lang } = useT();
+  const partner = partnerLang(lang);
+  const line = (language: Lang) =>
+    translate(language, "inviteLanguages", { languages: languageChoice(languages, language) });
+  return (
+    <p className="meta">
+      {line(lang)}
+      {languages.length > 1 && <Echo text={line(partner)} lang={partner} below />}
+    </p>
+  );
+}
+
+/**
  * "Ways to contribute": the languages proposals may be in, then the call's formats in their
  * groups, each leading to its first format on the conference's page. Nothing for a conference
  * whose configuration has no groups.
@@ -217,17 +236,11 @@ export function WaysToContribute({
   const { lang, t } = useT();
   const c = detail.config;
   const fb = c.defaultLanguage;
-  const partner = partnerLang(lang);
   if (c.contributionGroups.length === 0) return null;
-  const languages = (language: Lang) =>
-    translate(language, "inviteLanguages", { languages: languageChoice(c.languages, language) });
   return (
     <section aria-labelledby="ways" className="ways">
       <SectionHeading id="ways" k="inviteWays" number={number} />
-      <p className="meta">
-        {languages(lang)}
-        {c.languages.length > 1 && <Echo text={languages(partner)} lang={partner} below />}
-      </p>
+      <ProposalLanguages languages={c.languages} />
       <ul className="cards">
         {c.contributionGroups.map((group) => {
           // One format: the link goes to what it asks for. Several: to the first of them.

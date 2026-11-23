@@ -138,10 +138,19 @@ test("the 2026 call for proposals reads well on a phone", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: "ELO 2026: (un)supervised" }),
   ).toBeVisible();
   await expect(page).toHaveTitle("ELO 2026: (un)supervised – ELOchair");
-  await expect(page.getByRole("heading", { name: "Individual talk" })).toBeVisible();
-  await expect(page.getByText("250–300 words").first()).toBeVisible();
+  // Its formats are shown one at a time (formats.spec.ts reads them all): the talk, chosen in
+  // the select, has its lengths and how it is reviewed in the one panel.
+  const chooser = page.getByRole("combobox", { name: "Format", exact: true });
+  const talk = await chooser
+    .locator("option", { hasText: "Individual talk" })
+    .getAttribute("value");
+  await chooser.selectOption(talk ?? "");
+  const panel = page.locator(".format-panel");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByRole("heading", { level: 3, name: "Individual talk" })).toBeVisible();
+  await expect(panel.getByText("250–300 words")).toBeVisible();
   await expect(
-    page.getByText("Anonymized review: reviewers do not see who you are.").first(),
+    panel.getByText("Anonymized review: reviewers do not see who you are."),
   ).toBeVisible();
   // Deadlines in conference time and, for this Lisbon visitor, in their own time.
   await expect(page.getByText("Conference time (America/New_York)").first()).toBeVisible();
@@ -608,15 +617,18 @@ test("the invitation's links lead to the part of the conference's page they name
   const theme = page.getByRole("heading", { level: 1, name: held(config.theme.en, "theme") });
 
   // From the front page, a way to contribute goes to its first format on the conference's page.
-  // That format is in view and has the focus, so that reading and the keyboard go on from it.
+  // That page shows one format at a time: this one is chosen, and its name, the heading of the
+  // one panel, is in view and has the focus, so that reading and the keyboard go on from it.
   await page.goto("/en/");
   await wayTo(last).click();
   await expect(page).toHaveURL(new RegExp(`/en/c/${CALL}#format-${last.formats[0]}$`));
-  const card = page.locator(`#format-${last.formats[0]}`);
-  await expect(card).toBeFocused();
-  await expect(card).toBeInViewport();
+  const shown = page.locator(`#format-${last.formats[0]}`);
+  await expect(shown).toBeFocused();
+  await expect(shown).toBeInViewport();
   const format = config.submissionTypes.find((type) => type.key === last.formats[0]);
-  await expect(card).toContainText(held(format?.name.en, "format of that key"));
+  await expect(shown).toContainText(held(format?.name.en, "format of that key"));
+  await expect(page.locator(".format-panel").getByRole("heading", { level: 3 })).toHaveCount(1);
+  await expect(page.locator(".format-panel").locator(shown)).toHaveCount(1);
 
   // The conference's page begins with the same invitation, and there the same links stay on
   // the page: the address changes only after the "#", and the page's heading stays out of it
