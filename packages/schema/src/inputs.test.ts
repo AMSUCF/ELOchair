@@ -429,8 +429,13 @@ describe("assignments (spec 03, §1.3)", () => {
       releasedByPersonId: id(6),
       releasedAt: "2027-02-16T12:00:00Z",
       reason: "chair",
+      note: null,
     };
     expect(ok(AssignmentRelease, release)).toBe(true);
+    // A reviewer who says they cannot review it may leave a note for the chairs.
+    expect(
+      ok(AssignmentRelease, { ...release, reason: "time", note: "Away until the deadline." }),
+    ).toBe(true);
     for (const reason of ["chair", "conflict", "expertise", "time", "role_removed"]) {
       expect(ok(AssignmentRelease, { ...release, reason }), reason).toBe(true);
     }

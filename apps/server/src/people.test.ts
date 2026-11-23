@@ -355,6 +355,7 @@ describe("who may manage a conference's people", () => {
         email: "people-reviewer@example.org",
         pools: [POOL_A],
         assigned: 0,
+        sent: 0,
         // Given the role on the server: nothing was ever said about languages or load.
         maxLoad: null,
         languages: [],
@@ -833,6 +834,7 @@ describe("the invitation's link", () => {
       email,
       pools: [POOL_A],
       assigned: 0,
+      sent: 0,
       maxLoad: 5,
       languages: ["es", "en"],
     });
@@ -1586,7 +1588,7 @@ describe("removing a role", () => {
     for (const body of [{}, { assignments: victim.assigned + 1 }, { assignments: 0 }]) {
       const res = await remove({ cookie: chair }, victim.personId, "reviewer", body, slug);
       expect(res.status, JSON.stringify(body)).toBe(409);
-      expect(res.json).toEqual({ error: "stale", assignments: victim.assigned });
+      expect(res.json).toEqual({ error: "stale", assignments: victim.assigned, reviews: 0 });
     }
     expect((await assignmentsOf(victim.personId)).length).toBe(victim.assigned);
     expect(await rolesOf(victim.email, s.conferenceId)).toHaveLength(1);
@@ -1641,6 +1643,8 @@ describe("removing a role", () => {
           releasedByPersonId: chairId,
           releasedAt: NOW,
           reason: "role_removed",
+          // A chair's release carries no note: that is for a reviewer who says they cannot.
+          note: null,
         })),
       ),
     );
@@ -1663,7 +1667,12 @@ describe("removing a role", () => {
       actorPersonId: chairId,
       conferenceId: s.conferenceId,
       targetType: "person",
-      details: { role: "reviewer", pools: victim.pools, assignments: victim.assigned },
+      details: {
+        role: "reviewer",
+        pools: victim.pools,
+        assignments: victim.assigned,
+        reviewsKept: 0,
+      },
     });
     // And one row for each release, with the proposal, the reviewer and the reason.
     const releases = (await auditRows("assignment.released")).filter(
@@ -1674,7 +1683,7 @@ describe("removing a role", () => {
         chairId,
         s.conferenceId,
         "submission",
-        { reviewerId: victim.personId, reason: "role_removed" },
+        { reviewerId: victim.personId, reason: "role_removed", draftDiscarded: false },
       ]),
     );
     expect(releases.map((r) => r.targetId).sort()).toEqual(mine.map((a) => a.submissionId).sort());
@@ -1781,7 +1790,7 @@ describe("removing a role", () => {
       slug,
     );
     expect(wrong.status).toBe(409);
-    expect(wrong.json).toEqual({ error: "stale", assignments: shown });
+    expect(wrong.json).toEqual({ error: "stale", assignments: shown, reviews: 0 });
     const ok = await remove(
       { cookie: authorCookie },
       reviewerOfOwn.personId,
@@ -1879,7 +1888,7 @@ describe("removing a role", () => {
     const upper = r.personId.toUpperCase();
     const unchecked = await remove({ cookie: chair }, upper, "reviewer", { assignments: 0 }, slug);
     expect(unchecked.status).toBe(409);
-    expect(unchecked.json).toEqual({ error: "stale", assignments: r.assigned });
+    expect(unchecked.json).toEqual({ error: "stale", assignments: r.assigned, reviews: 0 });
     expect(await assignmentsOf(r.personId)).toHaveLength(r.assigned);
     const ok = await remove(
       { cookie: chair },
@@ -1894,7 +1903,7 @@ describe("removing a role", () => {
     const rows = await auditRows("role.removed");
     expect(rows.filter((x) => x.targetId === upper)).toEqual([]);
     expect(rows.filter((x) => x.targetId === r.personId).map((x) => x.details)).toEqual([
-      { role: "reviewer", pools: r.pools, assignments: r.assigned },
+      { role: "reviewer", pools: r.pools, assignments: r.assigned, reviewsKept: 0 },
     ]);
   });
 
@@ -2362,7 +2371,7 @@ describe("the audit log", () => {
           chairId,
           "person",
           pid,
-          { role: "reviewer", pools: [POOL_A, POOL_B], assignments: 0 },
+          { role: "reviewer", pools: [POOL_A, POOL_B], assignments: 0, reviewsKept: 0 },
         ],
         ["role_invitation.sent", chairId, "role_invitation", second.json.id, chairRecord],
         ["role_invitation.declined", pid, "role_invitation", second.json.id, chairRecord],

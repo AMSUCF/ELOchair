@@ -69,6 +69,28 @@ export const settingsEn = {
   settingsLabel_pool_reviewsPerSubmission: "Reviews per proposal",
   settingsLabel_pool_guidelines: "Guidelines for reviewers",
   settingsLabel_criterion_label: "Label",
+  settingsLabel_criterion_description: "Description",
+  settingsCriterionDescriptionHint:
+    "Optional. What this criterion asks, or what its lowest and highest scores mean. Reviewers read it under the criterion's name on the review form.",
+  settingsFormTitle: "The review form",
+  settingsFormIntro:
+    "Under the scores, this committee's review form has comments for the authors, a note for the chairs only, and an overall recommendation. Their names are the app's own. What is written under each, the limits on the comments, and whether the form has the note and the recommendation, are yours to set.",
+  settingsLabel_form_comments_description:
+    "Comments for the authors: what is written under the field",
+  settingsLabel_form_comments_minWords: "Comments for the authors: fewest words",
+  settingsLabel_form_comments_maxWords: "Comments for the authors: most words",
+  settingsLabel_form_chairNote_enabled: "The form has a note for the chairs only",
+  settingsLabel_form_chairNote_description:
+    "Note for the chairs only: what is written under the field",
+  settingsLabel_form_recommendation_enabled:
+    "The form asks for an overall recommendation: accept, unsure or reject",
+  settingsLabel_form_recommendation_description: "Recommendation: what is written under its name",
+  settingsFormDescriptionHint:
+    "Optional. Left empty, reviewers read the standard sentence: “{standard}”",
+  settingsFormDescriptionHintNone: "Optional. Left empty, nothing is written there.",
+  settingsReviewsDueHint:
+    "Optional. Reviewers are shown this day on their list. It locks nothing: reviews can be sent and changed for as long as the conference is in review. For no day, leave the date empty.",
+  settingsDeadlineNone: "No day is set.",
   settingsLabel_criterion_min: "Smallest score",
   settingsLabel_criterion_max: "Largest score",
   settingsBlind_double:
@@ -228,6 +250,26 @@ export const settingsEn = {
   issue_settings_no_whole_number:
     "There is no whole number between this and the largest value beside it, so nobody could answer.",
   issue_settings_deadline_order: "This must not be before the deadline above it.",
+  issue_settings_reviews_due_order:
+    "Reviews are due after submissions close and before decisions are sent.",
+  issue_settings_reviews_below_scale:
+    "Reviews already sent that give a lower score than this: {n}. A review that was sent stays valid, so the smallest score cannot go above a score already given.",
+  issue_settings_reviews_above_scale:
+    "Reviews already sent that give a higher score than this: {n}. A review that was sent stays valid, so the largest score cannot go below a score already given.",
+  issue_settings_reviews_have_scores:
+    "Reviews already sent that score a criterion this would remove: {n}. A review that was sent stays valid.",
+  issue_settings_reviews_too_short:
+    "Reviews already sent whose comments have fewer words than this: {n}. A review that was sent stays valid.",
+  issue_settings_reviews_too_long:
+    "Reviews already sent whose comments have more words than this: {n}. A review that was sent stays valid.",
+  issue_settings_reviews_have_note:
+    "Reviews already sent that have a note for the chairs: {n}. The note cannot be taken off the form while a sent review has one.",
+  issue_settings_reviews_have_recommendation:
+    "Reviews already sent that give a recommendation: {n}. It cannot be taken off the form while a sent review has one.",
+  issue_settings_reviews_sent:
+    "Reviews were already sent for proposals in this format: {n}. They answered the form of the committee that reviews it now.",
+  issue_settings_reviews_hidden:
+    "A proposal of your own, or one you have a conflict with, was submitted for this committee, and the conference has been in review. Whether that proposal has reviews, and what they hold, is not yours to know, so narrowing the form they are written on is not yours to do. A chair who has no proposal of their own before this committee, and no conflict with one, can make this change. If there is no such chair, invite one on the People page.",
   issue_settings_dates_order: "The last day must not be before the first day.",
   issue_settings_final_before_conference:
     "Final materials must be due before the conference starts.",

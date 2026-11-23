@@ -100,6 +100,7 @@ function record(more: Partial<PeopleRecord> = {}): PeopleRecord {
     people: new Map(),
     invitations: [],
     submissions: [],
+    sentReviews: [],
     ...more,
   };
 }
@@ -238,6 +239,7 @@ describe("the People page", () => {
         email: person(12).email,
         pools: [POOLS[0]],
         assigned: 0,
+        sent: 0,
         maxLoad: 5,
         languages: ["es", "pt"],
       },
@@ -275,6 +277,7 @@ describe("the People page", () => {
         email: person(12).email,
         pools: POOLS,
         assigned: 0,
+        sent: 0,
         maxLoad: null,
         languages: [],
       },

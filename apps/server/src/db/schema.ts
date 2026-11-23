@@ -48,6 +48,14 @@ export const conferences = pgTable(
     config: jsonb("config").notNull(),
     createdAt: created(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
+    /**
+     * When the conference was first found in a phase in which its reviewers can read
+     * (`reviewing` or a later one). Set once, by whatever gives a conference its phase
+     * (repo.ts), and never cleared: a conference that is moved back out of review has still been
+     * in review, and reviews of its proposals may have been sent. It says nothing that the
+     * chairs do not know. Null for a conference that has never been in such a phase.
+     */
+    reviewBeganAt: ts("review_began_at"),
   },
   (t) => [
     check(
@@ -247,6 +255,12 @@ export const assignmentReleases = pgTable(
     }),
     releasedAt: ts("released_at").notNull(),
     reason: text("reason").notNull(),
+    /**
+     * What the reviewer wrote for the chairs when they said they could not review the proposal
+     * (spec 03, §1.3). Null where they wrote nothing, and on every release that was not theirs.
+     * It is a person's text: shown only to a chair who manages the proposal, never audited.
+     */
+    note: text("note"),
   },
   (t) => [
     check(
@@ -255,6 +269,65 @@ export const assignmentReleases = pgTable(
     ),
     index("assignment_releases_submission_idx").on(t.submissionId),
     index("assignment_releases_conference_idx").on(t.conferenceId),
+  ],
+);
+
+/**
+ * One reviewer's review of one proposal (spec 03, §1.4): at most one row for the two. A draft
+ * is its reviewer's own, and nothing a chair reads says that one exists; a sent review is read
+ * by the chairs who manage the proposal.
+ *
+ * A review belongs to a proposal and a reviewer, not to a row of `assignments`: that row is
+ * deleted when the assignment is released, which is what lets every version of the app read
+ * `assignments` as the assignments that stand. What keeps the two in step is the code that
+ * releases (services/assignments.ts): a release takes the reviewer's draft with it, and an
+ * assignment whose review was sent is not released.
+ *
+ * What survives what:
+ * - A review goes with its proposal and with its conference, as the proposal's assignments and
+ *   their record do (`submission_id`, `conference_id`, cascade): an owner deleting a draft
+ *   never fails on it, and nothing is left of a proposal that is gone.
+ * - It does not go with its reviewer, and it does not lose them (`reviewer_id`, no action, as
+ *   on `assignments`): a review is one person's judgement, in their words, and it neither
+ *   vanishes nor becomes nobody's because a row of `people` was deleted. Whoever deletes a
+ *   person decides first what becomes of their reviews.
+ */
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    reviewerId: uuid("reviewer_id")
+      .notNull()
+      .references(() => people.id),
+    /** Optimistic concurrency, as for a proposal: increases on every save. */
+    version: integer("version").notNull().default(1),
+    status: text("status").notNull().default("draft"),
+    /** A whole number for each criterion answered: { "<criterion key>": 4 }. */
+    scores: jsonb("scores").notNull().default({}),
+    /** For the authors. */
+    comments: text("comments").notNull().default(""),
+    /** For the chairs only. */
+    chairNote: text("chair_note").notNull().default(""),
+    recommendation: text("recommendation"),
+    createdAt: created(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+    /** When it was first sent; null while it is a draft. */
+    sentAt: ts("sent_at"),
+  },
+  (t) => [
+    unique("reviews_submission_reviewer").on(t.submissionId, t.reviewerId),
+    check("reviews_status_check", sql`${t.status} in ('draft','sent')`),
+    check("reviews_recommendation_check", sql`${t.recommendation} in ('accept','unsure','reject')`),
+    // Sent is said once: a sent review has the time it was sent, and a draft has none.
+    check("reviews_sent_check", sql`(${t.status} = 'sent') = (${t.sentAt} is not null)`),
+    index("reviews_conference_idx").on(t.conferenceId, t.status),
+    index("reviews_reviewer_idx").on(t.reviewerId),
   ],
 );
 

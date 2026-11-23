@@ -4,4 +4,5 @@ export * from "./assignments";
 export * from "./derived";
 export * from "./people";
 export * from "./projections";
+export * from "./reviews";
 export * from "./viewer";

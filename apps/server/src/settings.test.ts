@@ -1245,6 +1245,7 @@ describe("a review never carries anyone's words (house rule 2)", () => {
     slug: "leak-call",
     phase: "cfp_open",
     config,
+    reviewBeganAt: null,
   };
   const chair: PersonViewer = {
     kind: "person",
@@ -1396,6 +1397,7 @@ describe("a review never carries anyone's words (house rule 2)", () => {
             conference,
             records: built.map((b) => b.rec),
             everAssigned: new Set(built.filter((b) => b.ever).map((b) => b.rec.submission.id)),
+            sentReviews: [],
             input: next,
             base: null,
             now: NOW,

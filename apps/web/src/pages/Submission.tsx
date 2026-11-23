@@ -38,6 +38,7 @@ import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey } from "../l
 import { Localized, PageHeading, StatusBadge } from "../ui";
 import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
 import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsavedProposal";
+import { reviewScope } from "../unsavedReview";
 import { useUnsaved } from "../useUnsaved";
 import { ChairProposal } from "./ChairProposal";
 import { ReviewerProposal } from "./ReviewerProposal";
@@ -125,6 +126,8 @@ export function SubmissionPage() {
   const [me, setMe] = useState<Profile | null>(null);
   /** The person looking is a chair of the proposal's conference: its reviewers are theirs. */
   const [chairs, setChairs] = useState(false);
+  /** They also hold the reviewer's role there: a chair may be one of a proposal's reviewers. */
+  const [reviewsHere, setReviewsHere] = useState(false);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async () => {
@@ -137,6 +140,8 @@ export function SubmissionPage() {
       // Deleted elsewhere: what was left unsaved for it in this browser goes too.
       if (!s.ok && s.status === 404 && m.ok && m.data.kind === "person" && m.data.person) {
         clearUnsaved(browserStore(), m.data.person.id, unsavedScope(id));
+        // And what a reviewer left unsaved for a proposal that is no longer theirs to read.
+        clearUnsaved(browserStore(), m.data.person.id, reviewScope(id));
       }
       setMissing(true);
       return;
@@ -154,6 +159,11 @@ export function SubmissionPage() {
             (r) => r.conference === k.data.slug && (r.role === "admin" || r.role === "chair"),
           )),
     );
+    setReviewsHere(
+      m.ok &&
+        m.data.kind === "person" &&
+        m.data.roles.some((r) => r.conference === k.data.slug && r.role === "reviewer"),
+    );
   }, [id]);
 
   useEffect(() => {
@@ -166,7 +176,9 @@ export function SubmissionPage() {
   if (!sub || !conf) return <p role="status">{t("loading")}</p>;
   // A reviewer is given less than everyone else (no people, in anonymized review): its own view.
   if (sub.view === "reviewer") {
-    return <ReviewerProposal key={sub.id} sub={sub} config={conf.config} />;
+    return (
+      <ReviewerProposal key={sub.id} sub={sub} config={conf.config} personId={me?.id ?? null} />
+    );
   }
   // A chair reads the whole proposal: what the exports hold, on one page.
   if (sub.view === "chair") {
@@ -178,6 +190,8 @@ export function SubmissionPage() {
         phase={conf.phase}
         config={conf.config}
         managesReviewers={chairs}
+        reviewsHere={reviewsHere}
+        personId={me?.id ?? null}
       />
     );
   }

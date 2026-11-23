@@ -72,6 +72,29 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsLabel_pool_reviewsPerSubmission: "Revisiones por propuesta",
   settingsLabel_pool_guidelines: "Pautas para quienes revisan",
   settingsLabel_criterion_label: "Etiqueta",
+  settingsLabel_criterion_description: "Descripción",
+  settingsCriterionDescriptionHint:
+    "Opcional. Qué pregunta este criterio, o qué significan su puntuación más baja y la más alta. Quienes revisan lo leen debajo del nombre del criterio en el formulario de revisión.",
+  settingsFormTitle: "El formulario de revisión",
+  settingsFormIntro:
+    "Debajo de las puntuaciones, el formulario de revisión de este comité tiene comentarios para las personas autoras, una nota solo para la presidencia y una recomendación general. Sus nombres son los de la aplicación. Lo que se escribe debajo de cada uno, los límites de los comentarios, y si el formulario tiene la nota y la recomendación, los decides tú.",
+  settingsLabel_form_comments_description:
+    "Comentarios para las personas autoras: lo que se escribe debajo del campo",
+  settingsLabel_form_comments_minWords: "Comentarios para las personas autoras: mínimo de palabras",
+  settingsLabel_form_comments_maxWords: "Comentarios para las personas autoras: máximo de palabras",
+  settingsLabel_form_chairNote_enabled: "El formulario tiene una nota solo para la presidencia",
+  settingsLabel_form_chairNote_description:
+    "Nota solo para la presidencia: lo que se escribe debajo del campo",
+  settingsLabel_form_recommendation_enabled:
+    "El formulario pide una recomendación general: aceptar, con dudas o rechazar",
+  settingsLabel_form_recommendation_description:
+    "Recomendación: lo que se escribe debajo de su nombre",
+  settingsFormDescriptionHint:
+    "Opcional. Si lo dejas vacío, quienes revisan leen la frase estándar: «{standard}»",
+  settingsFormDescriptionHintNone: "Opcional. Si lo dejas vacío, ahí no se escribe nada.",
+  settingsReviewsDueHint:
+    "Opcional. Quienes revisan ven este día en su lista. No bloquea nada: las revisiones se pueden enviar y cambiar mientras el congreso esté en revisión. Para no fijar ningún día, deja la fecha vacía.",
+  settingsDeadlineNone: "No hay ningún día fijado.",
   settingsLabel_criterion_min: "Puntuación más baja",
   settingsLabel_criterion_max: "Puntuación más alta",
   settingsBlind_double:
@@ -234,6 +257,26 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   issue_settings_no_whole_number:
     "No hay ningún número entero entre este valor y el máximo que tiene al lado, así que nadie podría responder.",
   issue_settings_deadline_order: "No puede ser anterior al plazo de arriba.",
+  issue_settings_reviews_due_order:
+    "Las revisiones se entregan después del cierre de envíos y antes del envío de decisiones.",
+  issue_settings_reviews_below_scale:
+    "Revisiones ya enviadas con una puntuación más baja que esta: {n}. Una revisión enviada sigue siendo válida, así que la puntuación más baja no puede quedar por encima de una ya dada.",
+  issue_settings_reviews_above_scale:
+    "Revisiones ya enviadas con una puntuación más alta que esta: {n}. Una revisión enviada sigue siendo válida, así que la puntuación más alta no puede quedar por debajo de una ya dada.",
+  issue_settings_reviews_have_scores:
+    "Revisiones ya enviadas que puntúan un criterio que esto quitaría: {n}. Una revisión enviada sigue siendo válida.",
+  issue_settings_reviews_too_short:
+    "Revisiones ya enviadas cuyos comentarios tienen menos palabras que estas: {n}. Una revisión enviada sigue siendo válida.",
+  issue_settings_reviews_too_long:
+    "Revisiones ya enviadas cuyos comentarios tienen más palabras que estas: {n}. Una revisión enviada sigue siendo válida.",
+  issue_settings_reviews_have_note:
+    "Revisiones ya enviadas que tienen una nota para la presidencia: {n}. La nota no se puede quitar del formulario mientras una revisión enviada tenga una.",
+  issue_settings_reviews_have_recommendation:
+    "Revisiones ya enviadas que dan una recomendación: {n}. No se puede quitar del formulario mientras una revisión enviada tenga una.",
+  issue_settings_reviews_sent:
+    "Ya se enviaron revisiones de propuestas en este formato: {n}. Respondieron al formulario del comité que lo revisa ahora.",
+  issue_settings_reviews_hidden:
+    "Se envió a este comité una propuesta tuya, o una con la que tienes un conflicto, y el congreso ya ha estado en revisión. Si esa propuesta tiene revisiones, y lo que dicen, no te corresponde saberlo, así que tampoco te corresponde restringir el formulario en el que se escriben. Puede hacer este cambio una persona de la presidencia que no tenga una propuesta propia ante este comité ni un conflicto con alguna. Si no hay ninguna, invita a una en la página Personas.",
   issue_settings_dates_order: "El último día no puede ser anterior al primero.",
   issue_settings_final_before_conference:
     "Los materiales finales deben entregarse antes de que empiece el congreso.",

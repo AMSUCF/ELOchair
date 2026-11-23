@@ -12,8 +12,9 @@ import {
  * Conference settings (spec 02, §1.9), as a chair uses them on a phone. The tests share one
  * server with the others and run beside them, so they change only what no other test reads
  * (the length of a reading or performance, the day decisions are sent, a pool's guidelines,
- * the label of one criterion, the end of the Spanish invitation, and the Portuguese wording of
- * the notice about a deleted draft) and put it back. The tests that read the invitation on the
+ * the label of one criterion, the end of the Spanish invitation, the Portuguese wording of
+ * the notice about a deleted draft, and the wording and limits of one pool's review form with
+ * the day reviews are due) and put it back. The tests that read the invitation on the
  * front page read the Spanish one by its beginning. No blind mode is ever saved: other tests read who is shown to reviewers. Of the
  * emails, the others read the invitation, the receipt, the answer to the owner and the notice
  * to people invited to withdrawn work: those are reworded here only as far as the review step.
@@ -117,6 +118,12 @@ type Stored = {
   config: {
     title: Record<string, string>;
     defaultLanguage: string;
+    timezone: string;
+    deadlines: {
+      submissionsClose: string;
+      notification: string;
+      reviewsDue?: string;
+    };
     distinction?: Record<string, string>;
     invitation?: Record<string, string>;
     contributionGroups: {
@@ -139,7 +146,18 @@ type Stored = {
       blindMode: "double" | "single" | "open";
       reviewsPerSubmission: number;
       guidelines?: Record<string, string>;
-      criteria: { key: string; label: Record<string, string>; min: number; max: number }[];
+      criteria: {
+        key: string;
+        label: Record<string, string>;
+        description?: Record<string, string>;
+        min: number;
+        max: number;
+      }[];
+      form: {
+        comments: { description?: Record<string, string>; minWords?: number; maxWords?: number };
+        chairNote: { enabled: boolean; description?: Record<string, string> };
+        recommendation: { enabled: boolean; description?: Record<string, string> };
+      };
     }[];
     submissionTypes: {
       key: string;
@@ -318,6 +336,15 @@ test.describe("conference settings", () => {
       "Only the chairs of this conference can change its settings.",
     );
     await expect(page.getByRole("button", { name: "Review changes" })).toHaveCount(0);
+    // Nor do they review anywhere: the main menu, which has asked by now, offers them no list
+    // of reviews. (The chair of these tests also reviews, at `chair-reviews`, and is offered it.)
+    expect(await (await page.request.get("/api/me/menu")).json()).toEqual({ reviews: false });
+    await expect(
+      page.locator(".site-header").getByRole("link", { name: "My submissions" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".site-header").getByRole("link", { name: "My reviews" }),
+    ).toHaveCount(0);
 
     // The chair tries a limit of 30 words: the review says it cannot be saved, and why.
     await openSettings(chair);
@@ -1884,10 +1911,20 @@ test.describe("conference settings", () => {
    *   two reviews, and on that proposal's page the first reviewer offered who is neither of them;
    * - a reviewer who is offered is not on the proposal, so the only assignment this test ever
    *   removes is the one it has just made. No seeded assignment is released.
-   * Every proposal therefore ends with the reviewers it had (checked at the end), each of the
-   * two reviewers taken has the number of proposals they had, and what the other tests read
-   * (a reviewer's own list, the guard on anonymity) never changes. The one trace is a released
-   * row for each pair, which counts nowhere; both formats had reviewers already.
+   * Every proposal it touches therefore ends with the reviewers it had (checked at the end),
+   * each of the two reviewers taken has the number of proposals they had, and what the other
+   * tests read (a reviewer's own list, the guard on anonymity) never changes. The one trace is a
+   * released row for each pair, which counts nowhere; both formats had reviewers already.
+   *
+   * Reviewer-30 writes beside this test (review.spec.ts): reviews of their own proposals, one of
+   * which they give back. That changes those proposals on the Assignments list (who reviews
+   * them, how many reviews were sent, whether they are short), the totals above them, and
+   * reviewer-30's own number of proposals, at a moment this test cannot know. So this test
+   * compares nothing that reviewer-30 can change:
+   * - what the page shows is held to the answer the page itself was given, not to one asked for
+   *   a moment earlier;
+   * - "as it was found" is said of the proposals that neither of the two reviewed when this
+   *   test began (the only ones it could touch), and of the people offered other than the two.
    */
   test("a chair sees where reviewers are missing, assigns one on the proposal's page, and removes them again", async () => {
     test.slow();
@@ -1899,7 +1936,8 @@ test.describe("conference settings", () => {
       needed: number;
       proposals: number;
       short: number;
-      items: { id: string; title: string; reviewers: Holder[]; short: boolean }[];
+      waiting: number;
+      items: { id: string; title: string; reviewers: Holder[]; short: boolean; sent: number }[];
       nextCursor: string | null;
     };
     type Section = {
@@ -1936,7 +1974,7 @@ test.describe("conference settings", () => {
     await expect(chair.getByRole("heading", { level: 1, name: "Assignments" })).toBeFocused();
     await expect(
       chair.getByText(
-        "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first. To assign or remove a reviewer, open the proposal. Nothing is assigned automatically, and nobody is emailed.",
+        "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first, then those still waiting for reviews. To assign or remove a reviewer, or to read the reviews that were sent, open the proposal. Nothing is assigned automatically, and nobody is emailed.",
       ),
     ).toBeVisible();
     await expect(
@@ -1950,6 +1988,8 @@ test.describe("conference settings", () => {
       .filter({ has: chair.getByRole("link", { name: "A reading for forty words" }) });
     await expect(waiting.locator(".badge")).toHaveText(/^Needs (1|\d+) more$/);
     await expect(waiting.getByText(/^Reviewers: 0 of \d+$/)).toBeVisible();
+    // No review of it was sent: nobody reviews it yet.
+    await expect(waiting.getByText("Reviews sent: 0", { exact: true })).toBeVisible();
     await expect(waiting.getByText("No reviewer yet")).toBeVisible();
     await expectTouchTarget(waiting.getByRole("link"));
     await expectAccessibleInBothThemes(chair);
@@ -2005,10 +2045,15 @@ test.describe("conference settings", () => {
     expect(taken.map((x) => x.reviewer.full).sort()).toEqual([false, true]);
 
     await chair.goto(`/en/c/${SANDBOX}/manage`);
+    // What the page is given is what it is held to (see above: the list may change meanwhile).
+    const given = chair.waitForResponse(
+      (r) => new URL(r.url()).pathname === `/api/conferences/${SANDBOX}/assignments`,
+    );
     await chair.getByRole("link", { name: "Assignments", exact: true }).click();
+    const shownPools = ((await (await given).json()) as { pools: Listed[] }).pools;
     await expect(chair.getByRole("heading", { level: 1, name: "Assignments" })).toBeFocused();
     await expect(chair.getByText("The call has not closed yet")).toHaveCount(0);
-    for (const [i, pool] of listed.pools.entries()) {
+    for (const [i, pool] of shownPools.entries()) {
       const part = chair.getByRole("region", { name: names[i]?.name.en ?? "", exact: true });
       // How many proposals, how many still short, and what the committee asks for.
       const short =
@@ -2043,6 +2088,8 @@ test.describe("conference settings", () => {
       await expect(
         card.getByText(`Reviewers: ${first.reviewers.length} of ${pool.needed}`),
       ).toBeVisible();
+      // Beside it, how many reviews of the proposal were sent.
+      await expect(card.getByText(`Reviews sent: ${first.sent}`, { exact: true })).toBeVisible();
       await expect(card.locator(".badge")).toHaveText(
         first.short ? /^Needs \d+ more$/ : "Has its reviewers",
       );
@@ -2209,7 +2256,10 @@ test.describe("conference settings", () => {
       // As it was found: the proposal has the reviewers it had, and the reviewer their number.
       const after = await sectionOf(SANDBOX, proposal.id);
       expect(after.assigned).toEqual(before.assigned);
-      expect(after.candidates).toEqual(before.candidates);
+      // (The two reviewers other tests read are left out: one of them gives a proposal back
+      // beside this test, and their number of proposals changes with it.)
+      const others = (x: Section) => x.candidates.filter((c) => !KEPT.includes(c.email));
+      expect(others(after)).toEqual(others(before));
       expect(await loadOf(reviewer.personId)).toBe(reviewer.assigned);
     }
 
@@ -2241,9 +2291,527 @@ test.describe("conference settings", () => {
     await expect(chair.getByRole("heading", { level: 1, name: "Atribuições" })).toBeVisible();
     await expectNoHorizontalScroll(chair);
 
-    // The whole list is as it was found: every proposal with the reviewers it had.
+    // The list is as it was found: every proposal that neither of the two reviewed when this
+    // test began (the only ones it could touch) has the reviewers and the reviews it had, in
+    // the order they were in.
+    const untouched = (pools: Listed[]) =>
+      pools.map((pool) => ({
+        key: pool.key,
+        items: pool.items.filter((item) => !theirs.has(item.id)),
+      }));
+    const theirs = new Set(
+      listed.pools.flatMap((pool) =>
+        pool.items
+          .filter((item) => item.reviewers.some((r) => KEPT.includes(r.email)))
+          .map((item) => item.id),
+      ),
+    );
+    const now = await got<{ pools: Listed[] }>(`/api/conferences/${SANDBOX}/assignments?limit=200`);
+    expect(untouched(now.pools)).toEqual(untouched(listed.pools));
+  });
+
+  /*
+   * A chair may also review (spec 03, §1.4). The chair of these tests holds both roles at a
+   * small conference seeded for this, `chair-reviews`, with three talks assigned to them:
+   * nothing here touches the sandbox, and no other test reads that conference. The talk written
+   * to is the first on the chair's own list that has no review yet, so a second attempt of this
+   * test takes the next one.
+   */
+  test("a chair who also reviews writes their review on the proposal's page, above its reviewers", async () => {
+    const ROOM = "chair-reviews";
+    const TEXT = "Browser test, a chair's own review: clear, and well made.";
+    type Row = { submissionId: string; title: string; status: string };
+    const mine = async () => {
+      const all = (await (await chair.request.get("/api/me/reviews")).json()) as {
+        conferences: { conference: { slug: string }; proposals: Row[] }[];
+      };
+      return all.conferences.find((k) => k.conference.slug === ROOM)?.proposals ?? [];
+    };
+    const target = (await mine()).find((p) => p.status === "not_started");
+    if (!target) throw new Error("no talk without a review is left at chair-reviews");
+    const committee = (await stored(chair, ROOM)).config.reviewPools[0];
+    if (!committee) throw new Error("chair-reviews has no committee");
+
+    // The main menu offers a chair who reviews their list, and the talk is on it.
+    await chair.goto("/en/reviews");
+    await expect(chair.getByRole("heading", { level: 1, name: "My reviews" })).toBeVisible();
+    await expect(
+      chair.locator(".site-header").getByRole("link", { name: "My reviews" }),
+    ).toBeVisible();
+    await chair.locator(`a[href="/en/s/${target.submissionId}"]`).click();
+    await expect(chair.getByRole("heading", { level: 1, name: target.title })).toBeFocused();
+    // They read it as a chair: its people are named, although this committee reviews
+    // anonymized. Their own review is on the page all the same, above the proposal's reviewers.
+    await expect(chair.getByRole("heading", { level: 2, name: "People" })).toBeVisible();
+    await expect(chair.locator("main")).toContainText("Fictional Author");
+    const review = chair.getByRole("region", { name: "Your review" });
+    const reviewers = chair.getByRole("region", { name: "Reviewers" });
+    const send = review.getByRole("button", { name: "Send review" });
+    await expectTouchTarget(send);
+    await expect(reviewers.getByRole("heading", { level: 2, name: "Reviewers" })).toBeVisible();
+    const top = async (part: Locator) => (await part.boundingBox())?.y ?? 0;
+    expect(await top(review)).toBeLessThan(await top(reviewers));
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // Filled in and sent, like any reviewer's.
+    for (const criterion of committee.criteria) {
+      await review
+        .getByRole("group", { name: criterion.label.en ?? "", exact: true })
+        .getByRole("radio", { name: "4", exact: true })
+        .check();
+    }
+    await review.getByLabel("Comments for the authors").fill(TEXT);
+    await review
+      .getByRole("group", { name: "Your recommendation" })
+      .getByRole("radio", { name: "Accept" })
+      .check();
+    await send.click();
+    await expect(review.getByRole("status")).toHaveText(
+      "Your review was sent. The chairs can read it now. You can change it while the conference is in review.",
+    );
+    await expect(review.getByRole("button", { name: "Change my review" })).toBeVisible();
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+    expect((await mine()).find((p) => p.submissionId === target.submissionId)?.status).toBe("sent");
+
+    // Opened again, the Reviewers section shows it as every chair of the conference reads it,
+    // under their name; and its reviewer is no longer removed from the proposal.
+    await chair.reload();
+    const theirs = reviewers
+      .getByRole("list", { name: "Reviewers", exact: true })
+      .locator("> li")
+      .filter({ hasText: "chair@example.org" });
+    await expect(theirs.getByRole("group", { name: "Review by Fictional Chair" })).toContainText(
+      TEXT,
+    );
+    await expect(theirs.getByRole("button")).toHaveCount(0);
+    await expect(review.getByText(TEXT)).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+  });
+
+  /*
+   * The review form is the chairs' to word (spec 03, §1.8): every limit and every description a
+   * reviewer meets on it is a setting, with the same change, review and save as the rest. Done
+   * on the open call, where nobody reviews yet and no other test reads these values, and put
+   * back as it was found.
+   */
+  test("a chair words the review form, sets its limits and the day reviews are due, and puts it all back", async () => {
+    test.slow();
+    const before = await stored(chair, CALL);
+    const pool = before.config.reviewPools[0];
+    const criterion = pool?.criteria[0];
+    if (!pool || !criterion) throw new Error("the call has no review pool with a criterion");
+    const poolName = pool.name.en ?? "";
+    const label = criterion.label.en ?? "";
+    // What this test reads and writes is not set on the call as it is seeded.
+    expect(before.config.deadlines).not.toHaveProperty("reviewsDue");
+    expect(criterion).not.toHaveProperty("description");
+    expect(pool.form).toEqual({
+      comments: {},
+      chairNote: { enabled: true },
+      recommendation: { enabled: true },
+    });
+    const { submissionsClose, notification } = before.config.deadlines;
+    const offset = /(Z|[+-]\d{2}:\d{2})$/.exec(notification)?.[1] ?? "";
+    // A day ten days after the call closes: before decisions are sent, thirty days after it.
+    const day = new Date(Date.parse(submissionsClose) + 10 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const due = `${day}T23:59:00${offset}`;
+    expect(Date.parse(due)).toBeGreaterThan(Date.parse(submissionsClose));
+    expect(Date.parse(due)).toBeLessThan(Date.parse(notification));
+
+    await openSettings(chair);
+    // The day reviews are due: optional, with a line that says what it does and does not do.
+    const dueGroup = chair.getByRole("group", { name: "Reviews due" });
+    await expect(
+      dueGroup.getByText(
+        "Optional. Reviewers are shown this day on their list. It locks nothing: reviews can be sent and changed for as long as the conference is in review. For no day, leave the date empty.",
+      ),
+    ).toBeVisible();
+    await expect(dueGroup.getByLabel("Date")).toHaveValue("");
+    // The end of the day, on the clock the day decisions are sent is written on: shown, so that
+    // typing a date is enough, and what is saved is what is shown.
+    await expect(dueGroup.getByLabel("Time")).toHaveValue("23:59");
+    await expect(dueGroup.getByLabel("Offset from UTC")).toHaveValue(
+      offset === "Z" ? "+00:00" : offset,
+    );
+    await expect(dueGroup.getByText("No day is set.")).toBeVisible();
+    await expect(dueGroup.getByLabel("Date")).toHaveAccessibleDescription(/No day is set\.$/);
+    await dueGroup.getByLabel("Date").fill(day);
+    await expect(dueGroup.getByText(/Conference time/)).toBeVisible();
+    await expect(dueGroup.getByText("No day is set.")).toHaveCount(0);
+
+    // The form's settings are in the committee's own section.
+    const section = await openPool(chair, poolName);
+    const one = section.getByRole("group", { name: `Criterion: ${label}` });
+    const described = one.getByLabel("Description (English)");
+    await expect(described).toHaveValue("");
+    await expect(described).toHaveAccessibleDescription(
+      "Optional. What this criterion asks, or what its lowest and highest scores mean. Reviewers read it under the criterion's name on the review form.",
+    );
+    const explained = "1 is far from the theme; 5 is at the heart of it.";
+    await described.fill(explained);
+
+    const form = section.getByRole("group", { name: "The review form" });
+    await expect(
+      form.getByText(
+        "Under the scores, this committee's review form has comments for the authors, a note for the chairs only, and an overall recommendation. Their names are the app's own. What is written under each, the limits on the comments, and whether the form has the note and the recommendation, are yours to set.",
+      ),
+    ).toBeVisible();
+    const under = form.getByLabel(
+      "Comments for the authors: what is written under the field (English)",
+    );
+    // Left empty, reviewers read the standard sentence, which the hint quotes.
+    await expect(under).toHaveValue("");
+    await expect(under).toHaveAccessibleDescription(
+      "Optional. Left empty, reviewers read the standard sentence: “The authors receive this with the decision. Say what is strong, what is unclear, and what would improve it.”",
+    );
+    const fewest = form.getByLabel("Comments for the authors: fewest words");
+    const most = form.getByLabel("Comments for the authors: most words");
+    const hasNote = form.getByLabel("The form has a note for the chairs only");
+    const asksRecommendation = form.getByLabel(
+      "The form asks for an overall recommendation: accept, unsure or reject",
+    );
+    await expect(fewest).toHaveValue("");
+    await expect(most).toHaveValue("");
+    await expect(hasNote).toBeChecked();
+    await expect(asksRecommendation).toBeChecked();
+    await expect(
+      form.getByLabel("Note for the chairs only: what is written under the field (English)"),
+    ).toHaveAccessibleDescription(
+      "Optional. Left empty, reviewers read the standard sentence: “The authors never see this.”",
+    );
+    await expect(
+      form.getByLabel("Recommendation: what is written under its name (English)"),
+    ).toHaveAccessibleDescription("Optional. Left empty, nothing is written there.");
+    await expectTouchTarget(under);
+    await expectTouchTarget(fewest);
+    await expectTouchTarget(form.locator("label.choice").first());
+    const worded = "Write to the authors as you would want to be written to.";
+    await under.fill(worded);
+    await fewest.fill("20");
+    await most.fill("10");
+    await hasNote.uncheck();
+    await expect(chair.getByText("Values changed and not saved yet: 6.")).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // More words asked for than allowed: refused in the review, beside the fewest.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    const why = "This must not be more than the largest value beside it.";
+    await expect(summary).toContainText(
+      `${poolName} · Comments for the authors: fewest words: ${why}`,
+    );
+    await expect(fewest).toHaveAttribute("aria-invalid", "true");
+    await expect(fewest).toHaveAccessibleDescription(new RegExp(`${why}$`));
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await fewest.fill("5");
+    await most.fill("400");
+
+    // Every change is reviewed, by name, before anything is saved.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const review = chair.getByRole("region", { name: "Review your changes" });
+    await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
+    await expect(review.getByRole("listitem")).toHaveCount(6);
+    /** One change in the review: the value by its full name, what it was and what it becomes. */
+    const changed = (name: string, from: string, to: string) =>
+      expect(review.getByRole("listitem").filter({ hasText: name })).toContainText(
+        `from “${from}” to “${to}”`,
+      );
+    await changed(
+      "Reviews due",
+      "empty",
+      `${shownInBogota(due)} (${before.config.timezone}), stored as ${due}`,
+    );
+    await changed(`${poolName} · ${label} · Description (English)`, "empty", explained);
+    await changed(
+      `${poolName} · Comments for the authors: what is written under the field (English)`,
+      "empty",
+      worded,
+    );
+    await changed(`${poolName} · Comments for the authors: fewest words`, "empty", "5");
+    await changed(`${poolName} · Comments for the authors: most words`, "empty", "400");
+    await changed(`${poolName} · The form has a note for the chairs only`, "yes", "no");
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.getByRole("button", { name: "Save changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Settings saved.");
+
+    // It is what the conference holds now, and so what the next reviewer's form is made from.
+    const saved = (await stored(chair, CALL)).config;
+    expect(saved.deadlines.reviewsDue).toBe(due);
+    expect(saved.reviewPools[0]?.criteria[0]?.description).toEqual({ en: explained });
+    expect(saved.reviewPools[0]?.form).toEqual({
+      comments: { description: { en: worded }, minWords: 5, maxWords: 400 },
+      chairNote: { enabled: false },
+      recommendation: { enabled: true },
+    });
+    // The other committee's form is as it was.
+    expect(saved.reviewPools.slice(1)).toEqual(before.config.reviewPools.slice(1));
+    await chair.reload();
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    await expect(chair.getByText(RESTORED)).toHaveCount(0);
+    await expect(dueGroup.getByLabel("Date")).toHaveValue(day);
+    await openPool(chair, poolName);
+    await expect(described).toHaveValue(explained);
+    await expect(fewest).toHaveValue("5");
+    await expect(most).toHaveValue("400");
+    await expect(hasNote).not.toBeChecked();
+
+    // Back exactly as it was, for the tests that run beside this one: an emptied date takes
+    // the day away, an emptied box its limit or its text.
+    await dueGroup.getByLabel("Date").fill("");
+    await expect(dueGroup.getByText("No day is set.")).toBeVisible();
+    await described.fill("");
+    await under.fill("");
+    await fewest.fill("");
+    await most.fill("");
+    await hasNote.check();
+    await reviewAndSave(chair);
+    const after = await stored(chair, CALL);
+    expect(after.config.deadlines).toEqual(before.config.deadlines);
+    expect(after.config.reviewPools).toEqual(before.config.reviewPools);
+    expect(after.token).toBe(before.token);
+    await expect.poll(() => unsavedValues(chair)).toBeNull();
+  });
+
+  /*
+   * What the chairs are shown of a review (spec 03, §1.4). This file has the chair, and
+   * review.spec.ts the reviewer, signed in once each: nobody signs in here.
+   *
+   * It is the one test that depends on another file. Reviewer-30 sends a review beside this
+   * file, and the last thing they write is that review with the words of FINAL as its comments
+   * (the rule is at the top of review.spec.ts). This test waits for exactly that, wherever it
+   * was written, so that it reads a review nobody is still changing; before it, reviewer-30
+   * has given one proposal back, with the note GIVEN_BACK. It is the last test of the file: run
+   * without review.spec.ts, nothing sends that review, and this test alone fails for want of it.
+   *
+   * It changes nothing: the one value it types in the sandbox's settings is refused in the
+   * review step, as it has to be, and is taken back.
+   */
+  test("a chair reads the review a reviewer sent, on the proposal's page, and sees who could not review", async () => {
+    test.setTimeout(240_000);
+    const SANDBOX = "sandbox";
+    const REVIEWER = "reviewer-30@example.org";
+    /** The comments of the review as review.spec.ts last sends it: the same words as there. */
+    const FINAL =
+      "Browser test, final version: the piece holds together, and the plan to show it online is clear enough to stage.";
+    /** The note reviewer-30 leaves when they give a proposal back: the same words as there. */
+    const GIVEN_BACK = "Browser test: away from the desk until the reviews are due.";
+    type Holder = { personId: string; displayName: string | null; email: string };
+    type Sent = {
+      scores: Record<string, number>;
+      comments: string;
+      chairNote: string;
+      recommendation: string | null;
+      sentAt: string;
+      changedAt: string | null;
+    };
+    type Section = {
+      needed: number;
+      assigned: (Holder & { review: Sent | null })[];
+      declined: (Holder & { reason: string; note: string | null })[];
+      candidates: Holder[];
+    };
+    type Listed = {
+      key: string;
+      needed: number;
+      items: { id: string; title: string; reviewers: Holder[]; sent: number }[];
+    };
+    const got = async <T>(path: string) => (await (await chair.request.get(path)).json()) as T;
+    const sectionOf = (id: string) =>
+      got<Section>(`/api/conferences/${SANDBOX}/assignments/submissions/${id}`);
+    const listed = () =>
+      got<{ pools: Listed[] }>(`/api/conferences/${SANDBOX}/assignments?limit=200`);
+    /** The proposal reviewer-30 has sent their last review of, once they have. */
+    const reviewed = async () => {
+      for (const pool of (await listed()).pools) {
+        for (const item of pool.items) {
+          if (item.sent < 1 || !item.reviewers.some((r) => r.email === REVIEWER)) continue;
+          const section = await sectionOf(item.id);
+          const theirs = section.assigned.find((a) => a.email === REVIEWER);
+          if (theirs?.review?.comments === FINAL) return { pool, item, section, theirs };
+        }
+      }
+      return null;
+    };
+    await expect
+      .poll(async () => (await reviewed()) !== null, {
+        message: "reviewer-30's last review, which review.spec.ts sends beside this file",
+        timeout: 120_000,
+        intervals: [1000, 2000, 3000],
+      })
+      .toBe(true);
+    const found = await reviewed();
+    if (!found?.theirs.review) throw new Error("the review is gone again");
+    const { pool, item, section, theirs } = found;
+    const sent = theirs.review as Sent;
+    const committee = (await stored(chair, SANDBOX)).config.reviewPools.find(
+      (x) => x.key === pool.key,
+    );
+    if (!committee) throw new Error("the sandbox has no such committee");
+    const name = theirs.displayName ?? theirs.email;
+
+    await chair.goto(`/en/c/${SANDBOX}/assignments`);
+    await expect(chair.getByRole("heading", { level: 1, name: "Assignments" })).toBeVisible();
+    // The Assignments page says how many reviews of the proposal were sent, beside its reviewers.
+    const part = chair.getByRole("region", { name: committee.name.en ?? "", exact: true });
+    const open = chair.locator(`[id="proposal-${item.id}"]`);
+    while ((await open.count()) === 0) {
+      const shown = await part.locator("ul.cards > li").count();
+      await part.getByRole("button", { name: "Show more" }).click();
+      await expect(part.locator("ul.cards > li")).not.toHaveCount(shown);
+    }
+    const card = part.locator("ul.cards > li").filter({ has: open });
+    await expect(card.getByText(`Reviews sent: ${item.sent}`, { exact: true })).toBeVisible();
+    await expect(
+      card.getByText(`Reviewers: ${item.reviewers.length} of ${pool.needed}`, { exact: true }),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+
+    // On the proposal's page: who reviews it, whether each review is sent and when, and each
+    // sent review in full.
+    await open.click();
+    await expect(chair).toHaveURL(new RegExp(`/en/s/${item.id}#reviewers$`));
+    const reviewers = chair.getByRole("region", { name: "Reviewers" });
+    await expect(reviewers.getByRole("heading", { level: 2, name: "Reviewers" })).toBeFocused();
+    await expect(
+      reviewers.getByText(
+        "A review appears here once its reviewer has sent it, with who wrote it. The authors are never told who reviewed.",
+      ),
+    ).toBeVisible();
+    const reviewing = reviewers.getByRole("list", { name: "Reviewers", exact: true });
+    await expect(reviewing.locator("> li")).toHaveCount(section.assigned.length);
+    const mine = reviewing.locator("> li").filter({ hasText: REVIEWER });
+    // It was sent, and changed since: the page says both, with the times.
+    expect(sent.changedAt, "the review was changed after it was first sent").toBeTruthy();
+    await expect(mine.getByText(/^Review sent .+, last changed .+\.$/)).toBeVisible();
+    const read = mine.getByRole("group", { name: `Review by ${name}` });
+    const row = (label: string) =>
+      read.locator("dl > div").filter({ hasText: label }).locator("dd");
+    for (const criterion of committee.criteria) {
+      await expect(row(criterion.label.en ?? "")).toHaveText(
+        `${sent.scores[criterion.key]} of ${criterion.max}`,
+      );
+    }
+    // As review.spec.ts left it: the first criterion at the top of its scale, accepted, with
+    // the final comments and no note for the chairs.
+    const top = committee.criteria[0];
+    if (!top) throw new Error("the committee has no criterion");
+    expect(sent.scores[top.key]).toBe(top.max);
+    await expect(row("Recommendation")).toHaveText("Accept");
+    await expect(row("Comments for the authors")).toHaveText(FINAL);
+    await expect(row("Note for the chairs only")).toHaveText("None.");
+    // A sent review is part of the proposal's record: its reviewer is not removed, and the
+    // page says why in place of the button. The server refuses it all the same.
+    await expect(
+      mine.getByText(
+        "Cannot be removed from this proposal: their review was sent, and a sent review is part of the proposal's record.",
+      ),
+    ).toBeVisible();
+    await expect(mine.getByRole("button")).toHaveCount(0);
+    const refused = await chair.request.delete(
+      `/api/conferences/${SANDBOX}/assignments/submissions/${item.id}/reviewers/${theirs.personId}`,
+      { headers: { origin: new URL(chair.url()).origin }, data: {} },
+    );
+    expect(refused.status()).toBe(409);
+    expect(await refused.json()).toEqual({ error: "review_sent" });
+    // Whoever has sent nothing is shown so, whether or not they have begun, and can be removed.
+    for (const other of section.assigned.filter((a) => a.email !== REVIEWER && !a.review)) {
+      const theirRow = reviewing.locator("> li").filter({ hasText: other.email });
+      await expect(theirRow.getByText("No review sent yet.")).toBeVisible();
+      await expectTouchTarget(
+        theirRow.getByRole("button", {
+          name: `Remove from this proposal: ${other.displayName ?? other.email}`,
+        }),
+      );
+    }
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // The proposal reviewer-30 gave back: its page lists them among those who said they could
+    // not review it, with their reason and their note. It is found by that note: it is no
+    // longer theirs, so nothing else points to it.
+    let back: { id: string; section: Section } | null = null;
+    for (const candidate of (await listed()).pools.find((x) => x.key === pool.key)?.items ?? []) {
+      if (candidate.reviewers.some((r) => r.email === REVIEWER)) continue;
+      const its = await sectionOf(candidate.id);
+      if (its.declined.some((d) => d.email === REVIEWER && d.note === GIVEN_BACK)) {
+        back = { id: candidate.id, section: its };
+        break;
+      }
+    }
+    if (!back) throw new Error("no proposal that reviewer-30 gave back with that note");
+    // No time is no conflict: they can be assigned to it again.
+    expect(back.section.candidates.map((c) => c.email)).toContain(REVIEWER);
+    await chair.goto(`/en/s/${back.id}#reviewers`);
+    const could = chair
+      .getByRole("region", { name: "Reviewers" })
+      .getByRole("list", { name: "Said they could not review it" });
+    const said = could.locator("> li").filter({ hasText: REVIEWER });
+    await expect(said).toContainText(name);
+    await expect(said.getByText(/^They do not have the time\. Said so .+\.$/)).toBeVisible();
+    await expect(said.getByText(`Their note for the chairs: ${GIVEN_BACK}`)).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // Sent reviews stay valid: a largest score below one already given is refused in the
+    // review of the changes, beside the value, with how many reviews it would leave outside
+    // the scale. Nothing is saved, and the value is taken back.
+    await chair.goto(`/en/c/${SANDBOX}/settings`);
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    const settings = await openPool(chair, committee.name.en ?? "");
+    const largest = settings
+      .getByRole("group", { name: `Criterion: ${top.label.en}` })
+      .getByLabel("Largest score");
+    await expect(largest).toHaveValue(String(top.max));
+    await largest.fill(String(top.max - 1));
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    const summary = chair.getByRole("alert").filter({ hasText: "Please fix the following" });
+    await expect(summary).toBeFocused();
+    // How many reviews that is, the chair can count on the proposals' pages: every sent review
+    // of this committee that gives the criterion its largest score. Reviewer-30's is one of
+    // them; an attempt of review.spec.ts that was run again leaves a second.
+    let above = 0;
+    for (const candidate of (await listed()).pools.find((x) => x.key === pool.key)?.items ?? []) {
+      if (candidate.sent < 1) continue;
+      for (const reviewer of (await sectionOf(candidate.id)).assigned) {
+        if (reviewer.review?.scores[top.key] === top.max) above += 1;
+      }
+    }
+    expect(above).toBeGreaterThanOrEqual(1);
+    const why = `Reviews already sent that give a higher score than this: ${above}. A review that was sent stays valid, so the largest score cannot go below a score already given.`;
+    await expect(summary).toContainText(
+      `${committee.name.en} · ${top.label.en} · Largest score: ${why}`,
+    );
+    await expect(largest).toHaveAttribute("aria-invalid", "true");
+    await expect(largest).toHaveAccessibleDescription(new RegExp(`${why.replace(/[.]/g, "\\.")}$`));
+    await expect(chair.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await largest.fill(String(top.max));
+    await expect(chair.getByText(/^Values changed and not saved yet/)).toHaveCount(0);
+    await expect.poll(() => unsavedValues(chair)).toBeNull();
     expect(
-      await got<{ pools: Listed[] }>(`/api/conferences/${SANDBOX}/assignments?limit=200`),
-    ).toEqual(listed);
+      (await stored(chair, SANDBOX)).config.reviewPools.find((x) => x.key === pool.key)?.criteria[0]
+        ?.max,
+    ).toBe(top.max);
   });
 });

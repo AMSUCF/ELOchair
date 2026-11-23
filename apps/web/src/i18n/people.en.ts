@@ -52,6 +52,8 @@ export const peopleEn = {
   peopleAssignedNone: "No proposals assigned",
   peopleAssignedOne: "1 proposal assigned",
   peopleAssignedMany: "{n} proposals assigned",
+  peopleSentOne: "1 review sent",
+  peopleSentMany: "{n} reviews sent",
   peopleOffers: "Will take up to {max}. Reviews in: {languages}.",
   peopleTrackChairsTitle: "Track chairs",
   peopleTrackChairsIntro:
@@ -112,12 +114,22 @@ export const peopleEn = {
     "1 proposal you manage is assigned to them, and will lose this reviewer.",
   peopleRemoveAssignedMany:
     "{n} proposals you manage are assigned to them, and will lose this reviewer.",
+  peopleRemoveKeepOne:
+    "1 proposal you manage has a review of theirs that was sent: that review stays part of the proposal's record, and they stay listed on it.",
+  peopleRemoveKeepMany:
+    "{n} proposals you manage have a review of theirs that was sent: those reviews stay part of each proposal's record, and they stay listed on them.",
+  peopleRemoveLoseNone: "No other proposal you manage is assigned to them.",
+  peopleRemoveLoseOne:
+    "1 other proposal you manage is assigned to them, and will lose this reviewer.",
+  peopleRemoveLoseMany:
+    "{n} other proposals you manage are assigned to them, and will lose this reviewer.",
+  peopleRemoveDrafts: "Reviews they have begun and not sent are discarded.",
   peopleDoRemove: "Yes, remove",
   peopleRemoved_chair: "{name} is no longer a chair of this conference.",
   peopleRemoved_reviewer: "{name} is no longer a reviewer at this conference.",
   peopleRemoved_track_chair: "{name} is no longer a track chair of this conference.",
   peopleRemoveStale:
-    "Nothing was removed: the number of proposals assigned to this reviewer has changed. Read the new number, then confirm again.",
+    "Nothing was removed: the number of proposals assigned to this reviewer, or of reviews they have sent, has changed. Read the new numbers, then confirm again.",
   peopleRemoveGone:
     "Nothing was removed: this person no longer holds that role. The list was loaded again.",
   peopleUnconfirmed: "The server did not confirm this. Please try again.",

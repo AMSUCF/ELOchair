@@ -1,13 +1,25 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { conferences as configs, isForwardPhaseMove } from "@elochair/schema";
+import {
+  CONFERENCE_PHASES,
+  conferences as configs,
+  isForwardPhaseMove,
+  reviewersCanRead,
+} from "@elochair/schema";
 import { and, asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type CliContext, runCli } from "./cli";
 import { auditLog, conferences, people } from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
-import { createApiToken, getConference, grantRole, saveConference } from "./repo";
+import {
+  createApiToken,
+  createConferenceIfMissing,
+  getConference,
+  grantRole,
+  markReviewBegun,
+  saveConference,
+} from "./repo";
 import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
 
 /*
@@ -428,3 +440,267 @@ describe("CLI seed --force", () => {
     expect(replaced?.phase).toBe("draft");
   });
 });
+
+/*
+ * The mark that review has begun (`conferences.review_began_at`): set the first time a
+ * conference is found in a phase in which its reviewers can read, by everything that gives a
+ * conference a phase, and never cleared. The guard on the review form's settings decides by it
+ * (reviews.test.ts), so that a conference forced back out of review is still one whose reviews
+ * may have been sent.
+ */
+describe("the mark that review has begun", () => {
+  const markOf = async (slug: string) => {
+    const [row] = await t.db.select().from(conferences).where(eq(conferences.slug, slug));
+    return row?.reviewBeganAt?.toISOString() ?? null;
+  };
+  /** A conference of its own for one test, in `cfp_open`, which the admin of these tests runs. */
+  const fresh = async (slug: string) => {
+    const { conferenceId } = await seedTestCall(t.db, { slug, now: new Date("2027-02-01") });
+    await grantRole(t.db, {
+      conferenceId,
+      personId: await personId(t, "phase-admin@example.org"),
+      role: "admin",
+    });
+    return conferenceId;
+  };
+  const move = (slug: string, body: Record<string, unknown>) =>
+    call(t.public, "PUT", `/api/conferences/${slug}/phase`, { cookie: adminCookie, body });
+  const back = { force: true, reason: "A test steps back" };
+
+  it("is empty until the conference is in review, and set the moment it is", async () => {
+    await fresh("mark-api");
+    expect(await markOf("mark-api")).toBeNull();
+    // Between the two phases before review it stays empty, in either direction.
+    expect((await move("mark-api", { phase: "draft" })).status).toBe(200);
+    expect((await move("mark-api", { phase: "cfp_open" })).status).toBe(200);
+    expect(await markOf("mark-api")).toBeNull();
+    t.setNow(new Date("2027-02-10T10:00:00Z"));
+    expect((await move("mark-api", { phase: "reviewing" })).status).toBe(200);
+    expect(await markOf("mark-api")).toBe("2027-02-10T10:00:00.000Z");
+    expect((await getConference(t.db, "mark-api"))?.reviewBeganAt).toBe("2027-02-10T10:00:00.000Z");
+    // It is the server's own: no answer about the conference carries it, by name or by value.
+    for (const path of ["", "/settings", "/overview", "/submissions", "/people", "/assignments"]) {
+      const res = await call(t.public, "GET", `/api/conferences/mark-api${path}`, {
+        cookie: adminCookie,
+      });
+      expect(res.status, path).toBe(200);
+      expect(JSON.stringify(res.json), path).not.toMatch(
+        /reviewBeganAt|review_began_at|2027-02-10T10:00:00/,
+      );
+    }
+  });
+
+  it("is never cleared and never moved: a forced step back keeps it, and so does every later move", async () => {
+    const first = await markOf("mark-api");
+    expect(first).not.toBeNull();
+    t.setNow(new Date("2027-02-11T10:00:00Z"));
+    expect((await move("mark-api", { phase: "cfp_open", ...back })).status).toBe(200);
+    expect(await phaseOf("mark-api")).toBe("cfp_open");
+    expect(await markOf("mark-api")).toBe(first);
+    t.setNow(new Date("2027-02-12T10:00:00Z"));
+    expect((await move("mark-api", { phase: "draft" })).status).toBe(200);
+    expect((await move("mark-api", { phase: "cfp_open" })).status).toBe(200);
+    expect((await move("mark-api", { phase: "reviewing" })).status).toBe(200);
+    expect((await move("mark-api", { phase: "deciding" })).status).toBe(200);
+    expect(await markOf("mark-api")).toBe(first);
+    // A move that is refused writes nothing.
+    expect((await move("mark-api", { phase: "cfp_open" })).status).toBe(409);
+    expect(await markOf("mark-api")).toBe(first);
+  });
+
+  it("is set on the way out for a conference that was in review before anything marked it", async () => {
+    // As an earlier version of the app leaves a row: in review, and no mark.
+    for (const [slug, to] of [
+      ["mark-legacy-back", { phase: "cfp_open", ...back }],
+      ["mark-legacy-on", { phase: "deciding" }],
+    ] as const) {
+      await fresh(slug);
+      await t.db
+        .update(conferences)
+        .set({ phase: "reviewing", reviewBeganAt: null })
+        .where(eq(conferences.slug, slug));
+      expect(await markOf(slug)).toBeNull();
+      t.setNow(new Date("2027-02-13T10:00:00Z"));
+      expect((await move(slug, to)).status, slug).toBe(200);
+      expect(await markOf(slug), slug).toBe("2027-02-13T10:00:00.000Z");
+    }
+  });
+
+  it("is set by the CLI's moves as by the API's: set-phase, and import-config with a phase", async () => {
+    await fresh("mark-cli");
+    expect(await cli(["set-phase", "mark-cli", "reviewing"])).toBe(0);
+    // The CLI's clock in these tests.
+    expect(await markOf("mark-cli")).toBe("2027-03-04T05:06:07.000Z");
+    expect(
+      await cli(["set-phase", "mark-cli", "cfp_open", "--force", "--reason", "Stepped back"]),
+    ).toBe(0);
+    expect(await markOf("mark-cli")).toBe("2027-03-04T05:06:07.000Z");
+
+    await fresh("mark-import");
+    const moved = await configFile("mark-import", "Imported into review");
+    expect(await cli(["import-config", moved, "--phase", "reviewing"])).toBe(0);
+    expect(await phaseOf("mark-import")).toBe("reviewing");
+    expect(await markOf("mark-import")).toBe("2027-03-04T05:06:07.000Z");
+    // An import without a phase changes neither the phase nor the mark.
+    await fresh("mark-import-plain");
+    expect(await cli(["import-config", await configFile("mark-import-plain", "Plain")])).toBe(0);
+    expect(await markOf("mark-import-plain")).toBeNull();
+  });
+
+  it("is set for a conference created in review or past it, and for no other", async () => {
+    for (const phase of CONFERENCE_PHASES) {
+      // A slug takes no underscore.
+      const name = phase.replace("_", "-");
+      // Through the CLI, as a new conference is imported.
+      const imported = join(dir, `mark-new-${name}.json`);
+      await writeFile(imported, JSON.stringify({ ...fixtureCall, slug: `mark-new-${name}` }));
+      expect(await cli(["import-config", imported, "--phase", phase])).toBe(0);
+      expect((await markOf(`mark-new-${name}`)) !== null, `imported in ${phase}`).toBe(
+        reviewersCanRead(phase),
+      );
+      // And as the seeds create one.
+      const made = await createConferenceIfMissing(
+        t.db,
+        { ...fixtureCall, slug: `mark-made-${name}` },
+        phase,
+      );
+      expect(made?.reviewBeganAt !== null, `created in ${phase}`).toBe(reviewersCanRead(phase));
+      const saved = await saveConference(
+        t.db,
+        { ...fixtureCall, slug: `mark-saved-${name}` },
+        phase,
+      );
+      expect(saved.reviewBeganAt !== null, `saved in ${phase}`).toBe(reviewersCanRead(phase));
+    }
+  });
+
+  it("is kept in step when a phase is written over an existing conference, and left alone when none is", async () => {
+    await fresh("mark-over");
+    // Put into review: marked. Its configuration saved again, without a phase: as it was.
+    const into = await saveConference(t.db, { ...fixtureCall, slug: "mark-over" }, "reviewing");
+    expect(into.reviewBeganAt).not.toBeNull();
+    const again = await saveConference(t.db, { ...fixtureCall, slug: "mark-over" });
+    expect(again).toMatchObject({ phase: "reviewing", reviewBeganAt: into.reviewBeganAt });
+    // Written back out of review: the mark stays.
+    const out = await saveConference(t.db, { ...fixtureCall, slug: "mark-over" }, "cfp_open");
+    expect(out).toMatchObject({ phase: "cfp_open", reviewBeganAt: into.reviewBeganAt });
+    // A row that was in review without a mark gets one when its phase is written over.
+    await t.db
+      .update(conferences)
+      .set({ phase: "deciding", reviewBeganAt: null })
+      .where(eq(conferences.slug, "mark-over"));
+    const legacy = await saveConference(t.db, { ...fixtureCall, slug: "mark-over" }, "cfp_open");
+    expect(legacy.phase).toBe("cfp_open");
+    expect(legacy.reviewBeganAt).not.toBeNull();
+    // And one that never was in review stays without.
+    await fresh("mark-never");
+    const never = await saveConference(t.db, { ...fixtureCall, slug: "mark-never" }, "draft");
+    expect(never.reviewBeganAt).toBeNull();
+  });
+
+  it("is given at the start of the server to every conference found in review without it, once", async () => {
+    await fresh("mark-start-in");
+    await fresh("mark-start-out");
+    await t.db
+      .update(conferences)
+      .set({ phase: "confirming", reviewBeganAt: null })
+      .where(eq(conferences.slug, "mark-start-in"));
+    const others = await t.db.select().from(conferences);
+    const waiting = others.filter((k) => reviewersCanRead(k.phase) && k.reviewBeganAt === null);
+    const marked = new Map(others.map((k) => [k.slug, k.reviewBeganAt?.toISOString() ?? null]));
+    expect(waiting.map((k) => k.slug)).toContain("mark-start-in");
+    expect(await markReviewBegun(t.db, new Date("2027-02-14T10:00:00Z"))).toBe(waiting.length);
+    expect(await markOf("mark-start-in")).toBe("2027-02-14T10:00:00.000Z");
+    // Not one that is not in review; and no mark that was there is touched.
+    expect(await markOf("mark-start-out")).toBeNull();
+    for (const [slug, was] of marked) {
+      if (was !== null) expect(await markOf(slug), slug).toBe(was);
+    }
+    // A second start finds nothing left to mark.
+    expect(await markReviewBegun(t.db, new Date("2027-02-15T10:00:00Z"))).toBe(0);
+    expect(await markOf("mark-start-in")).toBe("2027-02-14T10:00:00.000Z");
+  });
+});
+
+/*
+ * The same writers on a real Postgres, where the one statement written by hand (the upsert of
+ * saveConference) runs as it does in production. Run this file on its own:
+ *
+ *   TEST_DATABASE_URL=postgres://postgres:reviews@127.0.0.1:55435/postgres \
+ *     bunx vitest run apps/server/src/chairs-phases.test.ts
+ */
+describe.skipIf(!process.env.TEST_DATABASE_URL)(
+  "the mark that review has begun, on Postgres",
+  () => {
+    let pg: TestApp;
+    const run = Date.now();
+    const slug = (name: string) => `mark-pg-${run}-${name}`;
+    const row = async (name: string) =>
+      (
+        await pg.db
+          .select()
+          .from(conferences)
+          .where(eq(conferences.slug, slug(name)))
+      )[0];
+
+    beforeAll(async () => {
+      pg = await makeTestApp({}, { databaseUrl: process.env.TEST_DATABASE_URL });
+    }, 120_000);
+    afterAll(() => pg.close());
+
+    it("is set, kept and never moved by saveConference, createConferenceIfMissing, movePhase and the start of the server", async () => {
+      const a = { ...fixtureCall, slug: slug("a") };
+      expect((await saveConference(pg.db, a, "cfp_open")).reviewBeganAt).toBeNull();
+      const into = await saveConference(pg.db, a, "reviewing");
+      expect(into).toMatchObject({ phase: "reviewing" });
+      expect(into.reviewBeganAt).not.toBeNull();
+      // Saved again without a phase, and then written back out of review: the mark as it was.
+      expect(await saveConference(pg.db, a)).toMatchObject({
+        phase: "reviewing",
+        reviewBeganAt: into.reviewBeganAt,
+      });
+      expect(await saveConference(pg.db, a, "cfp_open")).toMatchObject({
+        phase: "cfp_open",
+        reviewBeganAt: into.reviewBeganAt,
+      });
+      // A row in review without a mark, as an earlier version leaves one: marked on the way out.
+      await pg.db
+        .update(conferences)
+        .set({ phase: "deciding", reviewBeganAt: null })
+        .where(eq(conferences.slug, a.slug));
+      const legacy = await saveConference(pg.db, a, "cfp_open");
+      expect(legacy.phase).toBe("cfp_open");
+      expect(legacy.reviewBeganAt).not.toBeNull();
+      // Never in review: no mark, whatever is written over its phase.
+      const b = { ...fixtureCall, slug: slug("b") };
+      await saveConference(pg.db, b, "draft");
+      expect((await saveConference(pg.db, b, "cfp_open")).reviewBeganAt).toBeNull();
+      // Created in a review phase: marked from its first moment.
+      const created = await createConferenceIfMissing(
+        pg.db,
+        { ...fixtureCall, slug: slug("c") },
+        "archived",
+      );
+      expect(created?.reviewBeganAt).not.toBeNull();
+
+      // In review behind the app's back: the start of the server marks it, once.
+      const d = await saveConference(pg.db, { ...fixtureCall, slug: slug("d") }, "cfp_open");
+      await pg.db.update(conferences).set({ phase: "confirming" }).where(eq(conferences.id, d.id));
+      expect((await row("d"))?.reviewBeganAt).toBeNull();
+      expect(await markReviewBegun(pg.db, new Date("2027-01-01T00:00:00Z"))).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect((await row("d"))?.reviewBeganAt?.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+      expect(await markReviewBegun(pg.db, new Date("2028-01-01T00:00:00Z"))).toBe(0);
+      // And a forced move back, through the CLI, leaves it as it is.
+      expect(
+        await runCli(["set-phase", d.slug, "cfp_open", "--force", "--reason", "Stepped back"], {
+          ...ctx(),
+          db: pg.db,
+        }),
+      ).toBe(0);
+      expect(await row("d")).toMatchObject({ phase: "cfp_open" });
+      expect((await row("d"))?.reviewBeganAt?.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+    });
+  },
+);

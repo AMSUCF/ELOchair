@@ -196,6 +196,8 @@ function record(
     people: new Map(ids.map((id) => [id, person(Number(id.slice(-12)))])),
     submissions,
     conflictReleased: new Map(),
+    reviews: [],
+    declines: [],
     ...more,
   };
 }
@@ -516,6 +518,8 @@ describe("who is offered as a reviewer of a proposal", () => {
         email: "mark-email-80@example.org",
         assignedAt: p.assignments[0]?.createdAt,
         blocked: false,
+        // No review of theirs was sent: nothing says whether they have begun one.
+        review: null,
       },
     ]);
     expect(view?.candidates.map((c) => c.personId)).toEqual([uuid(81)]);
@@ -700,6 +704,7 @@ describe("the Assignments page", () => {
         { personId: uuid(80), displayName: "MARK-NAME-80", email: "mark-email-80@example.org" },
       ],
       short: true,
+      sent: 0,
     });
     expect(b).toMatchObject({ key: POOL_B, proposals: 1, short: 1 });
     expect(b?.items.map((x) => x.id)).toEqual([uuid(5005)]);
@@ -722,15 +727,18 @@ describe("the Assignments page", () => {
     expect(projectAssignments(chair, rec, OPEN)?.pools[0]?.proposals).toBe(1);
   });
 
-  it("orders a pool's list by one position: short first, then when created, then the id", () => {
-    const at = (short: boolean, created: number, n: number) =>
-      assignmentsPosition(short, { createdAt: day(created), id: uuid(n) });
+  it("orders a pool's list by one position: short of reviewers first, then waiting for reviews, then when created, then the id", () => {
+    const at = (rank: 0 | 1 | 2, created: number, n: number) =>
+      assignmentsPosition(rank, { createdAt: day(created), id: uuid(n) });
     const inOrder = [
-      at(true, 1, 2),
-      at(true, 1, 3),
-      at(true, 9, 1),
-      at(false, 0, 5),
-      at(false, 1, 4),
+      at(0, 1, 2),
+      at(0, 1, 3),
+      at(0, 9, 1),
+      at(1, 0, 5),
+      at(1, 1, 4),
+      at(2, 0, 7),
+      at(2, 0, 8),
+      at(2, 3, 6),
     ];
     for (const [i, a] of inOrder.entries()) {
       for (const [j, b] of inOrder.entries()) {

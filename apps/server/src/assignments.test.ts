@@ -232,6 +232,7 @@ type Reviewers = {
   pool: string | null;
   needed: number;
   assigned: { personId: string; displayName: string | null; email: string; assignedAt: string }[];
+  declined: { personId: string; reason: string; note: string | null; at: string }[];
   takes: string;
   candidates: Candidate[];
 };
@@ -582,7 +583,7 @@ describe("who may assign, release and see the reviewers of a proposal", () => {
           kind: "human",
           targetType: "submission",
           targetId: subs.plain,
-          details: { reviewerId: ids.r3, reason: "chair" },
+          details: { reviewerId: ids.r3, reason: "chair", draftDiscarded: false },
         },
       ]);
     }
@@ -1036,6 +1037,7 @@ describe("assigning, releasing, and assigning again", () => {
         email: mail("other"),
         assignedAt: NOW.toISOString(),
         blocked: false,
+        review: null,
       },
     ]);
 
@@ -1107,7 +1109,7 @@ describe("assigning, releasing, and assigning again", () => {
         ...target,
         action: "assignment.released",
         actor: ids.admin,
-        details: { reviewerId: ids.other, reason: "chair" },
+        details: { reviewerId: ids.other, reason: "chair", draftDiscarded: false },
       },
       {
         ...target,
@@ -1119,7 +1121,7 @@ describe("assigning, releasing, and assigning again", () => {
         ...target,
         action: "assignment.released",
         actor: ids.chair,
-        details: { reviewerId: ids.other, reason: "chair" },
+        details: { reviewerId: ids.other, reason: "chair", draftDiscarded: false },
       },
     ]);
     // Nobody was written to about any of it.
@@ -1150,8 +1152,22 @@ describe("assigning, releasing, and assigning again", () => {
     await because("conflict");
     const view = await shown(w, cookies.chair, id);
     expect(view.candidates.map((c) => c.personId)).not.toContain(ids.other);
-    // Named nowhere in what the chair is shown of the proposal.
-    expect(findLeaks(view, [ids.other, "Otto Otherpool", mail("other")])).toEqual([]);
+    // Named in one place only in what the chair is shown of the proposal: among those who
+    // said they could not review it (spec 03, §1.4), with the reason. Not among its reviewers,
+    // and not among those who can be assigned.
+    expect(view.declined).toEqual([
+      {
+        personId: ids.other,
+        displayName: "Otto Otherpool",
+        email: mail("other"),
+        reason: "conflict",
+        note: null,
+        at: last.releasedAt.toISOString(),
+      },
+    ]);
+    expect(
+      findLeaks({ ...view, declined: [] }, [ids.other, "Otto Otherpool", mail("other")]),
+    ).toEqual([]);
     const res = await assign(w, { cookie: cookies.chair }, id, ids.other, { confirmedFull: true });
     expect(res.status).toBe(409);
     expect(res.json).toEqual({ error: "not_offered" });
@@ -1496,7 +1512,7 @@ describe("removing a reviewer's role releases what they had", () => {
           kind: "human",
           targetType: "submission",
           targetId,
-          details: { reviewerId: id, reason: "role_removed" },
+          details: { reviewerId: id, reason: "role_removed", draftDiscarded: false },
         })),
       ),
     );
@@ -1551,6 +1567,7 @@ describe("the Assignments page", () => {
       typeKey: "talk",
       reviewers: [{ personId: ids.r2, displayName: "Rolf Reviewertwo", email: mail("r2") }],
       short: true,
+      sent: 0,
     });
     // Nothing of a proposal but its title and its format, and nobody who wrote one.
     expect(
@@ -1671,7 +1688,9 @@ describe("the audit log", () => {
     for (const row of rows) {
       expect(row.targetType).toBe("submission");
       expect(Object.keys(row.details as object).sort()).toEqual(
-        row.action === "assignment.made" ? ["again", "reviewerId"] : ["reason", "reviewerId"],
+        row.action === "assignment.made"
+          ? ["again", "reviewerId"]
+          : ["draftDiscarded", "reason", "reviewerId"],
       );
     }
     expect(
@@ -1873,7 +1892,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         expect(["204/409", "409/204"], `round ${i}`).toContain(key);
         if (key === "204/409") {
           // Assigned first: the removal found one proposal where its page showed none.
-          expect(removed.json, `round ${i}`).toEqual({ error: "stale", assignments: 1 });
+          expect(removed.json, `round ${i}`).toEqual({
+            error: "stale",
+            assignments: 1,
+            reviews: 0,
+          });
           expect(await isReviewer(reviewerId), `round ${i}`).toBe(true);
           expect(await active(talk, reviewerId), `round ${i}`).toHaveLength(1);
           // Confirmed with the number as it is, the removal releases it.

@@ -72,6 +72,29 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsLabel_pool_reviewsPerSubmission: "Revisões por proposta",
   settingsLabel_pool_guidelines: "Orientações para quem revê",
   settingsLabel_criterion_label: "Etiqueta",
+  settingsLabel_criterion_description: "Descrição",
+  settingsCriterionDescriptionHint:
+    "Opcional. O que este critério pergunta, ou o que significam a sua pontuação mais baixa e a mais alta. Quem revê lê isto por baixo do nome do critério no formulário de revisão.",
+  settingsFormTitle: "O formulário de revisão",
+  settingsFormIntro:
+    "Por baixo das pontuações, o formulário de revisão desta comissão tem comentários para as pessoas autoras, uma nota apenas para a presidência e uma recomendação geral. Os seus nomes são os da aplicação. O que se escreve por baixo de cada um, os limites dos comentários, e se o formulário tem a nota e a recomendação, é a presidência que decide.",
+  settingsLabel_form_comments_description:
+    "Comentários para as pessoas autoras: o que se escreve por baixo do campo",
+  settingsLabel_form_comments_minWords: "Comentários para as pessoas autoras: mínimo de palavras",
+  settingsLabel_form_comments_maxWords: "Comentários para as pessoas autoras: máximo de palavras",
+  settingsLabel_form_chairNote_enabled: "O formulário tem uma nota apenas para a presidência",
+  settingsLabel_form_chairNote_description:
+    "Nota apenas para a presidência: o que se escreve por baixo do campo",
+  settingsLabel_form_recommendation_enabled:
+    "O formulário pede uma recomendação geral: aceitar, com dúvidas ou rejeitar",
+  settingsLabel_form_recommendation_description:
+    "Recomendação: o que se escreve por baixo do seu nome",
+  settingsFormDescriptionHint:
+    "Opcional. Se ficar vazio, quem revê lê a frase padrão: «{standard}»",
+  settingsFormDescriptionHintNone: "Opcional. Se ficar vazio, nada é escrito aí.",
+  settingsReviewsDueHint:
+    "Opcional. Quem revê vê este dia na sua lista. Não bloqueia nada: as revisões podem ser enviadas e alteradas enquanto o congresso estiver em revisão. Para não fixar nenhum dia, deixe a data vazia.",
+  settingsDeadlineNone: "Não há nenhum dia fixado.",
   settingsLabel_criterion_min: "Pontuação mais baixa",
   settingsLabel_criterion_max: "Pontuação mais alta",
   settingsBlind_double:
@@ -231,6 +254,26 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_no_whole_number:
     "Não há nenhum número inteiro entre este valor e o máximo ao lado, por isso ninguém poderia responder.",
   issue_settings_deadline_order: "Não pode ser anterior ao prazo acima.",
+  issue_settings_reviews_due_order:
+    "As revisões são entregues depois do encerramento das submissões e antes do envio das decisões.",
+  issue_settings_reviews_below_scale:
+    "Revisões já enviadas com uma pontuação mais baixa do que esta: {n}. Uma revisão enviada continua válida, por isso a pontuação mais baixa não pode ficar acima de uma já dada.",
+  issue_settings_reviews_above_scale:
+    "Revisões já enviadas com uma pontuação mais alta do que esta: {n}. Uma revisão enviada continua válida, por isso a pontuação mais alta não pode ficar abaixo de uma já dada.",
+  issue_settings_reviews_have_scores:
+    "Revisões já enviadas que pontuam um critério que isto retiraria: {n}. Uma revisão enviada continua válida.",
+  issue_settings_reviews_too_short:
+    "Revisões já enviadas cujos comentários têm menos palavras do que estas: {n}. Uma revisão enviada continua válida.",
+  issue_settings_reviews_too_long:
+    "Revisões já enviadas cujos comentários têm mais palavras do que estas: {n}. Uma revisão enviada continua válida.",
+  issue_settings_reviews_have_note:
+    "Revisões já enviadas que têm uma nota para a presidência: {n}. A nota não pode ser retirada do formulário enquanto uma revisão enviada tiver uma.",
+  issue_settings_reviews_have_recommendation:
+    "Revisões já enviadas que dão uma recomendação: {n}. Não pode ser retirada do formulário enquanto uma revisão enviada tiver uma.",
+  issue_settings_reviews_sent:
+    "Já foram enviadas revisões de propostas neste formato: {n}. Responderam ao formulário da comissão que o revê agora.",
+  issue_settings_reviews_hidden:
+    "Foi submetida a esta comissão uma proposta sua, ou uma com que tem um conflito, e o congresso já esteve em revisão. Se essa proposta tem revisões, e o que dizem, não lhe cabe saber, por isso também não lhe cabe restringir o formulário em que são escritas. Pode fazer esta alteração uma pessoa da presidência que não tenha uma proposta sua perante esta comissão nem um conflito com alguma. Se não houver nenhuma, convide uma na página Pessoas.",
   issue_settings_dates_order: "O último dia não pode ser anterior ao primeiro.",
   issue_settings_final_before_conference:
     "Os materiais finais têm de ser entregues antes de o congresso começar.",

@@ -16,6 +16,13 @@ export const LIMITS = {
   /** A conference's own wording of an email (messages.ts), before placeholders are filled. */
   messageSubject: 200,
   messageBody: 5_000,
+  /**
+   * A review's comments for the authors, and its note for the chairs: the most characters
+   * either may have, drafts included. The limits in words are the chairs' (the review form).
+   */
+  reviewText: 20_000,
+  /** The note a reviewer may add when they say they cannot review a proposal. */
+  declineNote: 2_000,
 } as const;
 
 /**

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ContributionRole, Key } from "./config";
 import { LanguageCode } from "./i18n";
 import { MAIL_LANGUAGES } from "./messages";
+import { RECOMMENDATIONS } from "./reviewForm";
 
 export const Id = z.uuid();
 
@@ -143,7 +144,7 @@ export type Assignment = z.infer<typeof Assignment>;
  * - `expertise`: the reviewer said it is outside what they can judge;
  * - `time`: the reviewer said they have no time;
  * - `role_removed`: a chair removed their reviewer's role at the conference.
- * The three a reviewer gives belong to "I cannot review this", which the next step builds.
+ * The three a reviewer gives are those of "I cannot review this" (DECLINE_REASONS).
  */
 export const AssignmentReleaseReason = z.enum([
   "chair",
@@ -174,8 +175,48 @@ export const AssignmentRelease = z.object({
   releasedByPersonId: Id.nullable(),
   releasedAt: z.iso.datetime({ offset: true }),
   reason: AssignmentReleaseReason,
+  /**
+   * What the reviewer wrote for the chairs when they said they could not review the proposal.
+   * Null where they wrote nothing, and for every release that was not theirs.
+   */
+  note: z.string().nullable(),
 });
 export type AssignmentRelease = z.infer<typeof AssignmentRelease>;
+
+/**
+ * Where a review stands. A draft is its reviewer's own: nobody else is shown it, or that it
+ * exists. Once sent it is the chairs' to read, and stays sent: changing it sends it again.
+ */
+export const ReviewStatus = z.enum(["draft", "sent"]);
+export type ReviewStatus = z.infer<typeof ReviewStatus>;
+
+/**
+ * One reviewer's review of one proposal (spec 03, §1.4): at most one for the two. It belongs to
+ * the proposal and the reviewer, not to the assignment, whose row goes when it is released; a
+ * review exists only while its reviewer is assigned, or was sent (a sent review keeps its
+ * assignment).
+ */
+export const Review = z.object({
+  id: Id,
+  conferenceId: Id,
+  submissionId: Id,
+  reviewerId: Id,
+  /** Increases on every save; a save must name the version it was made on. */
+  version: z.int().min(1),
+  status: ReviewStatus,
+  /** A whole number for each criterion answered, by the criterion's key. */
+  scores: z.record(Key, z.int()),
+  /** For the authors. */
+  comments: z.string(),
+  /** For the chairs only. */
+  chairNote: z.string(),
+  recommendation: z.enum(RECOMMENDATIONS).nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+  /** When it was first sent; null while it is a draft. */
+  sentAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type Review = z.infer<typeof Review>;
 
 /** Per-conference role grants. Scope narrows track chairs to tracks and reviewers to pools. */
 export const ConferenceRole = z.enum(["admin", "chair", "track_chair", "reviewer"]);

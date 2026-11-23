@@ -12,6 +12,8 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   reviewersHow_single: "com os nomes e as instituições das pessoas autoras",
   reviewersHow_open: "com os nomes, as instituições e as biografias das pessoas autoras",
   reviewersNoMail: "Não é enviado nenhum email quando atribui ou retira alguém.",
+  reviewersReviewsIntro:
+    "Uma revisão aparece aqui quando quem a escreveu a envia, com o seu nome. Às pessoas autoras nunca é dito quem reviu.",
   reviewersCount: "Pessoas atribuídas para a rever: {n} de {needed}.",
   reviewersAsksOne: "Comissão: {committee}. Pede 1 pessoa que reveja cada proposta.",
   reviewersAsksMany: "Comissão: {committee}. Pede {needed} pessoas que revejam cada proposta.",
@@ -23,6 +25,34 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   reviewersRemoveDoes:
     "{name} deixará de poder ler esta proposta, e ela deixará de contar entre as que lhe estão atribuídas. Não é avisado/a por email.",
   reviewersRemoveAgain: "Pode voltar a atribuir-lha mais tarde.",
+  reviewersRemoveDraft: "Se começou uma revisão e não a enviou, esse rascunho é descartado.",
+  reviewersReviewNone: "Ainda não enviou nenhuma revisão.",
+  reviewersReviewSent: "Revisão enviada em {date}.",
+  reviewersReviewChanged: "Revisão enviada em {date}; última alteração em {changed}.",
+  reviewersKept:
+    "Não é possível retirar-lhe esta proposta: a sua revisão foi enviada, e uma revisão enviada faz parte do processo da proposta.",
+  reviewersBlockedSent:
+    "Já não revê esta proposta, e não conta entre quem a revê: passou a fazer parte dela, tem um conflito de interesses com ela, ou já não revê nesta comissão. A sua revisão foi enviada antes disso, e continua a fazer parte do processo da proposta.",
+  reviewersRemoveSent:
+    "Não foi retirada: {name} enviou entretanto a sua revisão, e uma revisão enviada fica com a proposta. A lista foi carregada de novo.",
+  reviewersReviewOf: "Revisão de {name}",
+  reviewersScore: "{score} de {max}",
+  reviewersNoScore: "Sem pontuação",
+  reviewersRecommendation: "Recomendação",
+  reviewersNoRecommendation: "Nenhuma",
+  reviewersComments: "Comentários para as pessoas autoras",
+  reviewersChairNote: "Nota apenas para a presidência",
+  reviewersChairNoteNone: "Nenhuma.",
+  reviewersOtherTitle: "Revisões de pessoas a quem já não está atribuída",
+  reviewersOtherIntro:
+    "Estas revisões foram enviadas por pessoas a quem esta proposta já não está atribuída. Continuam a fazer parte do seu processo.",
+  reviewersDeclinedTitle: "Disseram que não a podiam rever",
+  reviewersDeclinedOn: "Disse-o em {date}.",
+  reviewersDeclined_conflict:
+    "Um conflito de interesses, ou sabe de quem é o trabalho. Esta proposta não lhe voltará a ser proposta.",
+  reviewersDeclined_expertise: "Está fora do que consegue avaliar.",
+  reviewersDeclined_time: "Não tem tempo.",
+  reviewersDeclinedNote: "A sua nota para a presidência:",
   reviewersBlocked:
     "Já não pode rever esta proposta, e não conta entre quem a revê: passou a fazer parte dela, tem um conflito de interesses com ela, ou já não revê nesta comissão. Retire-lhe a proposta.",
   reviewersRemoved: "{name} já não revê esta proposta. Não foi enviado nenhum email.",
@@ -65,7 +95,7 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   assignmentsTitle: "Atribuições",
   assignmentsNoAccess: "Só quem preside a este congresso pode ver quem revê as suas propostas.",
   assignmentsIntro:
-    "Todas as propostas que podem ser atribuídas a alguém para as rever, sob a comissão que as revê. Primeiro aparecem as que ainda precisam de alguém. Para atribuir ou retirar uma pessoa, abra a proposta. Nada é atribuído automaticamente, e não é enviado nenhum email.",
+    "Todas as propostas que podem ser atribuídas a alguém para as rever, sob a comissão que as revê. Primeiro aparecem as que ainda precisam de alguém, e depois as que ainda esperam revisões. Para atribuir ou retirar uma pessoa, ou para ler as revisões enviadas, abra a proposta. Nada é atribuído automaticamente, e não é enviado nenhum email.",
   assignmentsCallOpen:
     "A chamada ainda não fechou, por isso ainda não é possível atribuir ninguém. São mostradas as propostas submetidas até agora.",
   assignmentsExcludedOne: "Não aparece 1 proposta: é sua, ou tem um conflito com ela.",
@@ -80,6 +110,11 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   assignmentsAsksOne: "Esta comissão pede 1 pessoa que reveja cada proposta.",
   assignmentsAsksMany: "Esta comissão pede {needed} pessoas que revejam cada proposta.",
   assignmentsReviewers: "Reveem-na: {n} de {needed}",
+  assignmentsSent: "Revisões enviadas: {n}",
+  assignmentsWaitingOne:
+    "1 tem quem a reveja e menos revisões enviadas do que a comissão pede. Aparece a seguir.",
+  assignmentsWaitingMany:
+    "{n} têm quem as reveja e menos revisões enviadas do que a comissão pede. Aparecem a seguir.",
   assignmentsNeedsOne: "Falta 1",
   assignmentsNeedsMany: "Faltam {n}",
   assignmentsComplete: "Completa",

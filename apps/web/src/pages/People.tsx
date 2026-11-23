@@ -182,12 +182,18 @@ export function PeoplePage() {
       },
     );
 
-  const remove = (said: Said, p: RoleHolder, role: RemovableRole, assigned?: number) =>
+  const remove = (
+    said: Said,
+    p: RoleHolder,
+    role: RemovableRole,
+    assigned?: number,
+    sent?: number,
+  ) =>
     act(said, t(`peopleRemoved_${role}`, { name: called(p) }), async () => {
       const res = await api(`/api/conferences/${slug}/people/${p.personId}/roles/${role}`, {
         method: "DELETE",
         // What the confirmation said: the server removes nothing if it is no longer so.
-        body: role === "reviewer" ? { assignments: assigned ?? 0 } : {},
+        body: role === "reviewer" ? { assignments: assigned ?? 0, reviews: sent ?? 0 } : {},
       });
       if (res.ok) return { ok: true };
       if (res.status === 409 && res.error === "stale") {
@@ -215,8 +221,13 @@ export function PeoplePage() {
       you?: boolean;
       lines?: ReactNode;
       assigned?: number;
+      /** How many of the assigned proposals have a review of theirs that was sent. */
+      sent?: number;
     },
   ) => {
+    const sent = v.sent ?? 0;
+    /** The proposals that lose this reviewer: those without a review of theirs that was sent. */
+    const losing = (v.assigned ?? 0) - sent;
     const key = `remove-${v.id}`;
     const opener = `${key}-open`;
     const name = called(p);
@@ -239,11 +250,11 @@ export function PeoplePage() {
             yes={t("peopleDoRemove")}
             busy={busy}
             note={note}
-            onYes={() => remove(v.said, p, v.role, v.assigned)}
+            onYes={() => remove(v.said, p, v.role, v.assigned, v.sent)}
             onNo={dismiss}
           >
             <p>{t(`peopleRemoveDoes_${v.role}`, { name })}</p>
-            {v.role === "reviewer" && (
+            {v.role === "reviewer" && sent === 0 && (
               <p>
                 <strong>
                   {v.assigned === 0
@@ -254,6 +265,20 @@ export function PeoplePage() {
                 </strong>
               </p>
             )}
+            {/* A review that was sent stays, with the assignment it belongs to. */}
+            {v.role === "reviewer" && sent > 0 && (
+              <p>
+                <strong>
+                  {sent === 1 ? t("peopleRemoveKeepOne") : t("peopleRemoveKeepMany", { n: sent })}{" "}
+                  {losing === 0
+                    ? t("peopleRemoveLoseNone")
+                    : losing === 1
+                      ? t("peopleRemoveLoseOne")
+                      : t("peopleRemoveLoseMany", { n: losing })}
+                </strong>
+              </p>
+            )}
+            {v.role === "reviewer" && <p>{t("peopleRemoveDrafts")}</p>}
           </Ask>
         ) : (
           // A chair cannot remove their own role: the button is not offered (the server refuses).
@@ -288,9 +313,14 @@ export function PeoplePage() {
       id: `reviewer-${group}-${r.personId}`,
       level: "h4",
       assigned: r.assigned,
+      sent: r.sent,
       lines: (
         <>
-          <p>{assignedText(r.assigned)}</p>
+          <p>
+            {assignedText(r.assigned)}
+            {r.sent > 0 &&
+              ` · ${r.sent === 1 ? t("peopleSentOne") : t("peopleSentMany", { n: r.sent })}`}
+          </p>
           {r.maxLoad !== null && (
             <p className="meta">
               {t("peopleOffers", {
