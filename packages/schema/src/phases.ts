@@ -42,6 +42,22 @@ export const reviewersCanRead = (phase: string): boolean => {
   return at >= CONFERENCE_PHASES.indexOf("reviewing");
 };
 
+/**
+ * Whether a chair can record a decision in this phase (spec 03, §1.6): from `reviewing` on, the
+ * phase in which the reviews it rests on are written. Recording tells nobody.
+ */
+export const decisionsCanBeRecorded = (phase: string): boolean => reviewersCanRead(phase);
+
+/**
+ * Whether the chairs can send the decisions in this phase (spec 03, §1.6): from `deciding` on.
+ * By then reviewing has ended, and a review can no longer be changed: what the authors are
+ * sent of the reviews is final. A phase that is not one is not a phase for sending.
+ */
+export const decisionsCanBeSent = (phase: string): boolean => {
+  const at = (CONFERENCE_PHASES as readonly string[]).indexOf(phase);
+  return at >= CONFERENCE_PHASES.indexOf("deciding");
+};
+
 /** The phase that follows `phase`; null after the last one, and for a phase that is not one. */
 export const nextPhase = (phase: string): Phase | null => step(phase, 1);
 

@@ -3,6 +3,8 @@ import { ConferencePhase, isForwardPhaseMove } from "./config";
 import {
   CONFERENCE_PHASES,
   canWithdrawIn,
+  decisionsCanBeRecorded,
+  decisionsCanBeSent,
   nextPhase,
   previousPhase,
   reviewersCanRead,
@@ -52,6 +54,29 @@ describe("the order of the phases", () => {
       "archived",
     ]);
     for (const not of ["nonsense", "", "Reviewing"]) expect(reviewersCanRead(not), not).toBe(false);
+  });
+
+  it("lets decisions be recorded from the phase of review on, and sent once it has ended", () => {
+    // Recorded while the reviews they rest on are written, and in every phase after.
+    expect(CONFERENCE_PHASES.filter(decisionsCanBeRecorded)).toEqual(
+      CONFERENCE_PHASES.filter(reviewersCanRead),
+    );
+    // Sent once reviewing has ended: what the authors are sent of the reviews is final then.
+    expect(CONFERENCE_PHASES.filter(decisionsCanBeSent)).toEqual([
+      "deciding",
+      "confirming",
+      "scheduling",
+      "published",
+      "archived",
+    ]);
+    for (const not of ["nonsense", "", "Deciding"]) {
+      expect(decisionsCanBeRecorded(not), not).toBe(false);
+      expect(decisionsCanBeSent(not), not).toBe(false);
+    }
+    // A proposal under consideration can still be withdrawn while decisions are sent.
+    expect(CONFERENCE_PHASES.filter((p) => canWithdrawIn(p) && decisionsCanBeSent(p))).toEqual([
+      "deciding",
+    ]);
   });
 
   it("steps forward by a move that needs no force, and back by one that does", () => {

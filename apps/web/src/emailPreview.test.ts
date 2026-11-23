@@ -121,6 +121,29 @@ describe("the made-up values an email is previewed with", () => {
     );
   });
 
+  it("show the emails about a decision with made-up comments under a number each, and the proposal's link", () => {
+    for (const key of ["decision_accepted", "decision_waitlisted", "decision_rejected"] as const) {
+      const en = sampleValues(key, "en", config, ORIGIN);
+      expect(en.link).toBe("https://chair.example.org/en/s/…");
+      expect(en.title).toBe("A made-up title");
+      // Put together as the server puts the real ones together: one definition for both.
+      expect(en.comments).toBe(
+        "Comments from the reviewers:\n\nReviewer 1:\nA made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\nAnother made-up comment, in two paragraphs.\n\nThe second one asks for a word about the method.",
+      );
+      // In the language of the email, not of the interface.
+      expect(sampleValues(key, "es", config, ORIGIN).comments).toMatch(
+        /^Comentarios de quienes revisaron la propuesta:\n\nRevisión 1:\nUn comentario inventado/,
+      );
+      expect(sampleValues(key, "pt", config, ORIGIN).comments).toMatch(
+        /^Comentários de quem reviu a proposta:\n\nRevisão 1:\nUm comentário inventado/,
+      );
+      // The standard email, previewed, says the outcome, the comments and the link, in order.
+      const body = fillMessage(key, "body", MESSAGES[key].standard.en.body, en);
+      expect(body.indexOf("A made-up title")).toBeLessThan(body.indexOf("Reviewer 1:"));
+      expect(body.endsWith("\n\nhttps://chair.example.org/en/s/…")).toBe(true);
+    }
+  });
+
   it("name the conference's own review pools as a reviewer's committees", () => {
     expect(sampleValues("reviewer_invitation", "en", config, ORIGIN).committees).toBe(
       "Scientific committee, Artistic committee",

@@ -5,9 +5,11 @@ import {
   assignments,
   conflicts,
   contributions,
+  decisions,
   notificationChoices,
   people,
   reviewerProfiles,
+  reviews,
   submissions,
 } from "./db/schema";
 import { fixtureCall } from "./fixture-call";
@@ -792,6 +794,171 @@ export async function seedChairReviews(
   await db
     .insert(notificationChoices)
     .values({ personId: second.id, conferenceId: conf.id, assignments: "each" });
+  return { conferenceId: conf.id, slug };
+}
+
+/**
+ * A small conference past its review, in `deciding`, where decisions are recorded and sent
+ * (spec 03, §1.6): in development, and for the browser test of decisions, which decides and
+ * sends for good and so needs proposals that no other test reads. Five talks, four of them
+ * with reviews that were sent, by two fictional reviewers nobody signs in as:
+ * - three by two fictional authors (one of them has a confirmed co-author), and one that
+ *   nobody reviewed;
+ * - one by the chair of `chairEmail`, which is kept from that chair: a second, fictional chair
+ *   has recorded a decision for it, as a co-chair would. It is counted when the chair sends,
+ *   and never listed.
+ * Every text a reviewer wrote here is made up, and says what it is, so that a test can tell
+ * the comments for the authors from the notes for the chairs. Nothing is seeded where the
+ * chair's address is not a person yet.
+ */
+export async function seedDecisionsRoom(
+  db: Db,
+  opts: { slug?: string; chairEmail: string },
+): Promise<{ conferenceId: string; slug: string }> {
+  const slug = opts.slug ?? "decisions-room";
+  const conf = await saveConference(
+    db,
+    {
+      ...structuredClone(fixtureCall),
+      slug,
+      placeholder: true,
+      title: {
+        en: "Decisions room: a small conference whose decisions are being made",
+        es: "Sala de decisiones: un congreso pequeño cuyas decisiones se están tomando",
+        pt: "Sala de decisões: um congresso pequeno cujas decisões estão a ser tomadas",
+      },
+    },
+    "deciding",
+  );
+  const [chair] = await db
+    .select({ id: people.id })
+    .from(people)
+    .where(eq(people.email, opts.chairEmail));
+  const type = fixtureCall.submissionTypes.find((t) => t.key === "talk");
+  const pool = fixtureCall.reviewPools.find((p) => p.key === type?.reviewPool);
+  if (!chair || !type || !pool) return { conferenceId: conf.id, slug };
+  await grantRole(db, { conferenceId: conf.id, personId: chair.id, role: "chair" });
+
+  const fictional = (who: string, displayName: string) => ({
+    email: `${slug}-${who}@example.org`,
+    displayName,
+    affiliation: "Institute of Imaginary Letters",
+    languages: ["en"],
+    bios: {},
+  });
+  const made = await db
+    .insert(people)
+    .values([
+      fictional("chair", "Fictional Second Chair"),
+      fictional("reviewer-1", "Fictional First Reviewer"),
+      fictional("reviewer-2", "Fictional Second Reviewer"),
+      fictional("author-1", "Fictional First Author"),
+      fictional("author-2", "Fictional Second Author"),
+    ])
+    .returning({ id: people.id });
+  const [second, r1, r2, a1, a2] = made.map((p) => p.id);
+  if (!second || !r1 || !r2 || !a1 || !a2) return { conferenceId: conf.id, slug };
+  await grantRole(db, { conferenceId: conf.id, personId: second, role: "chair" });
+  for (const personId of [r1, r2]) {
+    await grantRole(db, { conferenceId: conf.id, personId, role: "reviewer", scope: [pool.key] });
+    await db
+      .insert(reviewerProfiles)
+      .values({ conferenceId: conf.id, personId, pools: [pool.key], languages: ["en"] });
+  }
+
+  const abstract = Array.from(
+    { length: type.abstract.minWords ?? 50 },
+    (_, i) => ["a", "talk", "made", "up", "for", "testing"][i % 6],
+  ).join(" ");
+  const scores = (score: number) => Object.fromEntries(pool.criteria.map((c) => [c.key, score]));
+  type Sent = { reviewerId: string; score: number; recommendation: string; said: string };
+  const talks: { title: string; owner: string; coauthor?: string; sent: Sent[] }[] = [
+    {
+      title: "Decisions room: a talk with two reviews",
+      owner: a1,
+      coauthor: a2,
+      sent: [
+        { reviewerId: r1, score: 5, recommendation: "accept", said: "one" },
+        { reviewerId: r2, score: 3, recommendation: "unsure", said: "two" },
+      ],
+    },
+    {
+      title: "Decisions room: a talk with one review",
+      owner: a1,
+      sent: [{ reviewerId: r1, score: 2, recommendation: "reject", said: "three" }],
+    },
+    {
+      title: "Decisions room: a talk for the waiting list",
+      owner: a2,
+      sent: [{ reviewerId: r2, score: 3, recommendation: "unsure", said: "four" }],
+    },
+    { title: "Decisions room: a talk nobody has reviewed", owner: a2, sent: [] },
+    {
+      title: "Decisions room: the chair's own talk",
+      owner: chair.id,
+      sent: [{ reviewerId: r1, score: 4, recommendation: "accept", said: "five" }],
+    },
+  ];
+  const submitted = new Date(Date.UTC(2026, 1, 10));
+  const reviewed = new Date(Date.UTC(2026, 2, 20));
+  const rows = await db
+    .insert(submissions)
+    .values(
+      talks.map((talk, i) => ({
+        conferenceId: conf.id,
+        ownerPersonId: talk.owner,
+        typeKey: type.key,
+        language: "en",
+        title: talk.title,
+        abstract,
+        participationMode: "in_person",
+        status: "submitted",
+        // In the order of the list above, so that the pages list them in it.
+        createdAt: new Date(submitted.getTime() + i * 60_000),
+        submittedAt: new Date(submitted.getTime() + i * 60_000),
+      })),
+    )
+    .returning({ id: submissions.id });
+  for (const [i, talk] of talks.entries()) {
+    const submissionId = rows[i]?.id;
+    if (!submissionId) continue;
+    await db
+      .insert(contributions)
+      .values([
+        { submissionId, personId: talk.owner, role: "lead", position: 0 },
+        ...(talk.coauthor
+          ? [{ submissionId, personId: talk.coauthor, role: "coauthor", position: 1 }]
+          : []),
+      ]);
+    for (const review of talk.sent) {
+      await db
+        .insert(assignments)
+        .values({ conferenceId: conf.id, reviewerId: review.reviewerId, submissionId });
+      await db.insert(reviews).values({
+        conferenceId: conf.id,
+        submissionId,
+        reviewerId: review.reviewerId,
+        status: "sent",
+        scores: scores(review.score),
+        comments: `Made-up comments for the authors, number ${review.said}.\n\nA second paragraph of them, to show that line breaks are kept.`,
+        chairNote: `Made-up note for the chairs only, number ${review.said}.`,
+        recommendation: review.recommendation,
+        createdAt: reviewed,
+        updatedAt: reviewed,
+        sentAt: reviewed,
+      });
+    }
+    // What a co-chair recorded for the chair's own talk: that chair cannot, and is not shown it.
+    if (talk.owner === chair.id) {
+      await db.insert(decisions).values({
+        conferenceId: conf.id,
+        submissionId,
+        outcome: "accepted",
+        decidedByPersonId: second,
+        decidedAt: reviewed,
+      });
+    }
+  }
   return { conferenceId: conf.id, slug };
 }
 

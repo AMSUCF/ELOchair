@@ -229,7 +229,8 @@ export const submissionEn = {
   /*
    * The phase control on "Manage submissions", for chairs. Each phaseDoes_ sentence says what
    * its phase does in the code as it is (visible() in the server's routes/conferences.ts,
-   * isCallOpen, WITHDRAW_PHASES, reviewersCanRead, the phase badge on the home page), and reads
+   * isCallOpen, WITHDRAW_PHASES, reviewersCanRead, reviewsOpen in packages/policy,
+   * decisionsCanBeRecorded and decisionsCanBeSent, the phase badge on the home page), and reads
    * true whether the
    * conference arrives from the phase before or from the one after. Check a sentence against
    * the code before changing it, and change it when the code changes. {reviewing} and
@@ -254,12 +255,13 @@ export const submissionEn = {
   phaseDoes_draft:
     "The conference is hidden from everyone but its chairs and any agents they have set up for it, and nobody can start, edit, submit or withdraw a proposal; people still see their own proposals.",
   phaseDoes_cfp_open:
-    "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings. Reviewers cannot open the proposals assigned to them in this phase.",
+    "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings. Reviewers cannot open the proposals assigned to them in this phase, and no decision can be recorded.",
   phaseDoes_reviewing:
-    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen.",
+    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen; they write, send and change their reviews in this phase. Chairs can record decisions, which tells nobody; decisions cannot be sent in this phase.",
   phaseDoes_deciding:
-    "What people can do is the same as in “{reviewing}”: the call is closed and a submitted proposal can still be withdrawn; the list of conferences shows the new phase.",
-  phaseDoes_confirming: "The call is closed and a submitted proposal can no longer be withdrawn.",
+    "The call is closed, and a submitted proposal can still be withdrawn. Reviews can no longer be written or changed: reviewers still read the proposals assigned to them and their own reviews. Chairs can record a decision on each proposal's page, and send the decisions from the Decisions page: sending tells the authors.",
+  phaseDoes_confirming:
+    "The call is closed and a submitted proposal can no longer be withdrawn. Reviews can no longer be written or changed, and chairs can still record decisions and send them.",
   phaseDoes_scheduling:
     "What people can do is the same as in “{confirming}”: the call is closed and a submitted proposal cannot be withdrawn; the list of conferences shows the new phase.",
   phaseDoes_published:

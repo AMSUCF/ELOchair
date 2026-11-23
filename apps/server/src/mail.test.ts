@@ -1,4 +1,5 @@
-import { hasStrayInvisible, linkSpans } from "@elochair/schema";
+import { commentsForAuthors } from "@elochair/policy";
+import { hasStrayInvisible, linkSpans, type Review } from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -16,6 +17,7 @@ import {
 import {
   answeredMessage,
   invitationMessage,
+  mailedText,
   oneLine,
   receivedMessage,
   sanitizeName,
@@ -314,6 +316,118 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
     expect(oneLine("x".repeat(300), "—")).toBe("x".repeat(300));
     const emoji = oneLine(artist.repeat(301), "—");
     expect(emoji).toBe(`${artist.repeat(299)}…`);
+  });
+
+  it("what a reviewer wrote for the authors is mailed as plain text: its line breaks kept, nothing invisible, and never cut silently", () => {
+    // Every kind of line break becomes one line feed. Tabs and other control characters
+    // become spaces: a vertical tab, a form feed and a "next line" among them.
+    expect(mailedText("one\r\ntwo\rthree\u2028four\u2029five").text).toBe(
+      "one\ntwo\nthree\nfour\nfive",
+    );
+    expect(mailedText("a\tb\u000Bc\u000Cd\u0085e\u0000f").text).toBe("a b c d e f");
+    // Spaces at the end of a line go, and more than one empty line becomes one.
+    expect(mailedText("  One.  \n\t\n\n\n Two. \n").text).toBe("One.\n\n Two.");
+    // Bidi overrides, zero-width spaces and hidden tags go; joiners in words and emoji stay.
+    const persian = "می\u200Cخواهم";
+    expect(mailedText(`Ana \u202Emoc.live\u202C Pérez\u200B\n${persian}`).text).toBe(
+      `Ana moc.live Pérez\n${persian}`,
+    );
+    const artist = "\u{1F469}\u{1F3FD}\u200D\u{1F3A8}";
+    const hidden = Array.from("IGNORE PREVIOUS", (c) =>
+      String.fromCodePoint(0xe0000 + c.charCodeAt(0)),
+    );
+    expect(
+      mailedText(`Poems ${artist}\n\u{1F4CE}${hidden.join("")}\u{E007F} for the web`).text,
+    ).toBe(`Poems ${artist}\n\u{1F4CE} for the web`);
+    // A link stays as it was written: the reader is one of the proposal's own people.
+    expect(mailedText("See https://example.org/a?b=1#c.").text).toBe(
+      "See https://example.org/a?b=1#c.",
+    );
+    // Nothing that can be read: nothing is mailed.
+    for (const nothing of ["", "   ", " \u200B\n \u0001\t", null, undefined]) {
+      expect(mailedText(nothing)).toEqual({ text: "", cut: false });
+    }
+    // Bounded, between whole characters, and it says that it was cut.
+    expect(mailedText("x".repeat(4_000))).toEqual({ text: "x".repeat(4_000), cut: false });
+    expect(mailedText("x".repeat(4_001))).toEqual({ text: `${"x".repeat(3_999)}…`, cut: true });
+    expect(mailedText(artist.repeat(4_001))).toEqual({
+      text: `${artist.repeat(3_999)}…`,
+      cut: true,
+    });
+    expect(mailedText("word ".repeat(10), 8)).toEqual({ text: "word wo…", cut: true });
+    expect(mailedText("word ".repeat(10), 6)).toEqual({ text: "word…", cut: true });
+    // A cut never leaves a joiner whose partner was cut off.
+    const name = "علی\u200Cرضا";
+    for (let max = 2; max < 8; max++) {
+      const cut = mailedText(name.repeat(3), max);
+      expect(cut.cut, String(max)).toBe(true);
+      expect(hasStrayInvisible(cut.text), String(max)).toBe(false);
+    }
+  });
+
+  // A pattern that looked for spaces at the end of a line took the square of the length over
+  // this (half a minute here); line by line it takes a few hundredths of a second. This runs
+  // while a send holds its rows, so the time is part of what is tested.
+  it("a long run of spaces that ends no line is no more work to clean than any other text", () => {
+    const spaced = `x${" ".repeat(200_000)}x`;
+    expect(mailedText(spaced, 1_000_000).text).toBe(spaced);
+  }, 5_000);
+
+  it("a review's comments are numbered for the authors exactly when there is something of them to mail", () => {
+    // The proposal's page shows what the policy keeps (commentsForAuthors), and the email what
+    // is left after cleaning. Were the two to differ, "Reviewer 2" on the page would be
+    // "Reviewer 1" in the email.
+    const kept = (comments: string) =>
+      commentsForAuthors(
+        {
+          reviews: [
+            {
+              id: "r1",
+              submissionId: "s1",
+              status: "sent",
+              sentAt: "2027-01-01T00:00:00.000Z",
+              comments,
+            } as unknown as Review,
+          ],
+        },
+        "s1",
+      ).length === 1;
+    for (const text of ["", " ", "\n\n", "\u200B", "\u200B \u2060\n", "\u0001", "\t\u0085\u000B"]) {
+      expect([kept(text), mailedText(text).text], JSON.stringify(text)).toEqual([false, ""]);
+    }
+    for (const text of ["x", " x ", "\u200Bx", ".", "\u0001é"]) {
+      expect([kept(text), mailedText(text).text !== ""], JSON.stringify(text)).toEqual([
+        true,
+        true,
+      ]);
+    }
+    const piece = fc.constantFrom(
+      " ",
+      "\n",
+      "\t",
+      "\r",
+      "\u00A0",
+      "\u0001",
+      "\u0085",
+      "\u200B",
+      "\u200C",
+      "\u200D",
+      "\u2028",
+      "\u202E",
+      "\u2060",
+      "\uFEFF",
+      "a",
+      "é",
+      "م",
+      "\u{1F3A8}",
+    );
+    fc.assert(
+      fc.property(fc.array(piece, { maxLength: 6 }), (pieces) => {
+        const text = pieces.join("");
+        return kept(text) === (mailedText(text).text !== "");
+      }),
+      { numRuns: 20_000 },
+    );
   });
 
   it("the owner learns who answered from what they typed, the address included (#1)", () => {

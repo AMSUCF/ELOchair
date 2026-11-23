@@ -108,7 +108,7 @@ export const settingsEn = {
   settingsGuidelinesHint:
     "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
   settingsEmailsIntro:
-    "The app sends these emails to the people on a proposal, to the people a chair invites as reviewers or chairs, and to reviewers and chairs while proposals are reviewed. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
+    "The app sends these emails to the people on a proposal, to the people a chair invites as reviewers or chairs, to reviewers and chairs while proposals are reviewed, and to a proposal's authors when the chairs send the decisions. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
   settingsEmailsNote:
     "All three languages are here, whichever of them the conference has, because each person gets the email in their own language: someone can be invited in Portuguese to a conference held in English and Spanish. A language you have not changed keeps the standard text. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
   settingsEmail_invitation: "Invitation to a proposal",
@@ -123,6 +123,9 @@ export const settingsEn = {
   settingsEmail_review_reminder: "Reminder before reviews are due, to a reviewer",
   settingsEmail_reviewer_declined: "A reviewer cannot review a proposal, to the chairs",
   settingsEmail_reviews_complete: "A proposal has all its reviews, to the chairs",
+  settingsEmail_decision_accepted: "Decision: accepted, to the authors",
+  settingsEmail_decision_waitlisted: "Decision: on the waiting list, to the authors",
+  settingsEmail_decision_rejected: "Decision: not accepted, to the authors",
   settingsEmailWhen_invitation:
     "Sent to a person when the owner of a proposal adds them to it, and again if the owner sends the invitation again. That person has not agreed to anything yet.",
   settingsEmailWhen_submission_received:
@@ -147,6 +150,12 @@ export const settingsEn = {
     "Sent to the conference's chairs when a reviewer says they cannot review a proposal and gives it back: an email for each one, one summary a day (from {hour} in the conference's time zone), or none, as each chair chose under “Your account”. It names no proposal and no reviewer: who gave it back is on the proposal's page. A chair gets none about their own proposal or one they have a conflict with.",
   settingsEmailWhen_reviews_complete:
     "Sent to the conference's chairs when a proposal has as many sent reviews as its committee asks for: an email for each one, one summary a day (from {hour} in the conference's time zone), or none, as each chair chose under “Your account”. It names no proposal. A chair gets none about their own proposal or one they have a conflict with.",
+  settingsEmailWhen_decision_accepted:
+    "Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is accepted. Nobody can turn this email off. In its standard text it carries the reviewers' comments for the authors. It never carries a reviewer's name, a score, a recommendation or a note for the chairs.",
+  settingsEmailWhen_decision_waitlisted:
+    "Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is put on the waiting list. Nobody can turn this email off. When a new decision is sent for that proposal later, they get the email for that outcome.",
+  settingsEmailWhen_decision_rejected:
+    "Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is not accepted. Nobody can turn this email off. In its standard text it carries the reviewers' comments for the authors. It never carries a reviewer's name, a score, a recommendation or a note for the chairs.",
   settingsEmailPlaceholders:
     "You can put these words, with their braces, in the subject and in the text. Each is replaced when the email is sent:",
   settingsEmailPlaceholder_conference: "the conference's title",
@@ -180,6 +189,8 @@ export const settingsEn = {
     "the link to the person's own choices about these emails, under “Your account”",
   settingsEmailPlaceholder_reviewsLink: "the link to the reviewer's list, “My reviews”",
   settingsEmailPlaceholder_assignmentsLink: "the link to the conference's Assignments page",
+  settingsEmailPlaceholder_comments:
+    "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "The text must contain it.",
   settingsEmailBodyOnly: "It cannot go in the subject.",
@@ -198,6 +209,10 @@ export const settingsEn = {
   settingsEmailSample_owner: "Ana Example",
   settingsEmailSample_person: "Bruno Sample",
   settingsEmailSample_title: "A made-up title",
+  settingsEmailSample_comment1:
+    "A made-up comment: the argument is clear, and the examples carry it.",
+  settingsEmailSample_comment2:
+    "Another made-up comment, in two paragraphs.\n\nThe second one asks for a word about the method.",
   settingsStandardText: "the standard text",
   settingsAgreementsIntro:
     "People accept these when they submit a proposal or confirm an invitation. The app records which version of each agreement each person accepted.",

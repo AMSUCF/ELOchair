@@ -4,14 +4,18 @@ import {
   BARE_HOST,
   type ConferenceConfig,
   type ContributionRole,
+  commentsBlock,
   committeeList,
+  DECISION_MESSAGES,
   DECLINE_REASON_WORDS,
+  type DecisionOutcome,
   type DeclineReason,
   fillMessage,
   HOST_WITH_PATH,
   type InvitationAnswer,
   IPV4,
   LIMITS,
+  type MailedComment,
   type MailLang,
   type MailMessageKey,
   type MessagePart,
@@ -44,6 +48,11 @@ import type { MailMessage } from "./mail";
  *   given back and a proposal with all its reviews to a chair) carry nothing a person typed
  *   either: a number, the conference, a day, a reason in the app's own words, and two links.
  *   No title, no author, no reviewer, no word of a review or of a note.
+ * - The emails about a decision go to a proposal's owner and its confirmed co-authors, who are
+ *   part of it: they show its title as the receipt does (oneLine), and what its reviewers wrote
+ *   for the authors, cleaned as text of several lines (mailedText) and cut where it is longer
+ *   than an email carries. They hold no reviewer's name, no score, no recommendation and no
+ *   word of a note for the chairs: none of those is ever handed to this file.
  *
  * A conference's own wording changes none of that:
  * - Every value is cleaned here, before it is put in, exactly as for the standard text. No text
@@ -155,6 +164,39 @@ export function oneLine(text: string | null | undefined, fallback: string, max =
   // A cut can leave a joiner whose partner was cut off: clean again before the ellipsis.
   const kept = removeStrayInvisible(chars.slice(0, max - 1).join("")).trimEnd();
   return `${kept}…`;
+}
+
+/**
+ * Text of several lines that a person wrote, for mail to people who are part of the proposal
+ * it is about (a review's comments for the authors, sent with the decision): plain text, kept
+ * as written, links and all, with its line breaks.
+ * - Invisible format characters (bidi overrides, zero-width spaces) are removed, as from a
+ *   title (removeStrayInvisible): they could hide or reorder words.
+ * - Every kind of line break becomes one line feed. Tabs and other control characters become
+ *   spaces, spaces at the end of a line go, and more than one empty line becomes one.
+ * - Text longer than `max` characters is cut between characters and ends with an ellipsis:
+ *   `cut` says so, and whoever puts it in an email says so there, never silently
+ *   (commentsBlock adds a line and the link to the page that shows it whole).
+ */
+export function mailedText(
+  text: string | null | undefined,
+  max: number = LIMITS.mailedComment,
+): MailedComment {
+  const clean = removeStrayInvisible(text ?? "")
+    .replace(/\r\n?|[\p{Zl}\p{Zp}]/gu, "\n")
+    .replace(/[^\S\n]|(?!\n)\p{Cc}/gu, " ")
+    // Line by line: a pattern for "spaces at the end of a line" takes long over a long run of
+    // spaces that ends nowhere, and this runs while a send holds its rows.
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const chars = Array.from(GRAPHEMES.segment(clean), (g) => g.segment);
+  if (chars.length <= max) return { text: clean, cut: false };
+  // A cut can leave a joiner whose partner was cut off: clean again before the ellipsis.
+  const kept = removeStrayInvisible(chars.slice(0, max - 1).join("")).trimEnd();
+  return { text: `${kept}…`, cut: true };
 }
 
 /**
@@ -386,5 +428,38 @@ export function reviewsCompleteMessage(
     conference: v.conference,
     link: v.link,
     choices: v.choices,
+  });
+}
+
+/**
+ * To a proposal's owner and each of its confirmed co-authors, when the chairs send the
+ * decisions (spec 03, §1.6): the outcome, which the text of its message says, the proposal's
+ * title as the receipt writes it, and the reviewers' comments for the authors, each under a
+ * number. `comments` holds those comments and nothing else of a review: no reviewer, no score,
+ * no recommendation, no note for the chairs. Each is cleaned and bounded here (mailedText),
+ * and numbered by its place: the same comments under the same numbers as on the proposal's
+ * page, which shows what was sent. None is left out here: a review with nothing to read in
+ * its comments is not among them (commentsForAuthors).
+ */
+export function decisionMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: {
+    outcome: DecisionOutcome;
+    conference: string;
+    format: string;
+    title: string;
+    link: string;
+    comments: readonly string[];
+  },
+): MailMessage {
+  const mailed = v.comments.map((text) => mailedText(text));
+  return message(wording, DECISION_MESSAGES[v.outcome], lang, to, {
+    title: oneLine(v.title, "—"),
+    format: v.format,
+    conference: v.conference,
+    comments: commentsBlock(mailed, v.link, lang),
+    link: v.link,
   });
 }

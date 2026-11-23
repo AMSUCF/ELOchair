@@ -1,6 +1,7 @@
 export * from "./access";
 export * from "./actions";
 export * from "./assignments";
+export * from "./decisions";
 export * from "./derived";
 export * from "./notifications";
 export * from "./people";

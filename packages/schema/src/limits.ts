@@ -23,6 +23,12 @@ export const LIMITS = {
   reviewText: 20_000,
   /** The note a reviewer may add when they say they cannot review a proposal. */
   declineNote: 2_000,
+  /**
+   * The most characters of one reviewer's comments that the email about a decision carries.
+   * Longer comments are cut there, and the email says so and links to the proposal's page,
+   * which shows them whole.
+   */
+  mailedComment: 4_000,
 } as const;
 
 /**

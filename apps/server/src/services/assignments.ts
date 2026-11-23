@@ -219,7 +219,10 @@ export async function everHadReviewer(db: Db, submissionId: string): Promise<boo
 export type AssignmentsPoolPage = AssignmentsPool & { nextCursor: string | null };
 export type AssignmentsPage = Omit<AssignmentsView, "pools"> & { pools: AssignmentsPoolPage[] };
 
-/** The cursor did not open: forged, damaged, or sealed for another list (400 at "cursor"). */
+/**
+ * The cursor did not open: forged, damaged, or sealed for another list (400 at "cursor"). The
+ * Decisions page is paged in the same way (pageOfPool), and refuses a cursor with the same.
+ */
 export class AssignmentsCursorRefused extends Error {}
 
 /**
@@ -245,6 +248,37 @@ function openPosition(
   if (rank !== 0 && rank !== 1 && rank !== 2) return null;
   const at = cursors.open(cursor.slice(1), `${list}:${rank}`);
   return at ? [rank, at[0], at[1]] : null;
+}
+
+/**
+ * One page of a pool's list, and where the next begins: the list from just after `cursor` (or
+ * from its start), cut at `limit`. `items` are in the order of their positions, which have
+ * three parts, as a pool's list has on the Assignments page and on the Decisions page. `list`
+ * names the list a cursor is sealed for: the conference, the person looking, the page and the
+ * pool. A cursor that does not open there is refused (AssignmentsCursorRefused).
+ */
+export function pageOfPool<T>(v: {
+  items: readonly T[];
+  positionOf: (item: T) => AssignmentsPosition;
+  list: string;
+  cursors: CursorCodec;
+  cursor?: string;
+  limit: number;
+}): { items: T[]; nextCursor: string | null } {
+  const after = v.cursor ? openPosition(v.cursors, v.cursor, v.list) : null;
+  if (v.cursor && !after) throw new AssignmentsCursorRefused("cursor");
+  const rest = after
+    ? v.items.filter((item) => assignmentsAfter(v.positionOf(item), after))
+    : [...v.items];
+  const items = rest.slice(0, v.limit);
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor:
+      last && items.length < rest.length
+        ? sealPosition(v.cursors, v.positionOf(last), v.list)
+        : null,
+  };
 }
 
 /**
@@ -280,21 +314,16 @@ export async function assignmentsPage(
           id: item.id,
           createdAt: created.get(item.id) ?? "",
         });
-      const list = `${cursorContext(viewer, conference.id)}:assignments:${pool.key}`;
-      const after = v.only?.cursor ? openPosition(v.cursors, v.only.cursor, list) : null;
-      if (v.only?.cursor && !after) throw new AssignmentsCursorRefused("cursor");
-      const rest = after
-        ? pool.items.filter((item) => assignmentsAfter(positionOf(item), after))
-        : pool.items;
-      const items = rest.slice(0, v.limit);
-      const last = items.at(-1);
       return {
         ...pool,
-        items,
-        nextCursor:
-          last && items.length < rest.length
-            ? sealPosition(v.cursors, positionOf(last), list)
-            : null,
+        ...pageOfPool({
+          items: pool.items,
+          positionOf,
+          list: `${cursorContext(viewer, conference.id)}:assignments:${pool.key}`,
+          cursors: v.cursors,
+          cursor: v.only?.cursor,
+          limit: v.limit,
+        }),
       };
     });
   return { ...view, pools };
@@ -312,7 +341,7 @@ export async function assignmentsPage(
  * assignment that holds a proposal's row and waits for the roles lock, and a removal that holds
  * the roles lock and waits for that row, would wait for each other.
  */
-async function lockProposal(tx: Db, conference: ConferenceRow, submissionId: string) {
+export async function lockProposal(tx: Db, conference: ConferenceRow, submissionId: string) {
   const [row] = await tx
     .select({ id: submissions.id })
     .from(submissions)

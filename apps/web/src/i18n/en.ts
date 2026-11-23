@@ -1,4 +1,5 @@
 import { assignmentsEn } from "./assignments.en";
+import { decisionsEn } from "./decisions.en";
 import { emailsEn } from "./emails.en";
 import { peopleEn } from "./people.en";
 import { reviewsEn } from "./reviews.en";
@@ -11,6 +12,7 @@ export const en = {
   ...settingsEn,
   ...peopleEn,
   ...assignmentsEn,
+  ...decisionsEn,
   ...reviewsEn,
   ...emailsEn,
   appName: "ELOchair",

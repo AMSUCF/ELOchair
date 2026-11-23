@@ -93,6 +93,35 @@ describe("what the settings screen says of each email", () => {
     }
   });
 
+  it("says of the three emails about a decision who gets them, that nobody can turn them off, and what the comments are", () => {
+    const DECISIONS = ["decision_accepted", "decision_waitlisted", "decision_rejected"] as const;
+    const off = {
+      en: /Nobody can turn this email off\./,
+      es: /Nadie puede desactivar este correo\./,
+      pt: /Ninguém pode desativar este email\./,
+    };
+    for (const lang of LANGS) {
+      const names = DECISIONS.map((key) => translate(lang, emailNameKey(key)));
+      expect(new Set(names).size, lang).toBe(3);
+      for (const key of DECISIONS) {
+        expect(translate(lang, emailWhenKey(key)), `${lang} ${key}`).toMatch(off[lang]);
+        // The link is the proposal's own, as in the receipt.
+        expect(placeholderKey(key, "link"), key).toBe(
+          placeholderKey("submission_received", "link"),
+        );
+        expect(placeholderKey(key, "title"), key).toBe(
+          placeholderKey("submission_received", "title"),
+        );
+      }
+    }
+    expect(en[placeholderKey("decision_accepted", "comments")]).toBe(
+      "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.",
+    );
+    expect(en[emailWhenKey("decision_accepted")]).toMatch(
+      /^Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is accepted\./,
+    );
+  });
+
   it("tells what the number counts in each email that has one, and where each link leads", () => {
     const counted = REVIEW_PHASE.map((key) => en[placeholderKey(key, "count")]);
     expect(new Set(counted).size).toBe(4);

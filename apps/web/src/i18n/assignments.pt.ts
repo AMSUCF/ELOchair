@@ -68,7 +68,7 @@ export const assignmentsPt: Record<keyof typeof assignmentsEn, string> = {
   reviewersTakes_call_not_closed:
     "Ainda não é possível atribuir ninguém: a chamada não fechou. Será possível quando passar a data de encerramento, ou quando o congresso estiver em revisão.",
   reviewersTakes_not_under_consideration:
-    "Esta proposta já não admite novas atribuições: foi retirada, ou já tem uma decisão registada. Ainda pode retirar quem a tem atribuída.",
+    "Esta proposta já não admite novas atribuições: foi retirada, ou a sua decisão já foi enviada às pessoas autoras. Ainda pode retirar quem a tem atribuída.",
   reviewersNoCandidates:
     "Ninguém desta comissão pode rever esta proposta. A presidência convida quem revê na página Pessoas.",
   reviewersFind: "Procurar por nome ou endereço de email",

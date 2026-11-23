@@ -113,7 +113,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
   settingsEmailsIntro:
-    "A aplicação envia estes emails às pessoas de uma proposta, às pessoas que a presidência convida para rever ou para presidir, e a quem revê e a quem preside enquanto as propostas são revistas. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
+    "A aplicação envia estes emails às pessoas de uma proposta, às pessoas que a presidência convida para rever ou para presidir, a quem revê e a quem preside enquanto as propostas são revistas, e às pessoas autoras de uma proposta quando a presidência envia as decisões. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
   settingsEmailsNote:
     "Estão cá os três idiomas, sejam quais forem os do congresso, porque cada pessoa recebe o email no seu idioma: alguém pode ser convidado em português para um congresso que decorre em inglês e espanhol. Um idioma que não tenha alterado mantém o texto padrão. Estes textos não são privados: tal como o resto desta configuração, podem ser lidos por qualquer pessoa que possa ver o congresso. O email para entrar é igual para toda a gente e não pode ser alterado aqui.",
   settingsEmail_invitation: "Convite para uma proposta",
@@ -128,6 +128,9 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmail_review_reminder: "Lembrete antes da entrega das revisões, para quem revê",
   settingsEmail_reviewer_declined: "Alguém não pode rever uma proposta, para a presidência",
   settingsEmail_reviews_complete: "Uma proposta tem todas as revisões, para a presidência",
+  settingsEmail_decision_accepted: "Decisão: aceite, para as pessoas autoras",
+  settingsEmail_decision_waitlisted: "Decisão: em lista de espera, para as pessoas autoras",
+  settingsEmail_decision_rejected: "Decisão: não aceite, para as pessoas autoras",
   settingsEmailWhen_invitation:
     "É enviado a uma pessoa quando quem criou uma proposta a inclui nela, e outra vez se lhe voltar a enviar o convite. Essa pessoa ainda não aceitou nada.",
   settingsEmailWhen_submission_received:
@@ -152,6 +155,12 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "É enviado a quem preside ao congresso quando alguém diz que não pode rever uma proposta e a devolve: um email por cada uma, um resumo por dia (a partir das {hour} no fuso horário do congresso) ou nenhum, conforme cada pessoa da presidência tiver escolhido em «A sua conta». Não nomeia nenhuma proposta nem quem revê: quem a devolveu está na página da proposta. Ninguém da presidência recebe um sobre a sua própria proposta nem sobre uma com a qual tem um conflito.",
   settingsEmailWhen_reviews_complete:
     "É enviado a quem preside ao congresso quando uma proposta tem tantas revisões enviadas quantas a sua comissão pede: um email por cada uma, um resumo por dia (a partir das {hour} no fuso horário do congresso) ou nenhum, conforme cada pessoa da presidência tiver escolhido em «A sua conta». Não nomeia nenhuma proposta. Ninguém da presidência recebe um sobre a sua própria proposta nem sobre uma com a qual tem um conflito.",
+  settingsEmailWhen_decision_accepted:
+    "É enviado a quem criou uma proposta e a quem confirmou a coautoria quando a presidência envia as decisões e a proposta é aceite. Ninguém pode desativar este email. No seu texto padrão leva os comentários que quem a reviu escreveu para as pessoas autoras. Nunca leva o nome de quem reviu, uma pontuação, uma recomendação ou uma nota para a presidência.",
+  settingsEmailWhen_decision_waitlisted:
+    "É enviado a quem criou uma proposta e a quem confirmou a coautoria quando a presidência envia as decisões e a proposta fica em lista de espera. Ninguém pode desativar este email. Quando mais tarde for enviada uma nova decisão para essa proposta, recebem o email desse resultado.",
+  settingsEmailWhen_decision_rejected:
+    "É enviado a quem criou uma proposta e a quem confirmou a coautoria quando a presidência envia as decisões e a proposta não é aceite. Ninguém pode desativar este email. No seu texto padrão leva os comentários que quem a reviu escreveu para as pessoas autoras. Nunca leva o nome de quem reviu, uma pontuação, uma recomendação ou uma nota para a presidência.",
   settingsEmailPlaceholders:
     "Pode pôr estas palavras, com as suas chavetas, no assunto e no texto. Cada uma é substituída quando o email é enviado:",
   settingsEmailPlaceholder_conference: "o título do congresso",
@@ -185,6 +194,8 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "o link para as escolhas da pessoa sobre estes emails, em «A sua conta»",
   settingsEmailPlaceholder_reviewsLink: "o link para a lista de quem revê, «As minhas revisões»",
   settingsEmailPlaceholder_assignmentsLink: "o link para a página de atribuições do congresso",
+  settingsEmailPlaceholder_comments:
+    "os comentários que quem reviu escreveu para as pessoas autoras, cada um sob «Revisão 1», «Revisão 2», etc., sem nomes nem pontuações; onde não há nenhum, uma frase que o diz. Pode omiti-la: a página da proposta também os mostra.",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "O texto tem de a conter.",
   settingsEmailBodyOnly: "Não pode ficar no assunto.",
@@ -203,6 +214,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmailSample_owner: "Ana Exemplo",
   settingsEmailSample_person: "Bruno Amostra",
   settingsEmailSample_title: "Um título inventado",
+  settingsEmailSample_comment1:
+    "Um comentário inventado: o argumento é claro e os exemplos sustentam-no.",
+  settingsEmailSample_comment2:
+    "Outro comentário inventado, em dois parágrafos.\n\nO segundo pede umas palavras sobre o método.",
   settingsStandardText: "o texto padrão",
   settingsAgreementsIntro:
     "As pessoas aceitam-nos quando submetem uma proposta ou confirmam um convite. A aplicação regista que versão de cada acordo cada pessoa aceitou.",

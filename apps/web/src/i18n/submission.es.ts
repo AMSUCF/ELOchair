@@ -252,13 +252,13 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   phaseDoes_draft:
     "El congreso queda oculto para todo el mundo salvo para quienes lo presiden y los agentes que hayan configurado para él, y nadie puede iniciar, editar, enviar ni retirar una propuesta; cada persona sigue viendo sus propias propuestas.",
   phaseDoes_cfp_open:
-    "El congreso es público, y se pueden iniciar, editar y enviar propuestas entre las fechas de apertura y de cierre que figuran en la configuración. En esta fase, quienes revisan no pueden abrir las propuestas que tienen asignadas.",
+    "El congreso es público, y se pueden iniciar, editar y enviar propuestas entre las fechas de apertura y de cierre que figuran en la configuración. En esta fase, quienes revisan no pueden abrir las propuestas que tienen asignadas, y no se puede registrar ninguna decisión.",
   phaseDoes_reviewing:
-    "La convocatoria está cerrada digan lo que digan las fechas: nadie puede iniciar, editar ni enviar una propuesta, ni confirmar una invitación, pero una propuesta enviada todavía se puede retirar. Quienes revisan pueden abrir las propuestas que tienen asignadas, y se les avisa por correo de las que ya lo estaban, con la frecuencia que cada cual haya elegido.",
+    "La convocatoria está cerrada digan lo que digan las fechas: nadie puede iniciar, editar ni enviar una propuesta, ni confirmar una invitación, pero una propuesta enviada todavía se puede retirar. Quienes revisan pueden abrir las propuestas que tienen asignadas, y se les avisa por correo de las que ya lo estaban, con la frecuencia que cada cual haya elegido; en esta fase escriben, envían y cambian sus revisiones. La presidencia puede registrar decisiones, lo que no avisa a nadie; en esta fase no se pueden enviar.",
   phaseDoes_deciding:
-    "Lo que cada persona puede hacer es lo mismo que en «{reviewing}»: la convocatoria está cerrada y una propuesta enviada todavía se puede retirar; la lista de congresos muestra la nueva fase.",
+    "La convocatoria está cerrada, y una propuesta enviada todavía se puede retirar. Las revisiones ya no se pueden escribir ni cambiar: quienes revisan siguen leyendo las propuestas que tienen asignadas y sus propias revisiones. La presidencia puede registrar una decisión en la página de cada propuesta, y enviar las decisiones desde la página Decisiones: enviarlas avisa a las personas autoras.",
   phaseDoes_confirming:
-    "La convocatoria está cerrada y una propuesta enviada ya no se puede retirar.",
+    "La convocatoria está cerrada y una propuesta enviada ya no se puede retirar. Las revisiones ya no se pueden escribir ni cambiar, y la presidencia todavía puede registrar decisiones y enviarlas.",
   phaseDoes_scheduling:
     "Lo que cada persona puede hacer es lo mismo que en «{confirming}»: la convocatoria está cerrada y una propuesta enviada no se puede retirar; la lista de congresos muestra la nueva fase.",
   phaseDoes_published:

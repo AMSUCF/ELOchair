@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ContributionRole, Key } from "./config";
+import { DECISION_OUTCOMES } from "./decisions";
 import { FieldValue, Id, InvitableRole, ParticipationMode, SubmissionStatus } from "./domain";
 import { LanguageCode } from "./i18n";
 import { hasStrayInvisible } from "./invisible";
@@ -266,6 +267,23 @@ export const AssignReviewerInput = z
 export type AssignReviewerInput = z.infer<typeof AssignReviewerInput>;
 
 /**
+ * A chair records a decision for one proposal, or changes the one recorded (spec 03, §1.6). The
+ * proposal is named by the address, and the chair is whoever is signed in.
+ */
+export const DecisionInput = z.object({ outcome: z.enum(DECISION_OUTCOMES) }).strict();
+export type DecisionInput = z.infer<typeof DecisionInput>;
+
+/**
+ * A chair sends the decisions (spec 03, §1.6). `token` names what the confirmation showed: the
+ * decisions that were waiting, and the people each goes to. Where that is no longer what would
+ * be sent, nothing is sent (409 `stale`), so that nobody is told what no chair confirmed.
+ */
+export const SendDecisionsInput = z
+  .object({ token: z.string().regex(/^[0-9a-f]{32}$/, "the token of a confirmation") })
+  .strict();
+export type SendDecisionsInput = z.infer<typeof SendDecisionsInput>;
+
+/**
  * A person's choices about the emails of the review phase at one conference (spec 03, §1.7).
  * The conference is named by the address, and the person is whoever is signed in: nothing here
  * can name another. Each choice is optional, and one that is left out stays as it is. The first
@@ -337,6 +355,12 @@ export const AssignmentsPoolQuery = z
   })
   .strict();
 export type AssignmentsPoolQuery = z.infer<typeof AssignmentsPoolQuery>;
+
+/** The chairs' Decisions page (spec 03, §1.6): paged pool by pool, as the Assignments page is. */
+export const DecisionsQuery = AssignmentsQuery;
+export type DecisionsQuery = AssignmentsQuery;
+export const DecisionsPoolQuery = AssignmentsPoolQuery;
+export type DecisionsPoolQuery = AssignmentsPoolQuery;
 
 /** One query shape for the REST list, the CSV exports and the MCP tools. */
 export const SubmissionQuery = z

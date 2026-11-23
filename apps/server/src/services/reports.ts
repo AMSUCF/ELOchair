@@ -12,6 +12,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { conferenceRoles, people } from "../db/schema";
 import type { ConferenceRow } from "../repo";
+import { LIVE_STATUSES } from "./submissions";
 
 /**
  * The presenter-cap report for chairs: confirmed roles only, over the submissions the acting
@@ -101,7 +102,8 @@ export function conferenceOverview(
     const d = day.format(new Date(r.submission.submittedAt));
     submittedByDay[d] = (submittedByDay[d] ?? 0) + 1;
   }
-  const submitted = real.filter((r) => r.submission.status === "submitted");
+  // Work that must stay valid: under consideration, on the waiting list, or accepted.
+  const live = real.filter((r) => LIVE_STATUSES.includes(r.submission.status));
   return {
     slug: conference.slug,
     phase: conference.phase,
@@ -121,7 +123,7 @@ export function conferenceOverview(
     ).length,
     withPendingInvitations: real.filter((r) => r.contributions.some((c) => c.status === "invited"))
       .length,
-    incomplete: submitted.filter(
+    incomplete: live.filter(
       (r) => submissionIssues(config, r.submission, r.contributions, r.people).length > 0,
     ).length,
     withoutAvailableChair: real.filter(

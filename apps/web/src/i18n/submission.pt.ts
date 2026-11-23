@@ -253,12 +253,13 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   phaseDoes_draft:
     "O congresso fica oculto para toda a gente, exceto para quem o preside e para os agentes que tenha configurado para ele, e ninguém pode iniciar, editar, submeter ou retirar uma proposta; cada pessoa continua a ver as suas próprias propostas.",
   phaseDoes_cfp_open:
-    "O congresso é público, e podem ser iniciadas, editadas e submetidas propostas entre as datas de abertura e de encerramento indicadas na configuração. Nesta fase, quem revê não pode abrir as propostas que lhe estão atribuídas.",
+    "O congresso é público, e podem ser iniciadas, editadas e submetidas propostas entre as datas de abertura e de encerramento indicadas na configuração. Nesta fase, quem revê não pode abrir as propostas que lhe estão atribuídas, e não é possível registar nenhuma decisão.",
   phaseDoes_reviewing:
-    "A chamada está fechada, digam as datas o que disserem: ninguém pode iniciar, editar ou submeter uma proposta, nem confirmar um convite, mas uma proposta submetida ainda pode ser retirada. Quem revê pode abrir as propostas que lhe estão atribuídas, e é avisado por email das que já o estavam, com a frequência que cada pessoa tiver escolhido.",
+    "A chamada está fechada, digam as datas o que disserem: ninguém pode iniciar, editar ou submeter uma proposta, nem confirmar um convite, mas uma proposta submetida ainda pode ser retirada. Quem revê pode abrir as propostas que lhe estão atribuídas, e é avisado por email das que já o estavam, com a frequência que cada pessoa tiver escolhido; nesta fase escreve, envia e altera as suas revisões. A presidência pode registar decisões, o que não avisa ninguém; nesta fase não podem ser enviadas.",
   phaseDoes_deciding:
-    "O que cada pessoa pode fazer é o mesmo que em «{reviewing}»: a chamada está fechada e uma proposta submetida ainda pode ser retirada; a lista de congressos mostra a nova fase.",
-  phaseDoes_confirming: "A chamada está fechada e uma proposta submetida já não pode ser retirada.",
+    "A chamada está fechada, e uma proposta submetida ainda pode ser retirada. As revisões já não podem ser escritas nem alteradas: quem revê continua a ler as propostas que lhe estão atribuídas e as suas próprias revisões. A presidência pode registar uma decisão na página de cada proposta, e enviar as decisões a partir da página Decisões: enviá-las informa as pessoas autoras.",
+  phaseDoes_confirming:
+    "A chamada está fechada e uma proposta submetida já não pode ser retirada. As revisões já não podem ser escritas nem alteradas, e a presidência ainda pode registar decisões e enviá-las.",
   phaseDoes_scheduling:
     "O que cada pessoa pode fazer é o mesmo que em «{confirming}»: a chamada está fechada e uma proposta submetida não pode ser retirada; a lista de congressos mostra a nova fase.",
   phaseDoes_published:

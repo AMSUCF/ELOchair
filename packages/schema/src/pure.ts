@@ -5,6 +5,7 @@ export { type CallState, callState, isCallOpen } from "./call";
  */
 export { presenterCapReport } from "./cap";
 export { type DeadlineClock, type StatedDeadline, statedDeadline } from "./deadline";
+export { DECISION_OUTCOMES, type DecisionOutcome } from "./decisions";
 export { dressedAs } from "./dressing";
 export { hasStrayInvisible, removeStrayInvisible } from "./invisible";
 export { LIMITS, REVIEW_EMAILS, ROLE_INVITATIONS } from "./limits";
@@ -12,7 +13,9 @@ export { effectiveBlindMode, findType } from "./lookup";
 export {
   ANSWER_WORDS,
   type ConferenceMessages,
+  commentsBlock,
   committeeList,
+  DECISION_MESSAGES,
   DECLINE_REASON_WORDS,
   filledMessage,
   fillMessage,
@@ -34,10 +37,12 @@ export {
   mailLanguagesFor,
   messageProblems,
   messageText,
+  noCommentsSentence,
   placeholdersIn,
   placeholdersOf,
   ROLE_WORDS,
   reasonList,
+  reviewerLabel,
   reviewsDueSentence,
   type TextSpan,
   UNNAMED_OWNER,

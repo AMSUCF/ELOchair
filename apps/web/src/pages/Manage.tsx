@@ -24,14 +24,19 @@ type Overview = {
   byStatus: Record<string, number>;
   byType: Record<string, number>;
 };
+/**
+ * One proposal of the list. A chair is given most of them as a chair. Their own proposal (and
+ * one they were invited to) comes as its people are given it, without the problems a chair is
+ * shown: it is listed all the same, as theirs to read.
+ */
 type Row = {
-  view: "chair";
+  view: "chair" | "submitter" | "invitee";
   id: string;
   title: string;
   typeKey: string;
   status: SubmissionStatus;
-  issueCodes: SubmissionIssue["code"][];
-  selfIdWarningCount: number;
+  issueCodes?: SubmissionIssue["code"][];
+  selfIdWarningCount?: number;
   contributors: {
     displayName: string | null;
     invitedName: string | null;
@@ -286,6 +291,12 @@ export function ManagePage() {
             {t("manageAssignmentsLink")}
           </Link>
         )}
+        {/* What is decided about each proposal, and sending the decisions: the same chairs (§1.6). */}
+        {mayConfigure && (
+          <Link className="button secondary" to={`/${lang}/c/${slug}/decisions`}>
+            {t("manageDecisionsLink")}
+          </Link>
+        )}
       </p>
       {mayConfigure && <PhaseControl slug={slug} phase={conf.data.phase} onMoved={reread} />}
       <Filters config={config} onApply={setQuery} />
@@ -319,11 +330,11 @@ export function ManagePage() {
                     )
                     .join(", ")}
                 </p>
-                {(r.issueCodes.length > 0 || r.selfIdWarningCount > 0) && (
+                {((r.issueCodes?.length ?? 0) > 0 || (r.selfIdWarningCount ?? 0) > 0) && (
                   <p className="notice">
                     {t("manageIssues")}:{" "}
                     {[
-                      ...r.issueCodes,
+                      ...(r.issueCodes ?? []),
                       ...(r.selfIdWarningCount ? (["self_identification"] as const) : []),
                     ]
                       .map((code: IssueCode) => t(issueLabelKey(code)))

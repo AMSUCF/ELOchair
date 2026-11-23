@@ -38,6 +38,7 @@ import {
   writeConfig,
 } from "../repo";
 import { everAssigned } from "../services/assignments";
+import { decisionColumns } from "../services/decisions";
 import { capReportFor, chairsOf, conferenceOverview } from "../services/reports";
 import { stillChair } from "../services/roles";
 import { configToken, reviewConfig } from "../services/settings";
@@ -412,7 +413,16 @@ async function csvExport(c: Context<AppEnv>, kind: "submissions" | "contributors
     capReportFor(viewer, k, records, COUNTED_STATUSES).over.flatMap((o) => o.submissionIds),
   );
   const body =
-    kind === "submissions" ? submissionsCsv(k.config, rows, overCap) : contributorsCsv(rows);
+    kind === "submissions"
+      ? submissionsCsv(
+          k.config,
+          rows,
+          overCap,
+          // For a chair in person: what is decided, and how many reviews were sent. Nothing of
+          // either for a track chair or an agent, for whom they are not read.
+          await decisionColumns(db, viewer, k, records),
+        )
+      : contributorsCsv(rows);
   await audit(db, viewer, {
     action: "submissions.exported",
     conferenceId: k.id,

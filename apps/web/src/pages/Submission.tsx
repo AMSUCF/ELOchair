@@ -41,6 +41,7 @@ import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsaved
 import { reviewScope } from "../unsavedReview";
 import { useUnsaved } from "../useUnsaved";
 import { ChairProposal } from "./ChairProposal";
+import { AuthorDecisionSection } from "./ProposalDecision";
 import { ReviewerProposal } from "./ReviewerProposal";
 
 type ConfInfo = { slug: string; phase: string; config: ConferenceConfig; callOpen: boolean };
@@ -500,6 +501,8 @@ function Editor({
     | SubmissionType
     | undefined;
   const editable = conf.callOpen && (sub.status === "draft" || sub.status === "submitted");
+  /** A decision on it was sent: accepted, on the waiting list, not accepted, or what follows. */
+  const decided = !["draft", "submitted", "withdrawn"].includes(sub.status);
   // The editor is the owner's: their unsaved changes are kept in this browser under their id.
   const { found, keep, drop } = useUnsaved(initial.ownerPersonId, unsavedScope(initial.id));
   /** The form as the server last had it. Unsaved changes are the differences from it. */
@@ -770,7 +773,13 @@ function Editor({
         )}
       </p>
       <Deadline config={config} open={conf.callOpen} />
-      {!editable && <p className="notice">{conf.callOpen ? t("editReadOnly") : t("editClosed")}</p>}
+      {!editable && (
+        <p className="notice">
+          {decided ? t("editDecided") : conf.callOpen ? t("editReadOnly") : t("editClosed")}
+        </p>
+      )}
+      {/* Once the chairs have sent the decision: what was decided, and the reviewers' comments. */}
+      <AuthorDecisionSection submissionId={sub.id} status={sub.status} />
       {stale && (
         <StalePanel
           dirty={dirty}
@@ -1008,6 +1017,10 @@ function Editor({
             {t("editUnsubmit")}
           </button>
         </div>
+      )}
+      {/* An accepted proposal, and one on the waiting list, are withdrawn by writing too. */}
+      {(sub.status === "accepted" || sub.status === "waitlisted") && (
+        <p className="meta">{t("editWithdrawOver", { email: config.contactEmail })}</p>
       )}
       {sub.status === "submitted" &&
         // Withdrawing follows the phase alone (spec 02, §1.3): past it, a button would only fail.
@@ -1486,6 +1499,10 @@ function ReadOnly({
           <p className="notice">
             {sub.view === "invitee" ? t("editInviteeIntro") : t("editReadOnly")}
           </p>
+          {/* For a co-author who confirmed, once the chairs have sent the decision. */}
+          {sub.view === "submitter" && (
+            <AuthorDecisionSection submissionId={sub.id} status={sub.status} />
+          )}
           <h2>{type ? localize(type.abstract.label, lang, config.defaultLanguage) : "Abstract"}</h2>
           <p className="prose" lang={sub.language}>
             {sub.abstract}

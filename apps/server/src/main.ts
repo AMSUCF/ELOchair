@@ -4,7 +4,13 @@ import { createApp } from "./app";
 import { openDatabase } from "./db/client";
 import { makeDeps } from "./deps";
 import { loadEnv } from "./env";
-import { seedChairReviews, seedOpenCall, seedPhaseRoom, seedSandbox } from "./fixtures";
+import {
+  seedChairReviews,
+  seedDecisionsRoom,
+  seedOpenCall,
+  seedPhaseRoom,
+  seedSandbox,
+} from "./fixtures";
 import { deliverPending } from "./mail";
 import { createConferenceIfMissing, getConference, markReviewBegun } from "./repo";
 import { runNotifications } from "./services/notifications";
@@ -34,12 +40,16 @@ if (env.SEED_ON_START) {
   if (!(await getConference(database.db, "chair-reviews"))) {
     await seedChairReviews(database.db, { chairEmail: "chair@example.org" });
   }
+  // Decisions are recorded and sent in a conference of their own, past its review.
+  if (!(await getConference(database.db, "decisions-room"))) {
+    await seedDecisionsRoom(database.db, { chairEmail: "chair@example.org" });
+  }
   await seedOpenCall(database.db, {
     now: new Date(),
     chairEmails: ["chair@example.org", "admin@example.org"],
   });
   console.log(
-    "seeded elo2026, elo2027, the synthetic sandbox, an empty conference in review (phase-room), a small one whose chair also reviews (chair-reviews) and an open test call (elo2027-open); sign in as chair@example.org",
+    "seeded elo2026, elo2027, the synthetic sandbox, an empty conference in review (phase-room), a small one whose chair also reviews (chair-reviews), a small one whose decisions are being made (decisions-room) and an open test call (elo2027-open); sign in as chair@example.org",
   );
 }
 

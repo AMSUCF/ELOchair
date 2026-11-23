@@ -42,7 +42,8 @@ The goal is to open a call for proposals that people can submit to from a phone,
   - It can name the owner's display name (one line, with links, bare domains, email addresses and invisible formatting characters removed, until nothing is left to remove), the conference title, the format, the role, and a link. The link is always in it. The name stands as a word of its own, whatever the wording: no text can make it part of a link or an address (§1.9).
   - It contains no submission title, no abstract, and no name the owner typed for the invitee: an invitation has no such value to put into a text, and a text that names one is refused. ELO's signed mail must not carry text an attacker wrote to people who have not agreed to anything.
   - If the proposal is withdrawn while the invitation is pending, the invitee gets a notice without the title, in the invitation's language. So does someone still invited to a draft that is deleted. Neither notice can name anything but the conference.
-  - Mail to people who are part of the proposal (receipts, withdrawal notices, answers to the owner) shows owner-written text, such as the title, as typed: one line, without invisible formatting characters, cut with an ellipsis past 300 characters. Titles such as "Poems with p5.js" stay whole.
+  - Mail to people who are part of the proposal (receipts, withdrawal notices, answers to the owner, decisions) shows owner-written text, such as the title, as typed: one line, without invisible formatting characters, cut with an ellipsis past 300 characters. Titles such as "Poems with p5.js" stay whole.
+  - The email about a decision also carries what the proposal's reviewers wrote for its authors. That is cleaned in the same place and in the same way, as text of several lines: without invisible formatting characters, with its line breaks, and cut, with a line that says so and the link, past 4,000 characters for one review (spec 03, §1.7).
   - What an owner wrote is cleaned in the same way whatever text it goes into, and it is put in once: a name or a title that holds `{link}` stays those characters.
   - Once sent, the outbox keeps a copy with the link token removed (sign-in mail likewise loses its link and code), so the database and its backups hold no working link.
 - **The invitation link** carries a single-use token, stored only as a hash. It expires at `submissionsClose` or after 14 days, whichever is later; declining stays possible after the close.
@@ -53,6 +54,8 @@ The goal is to open a call for proposals that people can submit to from a phone,
 
 ### 1.3 Lifecycle and deadlines
 - `draft → submitted ⇄ draft` (return to draft, before the close) `→ withdrawn` (final).
+- `submitted → accepted`, `waitlisted` or `rejected`, and `waitlisted → accepted` or `rejected`: only when the chairs send the decisions (spec 03, §1.6). Nothing else writes these three statuses. A decision that a chair has recorded and not sent is kept apart from the proposal, whose status stays `submitted`: its people see nothing change.
+  - A decided proposal is not edited, returned to draft or withdrawn in the app: those are for a `submitted` proposal (and a draft). The owner's page says that a decision was sent; for an accepted proposal and one on the waiting list it says to write to the conference to withdraw. Declining an invitation and leaving stay possible, as always.
 - Drafts are created only by an explicit **Start**, after a format and abstract language are chosen.
 - Drafts can be deleted outright: a hard delete by the owner. The audit row keeps IDs only, and pending invitees are told.
 - **The call is open** when the phase is `cfp_open` and the server's receipt time `t` satisfies `submissionsOpen ≤ t < submissionsClose` (`isCallOpen`). There is no grace period, and the client clock never decides anything: the front page and the conference, Start and editor pages follow the `callOpen` the server returns. The server also says where the call stands (`callState`), which is all the public pages say about it (§1.10).
@@ -62,7 +65,7 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - **Submitted work stays valid.** A submitted submission always passes `validateSubmission`.
   - An edit or co-author change that would break this returns 422 `issues` and saves nothing.
   - To make bigger changes (swap a full panel, change format), return to draft, edit, and submit again before the close.
-  - A decline after the close can still invalidate a submission. Its metadata then carries `issueCodes`, and chairs see it as **incomplete**.
+  - A decline after the close can still invalidate a submission. Its metadata then carries `issueCodes`, and chairs see it as **incomplete**. That is said of every proposal that was sent in and is neither withdrawn nor turned down: one that was accepted or is on the waiting list is counted with those still under consideration, and one that was not accepted no longer is.
 - **Concurrency.**
   - Every submission has an integer `version`. Writes must send the version they edited; a stale one gets 409 `stale`.
   - Each mutation runs in one transaction that locks the submission row and uses one `now` for the whole request.
@@ -75,10 +78,12 @@ The goal is to open a call for proposals that people can submit to from a phone,
 - **Visibility.** The policy treats a submission that was never submitted (`submittedAt` null) like a draft, whatever its status. Contributors only.
 
 ### 1.4 What each person learns
+- **The decision.** A proposal's owner and its confirmed co-authors learn it when the chairs send the decisions (spec 03, §1.6), and not before: by email, in the status on their pages and "My submissions", and in a Decision section on the proposal's page with the comments its reviewers wrote for the authors, under a number each and never a name. Someone who was invited and has not confirmed sees the status, and no comment. While a decision is only recorded, nothing any of them can read is different.
 - **Presenter cap.** People are told about their own counts only.
   - `/check` and the submit response report only the requesting person's count, as `{ count, max }`.
   - The invitation page tells the invitee what confirming would do to their own count.
   - Only chairs see everyone's counts. The cap report counts **confirmed** contributions only, and lists pending invitations separately as a number.
+  - What counts is work under consideration and accepted work (`submitted`, `accepted`, and what follows an accept). A proposal on the waiting list and one that was not accepted do not count.
   - The wording comes from the configuration: "This conference programs at most {max} first-author or presenting roles per person ({types} do not count). You have {n} in submitted proposals."
 - **Self-identification checks** run live in the browser on the owner's own data, as names, affiliations and emails the owner can already see. The server check (`/check`, submit) is authoritative and adds ORCID iDs and email domains.
   - Citations are recognized in narrative form (`Pérez et al. (2021)`, `Pérez y Gómez (2020)`, `Pérez, Gómez y Ruiz et al. (2020)`, `Pérez's (2019)`, `Pérez [2019]`), in parentheses, and as reference-list entries (`Pérez, A. L. (2021).`, `GONÇALVES, João Carlos. … 2020.`), as are names joined in link hosts and paths.
@@ -191,7 +196,7 @@ Chairs adjust a conference's values in the app, at `/c/:slug/settings` (linked f
   - It is optional. When it is there it needs the conference's main language, like any other text.
   - A reviewer sees it under "Guidelines for reviewers", above every proposal assigned to them whose format that pool reviews: in their own language where it was written, otherwise in the main language, with its line breaks. A pool without guidelines shows nothing.
   - Like the rest of a configuration it is not confidential: anyone who can see the conference can read its configuration.
-- **Emails.** Chairs change the wording of the emails the app sends to the people on a proposal. There are six, each defined once in `packages/schema/src/messages.ts`, which the server sends from and the screen renders from:
+- **Emails.** Chairs change the wording of the emails the app sends to the people on a proposal. There are six about a proposal itself, each defined once in `packages/schema/src/messages.ts`, which the server sends from and the screen renders from. (The same section of the screen has the others, each described where it is sent: the two invitations to a role and the four emails of the review phase in spec 03, §1.2 and §1.7, and the three emails that tell a proposal's authors of a decision, `decision_accepted`, `decision_waitlisted` and `decision_rejected`, in spec 03, §1.6 and §1.7. What follows holds for all of them.)
 
   | Key | Sent | Placeholders (required in the text in bold) |
   |---|---|---|
@@ -416,6 +421,7 @@ Write routes have a 64 KB body limit (256 KB for a whole configuration) and 60 w
 - **Rows:** only submissions where `submissionAccess(person, r) === "chair"` (so a chair's own and conflicted submissions are left out). The response says how many were omitted (`X-Omitted-Rows`, the list's `excludedCount`). List filters apply. Every matching row is included: the server pages internally and ignores any `cursor` or `limit`.
 - **`submissions.csv`**, one row per submission:
   - reference, id, status, type (key and label), track, topics, language, participationMode
+  - for a chair of the conference in person, three more columns after the status (spec 03, §1.6): `decision` (the decision that stands for the proposal: the one that waits to be sent, or else the last one sent; empty where there is none), `decision_sent` (`yes` or `no`; empty where there is none) and `reviews_sent` (how many reviews of it were sent). `status` is what the proposal's people were told; `decision` may be ahead of it. A track chair's export and a tier C agent's do not have these columns: neither is shown a decision that is not sent, or anything of a review.
   - title, abstract, abstract words
   - created, submitted and updated times (ISO 8601 in the conference time zone)
   - contributors (`Name <email> (role, status)` joined with `; `)
@@ -438,12 +444,13 @@ Write routes have a 64 KB body limit (256 KB for a whole configuration) and 60 w
     - counts by status, type, track, language and participation mode (non-draft, own and conflicted included, since counts reveal nothing)
     - `draftCount`, a single number
     - `submittedByDay`, in the conference time zone
-    - `withSelfIdWarnings`, `withPendingInvitations` and `incomplete`
+    - `withSelfIdWarnings`, `withPendingInvitations` and `incomplete` (proposals that were sent in, are neither withdrawn nor turned down, and have a problem)
     - `withoutAvailableChair`: submitted proposals that no chair or track chair can manage, because each is a contributor or conflicted
   - **`list_submissions`** takes a `SubmissionQuery` and returns projections.
   - **`get_submission`** returns one projection.
   - **`presenter_cap_report`** returns the chair report: confirmed contributions only, within the acting person's chair access, plus the pending count.
 - **Tiers:** tier M gets metadata. The contributors in the metadata view carry `status`, and the view also includes `participationMode`, `issueCodes` and the self-identification warning count. Tier C gets exactly what its owner would see.
+  - A proposal's own `status` is in both. It says `accepted`, `waitlisted` or `rejected` only once the chairs have sent that decision: no tool, at either tier, returns a decision that is recorded and not sent, a review, or the comments a proposal's authors are sent (spec 03, §1.6).
 
 ### 2.5 Fixtures and the dry run
 - **`seedOpenCall(db, { slug, now })`** clones ELO 2027 with deadlines relative to the clock, each written in the offset the configuration writes it in (so the closing date is stated anywhere on Earth, §1.10), and the phase set to `cfp_open`. Development and the e2e tests use it, so they exercise what people will really be offered, on any date.

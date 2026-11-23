@@ -13,7 +13,7 @@ export const emailsPt: Record<keyof typeof emailsEn, string> = {
   emailsChairHint:
     "Quando alguém não pode rever uma proposta, e quando uma proposta tem todas as revisões. Um resumo é um email por cada uma das duas coisas.",
   emailsAlways:
-    "Os convites e os emails para entrar são sempre enviados: sem eles não poderia participar.",
+    "Os convites, os emails para entrar e as decisões sobre as suas próprias propostas são sempre enviados: sem eles não poderia participar.",
   emailsSave: "Guardar",
   emailsSaveFor: "Guardar as escolhas de email para {conference}",
   emailsSaved: "As suas escolhas de email para {conference} estão guardadas.",

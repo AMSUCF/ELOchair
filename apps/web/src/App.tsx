@@ -15,6 +15,7 @@ import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, translate, useT } f
 import { AssignmentsPage } from "./pages/Assignments";
 import { CannotReviewPage } from "./pages/CannotReview";
 import { ConferencePage } from "./pages/Conference";
+import { DecisionsPage } from "./pages/Decisions";
 import { HomePage } from "./pages/Home";
 import { InvitationPage } from "./pages/Invitation";
 import { ManagePage } from "./pages/Manage";
@@ -48,6 +49,7 @@ export function App() {
         <Route path="c/:slug/settings" element={<SettingsPage />} />
         <Route path="c/:slug/people" element={<PeoplePage />} />
         <Route path="c/:slug/assignments" element={<AssignmentsPage />} />
+        <Route path="c/:slug/decisions" element={<DecisionsPage />} />
         <Route path="s/:id" element={<SubmissionPage />} />
         <Route path="s/:id/cannot-review" element={<CannotReviewPage />} />
         <Route path="invitation" element={<InvitationPage />} />

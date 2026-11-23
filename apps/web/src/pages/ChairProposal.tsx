@@ -7,6 +7,7 @@ import { formatDateTime } from "../format";
 import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, type IssueCode, issueLabelKey, modeKey, roleKey } from "../labels";
 import { Localized, PageHeading, StatusBadge } from "../ui";
+import { ProposalDecisionSection } from "./ProposalDecision";
 import { ProposalReviewersSection } from "./ProposalReviewers";
 import { ReviewSection } from "./ReviewForm";
 
@@ -16,8 +17,11 @@ import { ReviewSection } from "./ReviewForm";
  * change. It is what the CSV exports hold, on one page. Chairs never get this view of their own
  * work or of work they have a conflict with: the policy decides that, not this page.
  *
- * Under the proposal, a chair of the conference finds its reviewers, and assigns and removes
- * them there (spec 03, §1.3). A track chair is given the proposal and not that part.
+ * Under the proposal, a chair of the conference finds its decision, and records one there (spec
+ * 03, §1.6), and then its reviewers with the reviews they sent, and assigns and removes them
+ * there (§1.3). The decision comes first, so that it is not under the long list of who could be
+ * assigned; it says what the reviewers recommend, and their reviews are right below it. A track
+ * chair is given the proposal and neither part.
  *
  * A chair may also review: where they hold the reviewer's role and this proposal is assigned to
  * them, their own review is here too, above the reviewers, with the committee's guidelines (spec
@@ -181,6 +185,7 @@ export function ChairProposal({
           }
         />
       )}
+      {managesReviewers && <ProposalDecisionSection slug={slug} submissionId={sub.id} />}
       {managesReviewers && (
         <ProposalReviewersSection
           slug={slug}

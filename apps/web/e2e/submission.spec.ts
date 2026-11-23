@@ -1287,7 +1287,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
 
   // The button moves nothing. It asks, in its place, and says in a sentence what the phase does.
   const DECIDING =
-    "What people can do is the same as in “In review”: the call is closed and a submitted proposal can still be withdrawn; the list of conferences shows the new phase.";
+    "The call is closed, and a submitted proposal can still be withdrawn. Reviews can no longer be written or changed: reviewers still read the proposals assigned to them and their own reviews. Chairs can record a decision on each proposal's page, and send the decisions from the Decisions page: sending tells the authors.";
   await forward.click();
   await expect(
     phase.getByRole("heading", { name: "Move the conference to “Decisions in progress”?" }),
@@ -1338,7 +1338,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   ).toBeFocused();
   await expect(
     phase.getByText(
-      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen.",
+      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen; they write, send and change their reviews in this phase. Chairs can record decisions, which tells nobody; decisions cannot be sent in this phase.",
     ),
   ).toBeVisible();
   const reason = phase.getByLabel("Reason for going back");

@@ -1,4 +1,4 @@
-import type { ChairContributor, ChairSubmission } from "@elochair/policy";
+import type { ChairContributor, ChairSubmission, DecisionColumns } from "@elochair/policy";
 import { type ConferenceConfig, findType, localize } from "@elochair/schema";
 
 /*
@@ -80,11 +80,18 @@ function shown(c: ChairContributor) {
 /**
  * `overCapSubmissionIds`: the submissions that count toward an over-cap person's total
  * (CapCount.submissionIds), so only rows where the cap actually bites are flagged.
+ *
+ * `decisions`: for a chair of the conference in person, what is decided about each proposal
+ * and how many reviews of it were sent (projectDecisionColumns). With it the export has three
+ * more columns, after the status: `status` is what the proposal's authors were told, `decision`
+ * is the decision that stands (recorded, or sent), and `decision_sent` says which of the two.
+ * Without it (a track chair, an agent) the export is as it was, and holds none of this.
  */
 export function submissionsCsv(
   config: ConferenceConfig,
   rows: ChairSubmission[],
   overCapSubmissionIds: ReadonlySet<string>,
+  decisions?: Readonly<Record<string, DecisionColumns>> | null,
 ): string {
   const fieldColumns = config.submissionTypes.flatMap((t) =>
     t.fields.map((f) => ({ type: t.key, field: f.key })),
@@ -93,6 +100,7 @@ export function submissionsCsv(
     "reference",
     "id",
     "status",
+    ...(decisions ? ["decision", "decision_sent", "reviews_sent"] : []),
     "type",
     "type_label",
     "track",
@@ -119,6 +127,13 @@ export function submissionsCsv(
       reference(s.id),
       s.id,
       s.status,
+      ...(decisions
+        ? [
+            decisions[s.id]?.decision ?? "",
+            decisions[s.id]?.decision ? (decisions[s.id]?.sent ? "yes" : "no") : "",
+            decisions[s.id]?.reviewsSent ?? 0,
+          ]
+        : []),
       s.typeKey,
       type ? localize(type.name, config.defaultLanguage) : "",
       s.trackKey ?? "",

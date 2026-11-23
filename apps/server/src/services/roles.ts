@@ -17,10 +17,11 @@ import { Refusal } from "../routes/common";
  * finds the role gone and is refused.
  *
  * Which changes: saving the configuration, moving the phase, on the People page inviting,
- * sending again, cancelling and removing, and on a proposal's page assigning a reviewer and
- * releasing one (services/assignments.ts). A new route that writes because its caller is a chair
- * does the same. Reads are checked once, when they are asked for; a CSV export is a read, and
- * what it writes is the record that it was made.
+ * sending again, cancelling and removing, on a proposal's page assigning a reviewer and
+ * releasing one (services/assignments.ts), and recording a decision, taking one back and
+ * sending the decisions (services/decisions.ts). A new route that writes because its caller is
+ * a chair does the same. Reads are checked once, when they are asked for; a CSV export is a
+ * read, and what it writes is the record that it was made.
  *
  * A reviewer's own writes rest on the same lock (services/reviews.ts): a review saved or sent,
  * and "I cannot review this", share it and read the reviewer again under it. The removal of
@@ -30,24 +31,32 @@ import { Refusal } from "../routes/common";
  * ONE LOCK ORDER EVERYWHERE (spec 02, §1.9). A transaction takes what it needs of these, in
  * this order, and never goes back for an earlier one:
  *   1. the row of what it changes: a submission's, or a role invitation's (for update). Who
- *      reviews a proposal is changed under that proposal's row, and a review of it is written
- *      under that row too;
+ *      reviews a proposal is changed under that proposal's row, a review of it is written under
+ *      that row too, and so is a decision about it;
  *   2. the conference's roles lock (lockRoles): shared to act as a chair or as a reviewer,
  *      exclusive to change who holds a role (removing a reviewer's role releases their
  *      assignments under it, and keeps those whose review was sent);
  *   3. the conference's row: shared by a write (shareConference), for update by a configuration
  *      save or a phase move (lockConference, movePhase);
  *   4. the locks that count a day's invitations: the sender's, then the address's.
- * No transaction holds the rows of two submissions, of two invitations or of two conferences.
- * So nothing waits for a lock while it holds one that comes later, and the orders cannot cross.
+ * No transaction holds the rows of two invitations or of two conferences, and one alone holds
+ * the rows of more than one submission: sending the decisions (services/decisions.ts), which
+ * gives every proposal with a decision waiting its new status at once. It takes all those rows
+ * at step 1, before any other lock, in the order of their ids, and never asks for another
+ * submission's row afterwards. So nothing waits for a lock while it holds one that comes later,
+ * and the orders cannot cross: whoever holds one proposal's row and no other (an owner's write,
+ * a chair's, a reviewer's) is waited for by the send and waits for nothing the send holds; and
+ * two sends at once ask for the same rows in the same order, so the second waits at the first
+ * of them and then finds the decisions sent.
  *
  * One more lock is taken by the database itself, in no order of ours: writing a row checks its
  * foreign keys, which takes a key-share lock on each row it points to. Only a lock "for update"
  * makes that wait. A reviewer's removal writes the records of the assignments it releases under
  * the roles lock, and each points to a proposal. So the writes that hold a proposal's row and
- * then ask for the roles lock (assigning a reviewer, releasing one, and a reviewer's own: a
- * review, "I cannot review this") take that row "for no key update": the removal's check passes
- * it, and neither waits for the other.
+ * then ask for the roles lock (assigning a reviewer, releasing one, a reviewer's own: a review,
+ * "I cannot review this", and a chair's about a decision: recording one, taking one back,
+ * sending them all) take that row "for no key update": the removal's check passes it, and
+ * neither waits for the other.
  */
 
 export type RolesLock = "shared" | "exclusive";

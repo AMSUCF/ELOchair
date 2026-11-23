@@ -115,7 +115,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quienes revisan en este grupo ven este texto encima de cada propuesta que se les asigna, en su idioma si lo has escrito en él y, si no, en el idioma principal del congreso. Los saltos de línea se conservan.",
   settingsEmailsIntro:
-    "La aplicación envía estos correos a las personas de una propuesta, a las personas a quienes la presidencia invita a revisar o a presidir, y a quienes revisan y presiden mientras se revisan las propuestas. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
+    "La aplicación envía estos correos a las personas de una propuesta, a las personas a quienes la presidencia invita a revisar o a presidir, a quienes revisan y presiden mientras se revisan las propuestas, y a las personas autoras de una propuesta cuando la presidencia envía las decisiones. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
   settingsEmailsNote:
     "Están los tres idiomas, tenga el congreso los que tenga, porque cada persona recibe el correo en su idioma: se puede invitar a alguien en portugués a un congreso que se celebra en inglés y español. Un idioma que no hayas cambiado conserva el texto estándar. Estos textos no son privados: como el resto de esta configuración, puede leerlos cualquiera que pueda ver el congreso. El correo para entrar es igual para todo el mundo y no se puede cambiar aquí.",
   settingsEmail_invitation: "Invitación a una propuesta",
@@ -132,6 +132,9 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Recordatorio antes de la entrega de las revisiones, para quien revisa",
   settingsEmail_reviewer_declined: "Alguien no puede revisar una propuesta, para la presidencia",
   settingsEmail_reviews_complete: "Una propuesta tiene todas sus revisiones, para la presidencia",
+  settingsEmail_decision_accepted: "Decisión: aceptada, para las personas autoras",
+  settingsEmail_decision_waitlisted: "Decisión: en lista de espera, para las personas autoras",
+  settingsEmail_decision_rejected: "Decisión: no aceptada, para las personas autoras",
   settingsEmailWhen_invitation:
     "Se envía a una persona cuando quien creó una propuesta la incluye en ella, y otra vez si le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada.",
   settingsEmailWhen_submission_received:
@@ -156,6 +159,12 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Se envía a quienes presiden el congreso cuando alguien dice que no puede revisar una propuesta y la devuelve: un correo por cada una, un resumen al día (desde las {hour} en la zona horaria del congreso) o ninguno, según lo que cada persona de la presidencia haya elegido en «Tu cuenta». No nombra ninguna propuesta ni a quien revisa: quién la devolvió está en la página de la propuesta. Nadie de la presidencia recibe uno sobre su propia propuesta ni sobre una con la que tiene un conflicto.",
   settingsEmailWhen_reviews_complete:
     "Se envía a quienes presiden el congreso cuando una propuesta tiene tantas revisiones enviadas como pide su comité: un correo por cada una, un resumen al día (desde las {hour} en la zona horaria del congreso) o ninguno, según lo que cada persona de la presidencia haya elegido en «Tu cuenta». No nombra ninguna propuesta. Nadie de la presidencia recibe uno sobre su propia propuesta ni sobre una con la que tiene un conflicto.",
+  settingsEmailWhen_decision_accepted:
+    "Se envía a quien creó una propuesta y a quienes confirmaron su coautoría cuando la presidencia envía las decisiones y la propuesta es aceptada. Nadie puede desactivar este correo. En su texto estándar lleva los comentarios que quienes revisaron escribieron para las personas autoras. Nunca lleva el nombre de quien revisó, una puntuación, una recomendación ni una nota para la presidencia.",
+  settingsEmailWhen_decision_waitlisted:
+    "Se envía a quien creó una propuesta y a quienes confirmaron su coautoría cuando la presidencia envía las decisiones y la propuesta queda en lista de espera. Nadie puede desactivar este correo. Cuando más adelante se envíe una nueva decisión para esa propuesta, recibirán el correo de ese resultado.",
+  settingsEmailWhen_decision_rejected:
+    "Se envía a quien creó una propuesta y a quienes confirmaron su coautoría cuando la presidencia envía las decisiones y la propuesta no es aceptada. Nadie puede desactivar este correo. En su texto estándar lleva los comentarios que quienes revisaron escribieron para las personas autoras. Nunca lleva el nombre de quien revisó, una puntuación, una recomendación ni una nota para la presidencia.",
   settingsEmailPlaceholders:
     "Puedes poner estas palabras, con sus llaves, en el asunto y en el texto. Cada una se sustituye cuando se envía el correo:",
   settingsEmailPlaceholder_conference: "el título del congreso",
@@ -191,6 +200,8 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "el enlace a las preferencias de la persona sobre estos correos, en «Tu cuenta»",
   settingsEmailPlaceholder_reviewsLink: "el enlace a la lista de quien revisa, «Mis revisiones»",
   settingsEmailPlaceholder_assignmentsLink: "el enlace a la página de asignaciones del congreso",
+  settingsEmailPlaceholder_comments:
+    "los comentarios que quienes revisaron escribieron para las personas autoras, cada uno bajo «Revisión 1», «Revisión 2», etc., sin nombres ni puntuaciones; donde no hay ninguno, una frase que lo dice. Puedes omitirla: la página de la propuesta también los muestra.",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "El texto debe contenerla.",
   settingsEmailBodyOnly: "No puede ir en el asunto.",
@@ -209,6 +220,10 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsEmailSample_owner: "Ana Ejemplo",
   settingsEmailSample_person: "Bruno Muestra",
   settingsEmailSample_title: "Un título inventado",
+  settingsEmailSample_comment1:
+    "Un comentario inventado: el argumento es claro y los ejemplos lo sostienen.",
+  settingsEmailSample_comment2:
+    "Otro comentario inventado, en dos párrafos.\n\nEl segundo pide unas palabras sobre el método.",
   settingsStandardText: "el texto estándar",
   settingsAgreementsIntro:
     "Las personas los aceptan cuando envían una propuesta o confirman una invitación. La aplicación registra qué versión de cada acuerdo aceptó cada persona.",
