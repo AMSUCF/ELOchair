@@ -15,7 +15,25 @@ import type { Db } from "../db/client";
 import { submissions } from "../db/schema";
 import { type ConferenceRow, loadSubmissionRecords } from "../repo";
 
-/** Statuses that count as "submitted work" for the presenter cap. */
+/**
+ * Work that has been sent in and is neither withdrawn nor turned down: under consideration, on
+ * the waiting list, or accepted (and what follows an accept). Such work must stay valid (a
+ * settings save is refused where it would not), and it is what "incomplete" is said of: an
+ * accepted proposal that has lost its lead author since is a problem for the chairs to see,
+ * as one that is still under consideration is.
+ */
+export const LIVE_STATUSES: readonly SubmissionStatus[] = [
+  "submitted",
+  "accepted",
+  "waitlisted",
+  "confirmed",
+  "published",
+];
+
+/**
+ * Statuses that count as "submitted work" for the presenter cap: under consideration, or
+ * accepted. A proposal on the waiting list and one that was not accepted do not count.
+ */
 export const COUNTED_STATUSES: SubmissionStatus[] = [
   "submitted",
   "accepted",
@@ -147,7 +165,8 @@ export async function querySubmissions(
     }
     if (query.incomplete !== undefined) {
       if (!("issueCodes" in p)) return false;
-      const incomplete = status === "submitted" && p.issueCodes.length > 0;
+      const incomplete =
+        status !== undefined && LIVE_STATUSES.includes(status) && p.issueCodes.length > 0;
       if (incomplete !== query.incomplete) return false;
     }
     if (q && !("title" in p && p.title.toLocaleLowerCase().includes(q))) return false;

@@ -1886,7 +1886,7 @@ test.describe("conference settings", () => {
     await openSettings(chair);
     await expect(
       chair.getByText(
-        "The app sends these emails to the people on a proposal, to the people a chair invites as reviewers or chairs, and to reviewers and chairs while proposals are reviewed.",
+        "The app sends these emails to the people on a proposal, to the people a chair invites as reviewers or chairs, to reviewers and chairs while proposals are reviewed, and to a proposal's authors when the chairs send the decisions.",
         { exact: false },
       ),
     ).toBeVisible();
@@ -2834,7 +2834,7 @@ test.describe("conference settings", () => {
 
   /*
    * The emails of the review phase, as a chair chooses them (spec 03, §1.7). The chair of these
-   * tests chairs four conferences and reviews at one of them, `chair-reviews`: each part of the
+   * tests chairs five conferences and reviews at one of them, `chair-reviews`: each part of the
    * choices is shown only where its role is held. What is changed is the chair's own choice at
    * `phase-room`, an empty conference where nothing ever happens to be told of, so that no
    * email follows from it. A second attempt finds what the first one left: the page is held
@@ -2862,7 +2862,7 @@ test.describe("conference settings", () => {
     expect(before.filter((k) => k.reviewer).map((k) => k.conference.slug)).toEqual([
       "chair-reviews",
     ]);
-    for (const slug of ["chair-reviews", CALL, "phase-room", "sandbox"]) {
+    for (const slug of ["chair-reviews", "decisions-room", CALL, "phase-room", "sandbox"]) {
       expect(at(before, slug).chair, slug).not.toBeNull();
     }
     const room = at(before, "phase-room");
@@ -2912,17 +2912,17 @@ test.describe("conference settings", () => {
     ).toHaveCount(0);
     await expect(form.getByRole("checkbox")).toHaveCount(0);
     // What cannot be turned off is said once, under the heading: not again for each of the
-    // four conferences this chair has.
+    // five conferences this chair has.
     const always = emails.getByText(
-      "Invitations and sign-in emails are always sent: without them you could not take part.",
+      "Invitations, sign-in emails and the decisions about your own proposals are always sent: without them you could not take part.",
     );
     await expect(always).toHaveCount(1);
     await expect(always).toBeVisible();
-    await expect(emails.locator("form")).toHaveCount(4);
+    await expect(emails.locator("form")).toHaveCount(5);
     await expect(emails.locator("> *").nth(1)).toHaveText(
-      "Invitations and sign-in emails are always sent: without them you could not take part.",
+      "Invitations, sign-in emails and the decisions about your own proposals are always sent: without them you could not take part.",
     );
-    await expect(form.getByText("Invitations and sign-in emails")).toHaveCount(0);
+    await expect(form.getByText("Invitations, sign-in emails")).toHaveCount(0);
     const title = room.conference.title.en ?? "";
     const save = form.getByRole("button", { name: `Save email choices for ${title}` });
     for (const label of await notices.locator("label").all()) await expectTouchTarget(label);
@@ -2942,7 +2942,7 @@ test.describe("conference settings", () => {
     const after = await mine();
     expect(at(after, "phase-room").chair).toEqual({ notices: next });
     // The others are as they were: each conference is saved by itself.
-    for (const slug of ["chair-reviews", CALL, "sandbox"]) {
+    for (const slug of ["chair-reviews", "decisions-room", CALL, "sandbox"]) {
       expect(at(after, slug), slug).toEqual(at(before, slug));
     }
     await chair.reload();
@@ -2955,7 +2955,7 @@ test.describe("conference settings", () => {
     ] as const) {
       await chair.goto(`/${lang}/me`);
       const part = chair.getByRole("region", { name: heading });
-      await expect(part.getByRole("group", { name: legend })).toHaveCount(4);
+      await expect(part.getByRole("group", { name: legend })).toHaveCount(5);
       await expectNoHorizontalScroll(chair);
     }
   });
@@ -3088,8 +3088,9 @@ test.describe("conference settings", () => {
    * file, and the last thing they write is that review with the words of FINAL as its comments
    * (the rule is at the top of review.spec.ts). This test waits for exactly that, wherever it
    * was written, so that it reads a review nobody is still changing; before it, reviewer-30
-   * has given one proposal back, with the note GIVEN_BACK. It is the last test of the file: run
-   * without review.spec.ts, nothing sends that review, and this test alone fails for want of it.
+   * has given one proposal back, with the note GIVEN_BACK. Only the two tests of decisions
+   * follow it: run without review.spec.ts, nothing sends that review, this test fails for want
+   * of it, and those two are not run.
    *
    * It changes nothing: the one value it types in the sandbox's settings is refused in the
    * review step, as it has to be, and is taken back.
@@ -3306,5 +3307,745 @@ test.describe("conference settings", () => {
       (await stored(chair, SANDBOX)).config.reviewPools.find((x) => x.key === pool.key)?.criteria[0]
         ?.max,
     ).toBe(top.max);
+  });
+
+  /*
+   * Decisions (spec 03, §1.6). They are here because this file has a chair signed in, who
+   * chairs `decisions-room` too: a small conference seeded in "Decisions in progress" for
+   * these two tests, with five talks whose reviews were sent. Nobody signs in below, no
+   * conference's phase is moved, and no other test reads that conference's proposals or the
+   * mail of its made-up authors and reviewers.
+   *
+   * One of the five is the chair's own. It is kept from them as a chair: it is not on the
+   * Decisions page, and a co-chair (seeded, nobody signs in as them) has recorded its decision.
+   * It is counted when the decisions are sent, and once they are, the chair reads its decision
+   * as its author: that is the author's page these tests look at, with the session the file has.
+   *
+   * The first test puts back everything it changes. The second sends decisions, which cannot
+   * be undone: it is the last test of the file, so that a second attempt of an earlier test
+   * (in a serial file all of them run again) never finds the decisions sent already.
+   */
+  const ROOM = "decisions-room";
+  const TALKS = {
+    two: "Decisions room: a talk with two reviews",
+    one: "Decisions room: a talk with one review",
+    waits: "Decisions room: a talk for the waiting list",
+    none: "Decisions room: a talk nobody has reviewed",
+    own: "Decisions room: the chair's own talk",
+  };
+  const AUTHORS = {
+    first: "decisions-room-author-1@example.org",
+    second: "decisions-room-author-2@example.org",
+  };
+  type Outcome = "accepted" | "waitlisted" | "rejected";
+  type Waiting = Record<Outcome | "people" | "undecided" | "dropped", number> & {
+    canSend: boolean;
+    token: string;
+  };
+  type DecisionsList = {
+    canRecord: boolean;
+    canSend: boolean;
+    excluded: number;
+    pools: {
+      key: string;
+      proposals: number;
+      undecided: number;
+      items: { id: string; title: string; waitlisted: boolean; recorded: Outcome | null }[];
+    }[];
+  };
+  const decisionsOf = async () =>
+    (await (await chair.request.get(`/api/conferences/${ROOM}/decisions`)).json()) as DecisionsList;
+  const waitingAt = async () =>
+    (await (await chair.request.get(`/api/conferences/${ROOM}/decisions/send`)).json()) as Waiting;
+  /** The id of one of the seeded talks the chair manages, by its title. */
+  const talkId = async (title: string) => {
+    const found = (await decisionsOf()).pools
+      .flatMap((p) => p.items)
+      .find((item) => item.title === title);
+    if (!found) throw new Error(`${ROOM} does not list “${title}”`);
+    return found.id;
+  };
+  /** The latest email of one kind to an address, or null: read from the test outbox. */
+  const mailOf = async (kind: string, to: string) => {
+    const res = await chair.request.get(
+      `/api/_test/outbox/latest?kind=${kind}&to=${encodeURIComponent(to)}`,
+    );
+    return res.ok() ? ((await res.json()) as { subject: string; text: string }) : null;
+  };
+  /** One of the page's widths: nothing scrolls sideways at either. */
+  const atBothWidths = async (check: () => Promise<void>) => {
+    await check();
+    await chair.setViewportSize({ width: 360, height: 800 });
+    await check();
+    await chair.setViewportSize({ width: 390, height: 844 });
+  };
+  /** Record a decision on a proposal's page, as a chair does: choose, press, read what it says. */
+  const recordOnPage = async (id: string, choice: string, said: string) => {
+    await chair.goto(`/en/s/${id}#decision`);
+    const section = chair.getByRole("region", { name: "Decision" });
+    await expect(section.getByRole("heading", { level: 2, name: "Decision" })).toBeFocused();
+    await section.getByRole("radio", { name: choice, exact: true }).check();
+    await section
+      .getByRole("button", { name: /^(Record this decision|Change the decision)$/ })
+      .click();
+    await expect(section.getByRole("status")).toHaveText(said);
+    return section;
+  };
+
+  test("a chair sees what awaits a decision, records one on the proposal's page, changes it and takes it back", async () => {
+    test.slow();
+    const origin = new URL(chair.url()).origin;
+    const before = await decisionsOf();
+    const waitingBefore = await waitingAt();
+    // As it was seeded (or as a first attempt of this test left it): nothing recorded for the
+    // four talks this chair manages, and the co-chair's decision for the chair's own.
+    expect(before.pools[0]?.items.map((x) => [x.title, x.recorded])).toEqual([
+      [TALKS.two, null],
+      [TALKS.one, null],
+      [TALKS.waits, null],
+      [TALKS.none, null],
+    ]);
+    expect(waitingBefore).toMatchObject({ canSend: true, accepted: 1, waitlisted: 0, rejected: 0 });
+
+    // From "Manage submissions" to the Decisions page.
+    await chair.goto(`/en/c/${ROOM}/manage`);
+    const link = chair.getByRole("link", { name: "Decisions", exact: true });
+    await expectTouchTarget(link);
+    await link.click();
+    await expect(chair).toHaveURL(new RegExp(`/en/c/${ROOM}/decisions$`));
+    // A new page: its heading takes focus.
+    await expect(chair.getByRole("heading", { level: 1, name: "Decisions" })).toBeFocused();
+    await expect(
+      chair.getByText(
+        "Every proposal that still awaits a decision, under the committee that reviews it. Those with no decision yet come first. To record a decision, open the proposal: its reviews are on the same page. Recording tells nobody. A proposal that was told “accepted” or “not accepted” is no longer listed here: find it on “Manage submissions”, by its status.",
+      ),
+    ).toBeVisible();
+    // The chair's own talk is not listed, and the page says that one is not.
+    await expect(
+      chair.getByText("1 proposal is not listed: it is your own, or you have a conflict with it."),
+    ).toBeVisible();
+    await expect(chair.getByText(TALKS.own)).toHaveCount(0);
+
+    // What waits to be sent is said at the top, with the step that sends it. It counts the
+    // decision a co-chair recorded for the chair's own talk, and names nothing.
+    const sending = chair.getByRole("region", { name: "Send the decisions" });
+    await expect(
+      sending.getByText(
+        "Sending tells the authors. Every decision that is recorded and not sent yet goes out, for the whole conference: the proposal gets its new status, and its owner and confirmed co-authors get an email with the outcome and the reviewers' comments for the authors.",
+      ),
+    ).toBeVisible();
+    await expect(
+      sending.getByText("Waiting to be sent: 1 accepted, 0 for the waiting list, 0 not accepted."),
+    ).toBeVisible();
+    const open = sending.getByRole("button", { name: "Send the decisions" });
+    await expectTouchTarget(open);
+
+    // By committee: each proposal with its format, its reviews and what they recommend.
+    const scientific = chair.getByRole("region", { name: "Scientific committee" });
+    await expect(
+      scientific.getByText("4 proposals await a decision. 4 have no decision yet."),
+    ).toBeVisible();
+    const cards = scientific.locator(".cards > li");
+    await expect(cards.locator("h3")).toHaveText([TALKS.two, TALKS.one, TALKS.waits, TALKS.none]);
+    const card = (title: string) => cards.filter({ hasText: title });
+    await expect(card(TALKS.two)).toContainText("Individual talk");
+    await expect(card(TALKS.two)).toContainText("No decision yet");
+    await expect(card(TALKS.two)).toContainText("Reviews sent: 2 of 3 · 1 accept, 1 unsure");
+    await expect(card(TALKS.one)).toContainText("Reviews sent: 1 of 3 · 1 reject");
+    await expect(card(TALKS.none)).toContainText("No review was sent.");
+    await expect(
+      chair
+        .getByRole("region", { name: "Artistic committee" })
+        .getByText("No proposal of this committee awaits a decision."),
+    ).toBeVisible();
+    // No reviewer is named here, and nothing a reviewer wrote: that is on the proposal's page.
+    await expect(chair.locator("main")).not.toContainText("Fictional First Reviewer");
+    await expect(chair.locator("main")).not.toContainText("Made-up comments");
+    await expectTouchTarget(card(TALKS.two).getByRole("link", { name: TALKS.two }));
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+
+    // The proposal's page: the decision above its reviewers, with what they recommend.
+    const id = await talkId(TALKS.two);
+    await card(TALKS.two).getByRole("link", { name: TALKS.two }).click();
+    await expect(chair).toHaveURL(new RegExp(`/en/s/${id}#decision$`));
+    const section = chair.getByRole("region", { name: "Decision" });
+    await expect(section.getByRole("heading", { level: 2, name: "Decision" })).toBeFocused();
+    await expect(
+      section.getByText(
+        "Recording a decision here tells nobody. The authors are told when the chairs send the decisions, on the Decisions page. Until then you can change it or take it back.",
+      ),
+    ).toBeVisible();
+    await expect(
+      section.getByText(
+        "Reviews sent: 2 of 3. Recommendations: 1 accept, 1 unsure. The reviews themselves are under “Reviewers”, below.",
+      ),
+    ).toBeVisible();
+    await expect(section.getByText("No decision is recorded for this proposal.")).toBeVisible();
+    const choices = section.getByRole("group", { name: "Decision for this proposal" });
+    await expect(choices.locator("label")).toHaveText([
+      "Accept",
+      "Put on the waiting list",
+      "Reject",
+    ]);
+    for (const label of await choices.locator("label").all()) await expectTouchTarget(label);
+    const record = section.getByRole("button", { name: "Record this decision" });
+    await expectTouchTarget(record);
+    await expect(section.getByRole("button", { name: "Take the decision back" })).toHaveCount(0);
+    // The reviews are beside it, as they were: each one in full, under who wrote it.
+    const reviewers = chair.getByRole("region", { name: "Reviewers" });
+    await expect(
+      reviewers.getByRole("group", { name: "Review by Fictional First Reviewer" }),
+    ).toContainText("Made-up comments for the authors, number one.");
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+
+    // Nothing chosen: nothing is recorded, and the page says what to do.
+    const said = section.getByRole("status");
+    await record.click();
+    await expect(said).toHaveText("Choose one of the decisions first.");
+    await expect(said).toBeFocused();
+    // Recorded: the page says so there, and that nobody was told.
+    await choices.getByRole("radio", { name: "Reject" }).check();
+    await record.click();
+    await expect(said).toHaveText("Recorded: reject. Nobody was told.");
+    await expect(said).toBeFocused();
+    await expect(
+      section.getByText(
+        "Recorded, and not sent yet: reject. It is sent with the others, on the Decisions page.",
+      ),
+    ).toBeVisible();
+    await expect(choices.getByRole("radio", { name: "Reject" })).toBeChecked();
+    // Nobody was told indeed: the proposal reads "Submitted" as before, and no email was made.
+    await expect(chair.locator("article .badge").first()).toHaveText("Submitted");
+    for (const kind of ["decision_accepted", "decision_waitlisted", "decision_rejected"]) {
+      expect(await mailOf(kind, AUTHORS.first), kind).toBeNull();
+    }
+    // Changed, by the same form.
+    const change = section.getByRole("button", { name: "Change the decision" });
+    const takeBack = section.getByRole("button", { name: "Take the decision back" });
+    await expectTouchTarget(change);
+    await expectTouchTarget(takeBack);
+    await choices.getByRole("radio", { name: "Accept" }).check();
+    await change.click();
+    await expect(said).toHaveText("Recorded: accept. Nobody was told.");
+    await expect(
+      section.getByText("Recorded, and not sent yet: accept.", { exact: false }),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+
+    // Back on the Decisions page it is listed after those with no decision, and counted.
+    await section.getByRole("link", { name: "All decisions" }).click();
+    await expect(chair.getByRole("heading", { level: 1, name: "Decisions" })).toBeFocused();
+    await expect(
+      scientific.getByText("4 proposals await a decision. 3 have no decision yet."),
+    ).toBeVisible();
+    await expect(cards.locator("h3")).toHaveText([TALKS.one, TALKS.waits, TALKS.none, TALKS.two]);
+    await expect(card(TALKS.two)).toContainText("Recorded: accept");
+    await expect(card(TALKS.two)).toContainText("Not sent yet.");
+    await expect(
+      sending.getByText("Waiting to be sent: 2 accepted, 0 for the waiting list, 0 not accepted."),
+    ).toBeVisible();
+
+    // "Send the decisions" sends nothing: it asks, in its place, with the numbers and the
+    // email for each outcome as it will be sent.
+    await open.click();
+    await expect(
+      sending.getByRole("heading", { level: 3, name: "Send these decisions?" }),
+    ).toBeFocused();
+    await expect(open).toHaveCount(0);
+    await expect(sending.locator(".send-numbers li")).toHaveText([
+      "Proposals that will be told “accepted”: 2",
+      "Proposals that will be told “on the waiting list”: 0",
+      "Proposals that will be told “not accepted”: 0",
+      // The two authors of the talk with two reviews, and the chair, whose own talk it counts.
+      "People who will be emailed: 3",
+      "Proposals with no decision yet, which will be told nothing: 3",
+    ]);
+    await expect(
+      sending.getByText(
+        "These numbers count every decision recorded at the conference, also for proposals you are not shown because they are your own or you have a conflict with them.",
+      ),
+    ).toBeVisible();
+    await expect(
+      sending.getByText(
+        "A sent “accepted” or “not accepted” is final: it cannot be changed here afterwards. A proposal on the waiting list can be given a new decision later.",
+      ),
+    ).toBeVisible();
+    await expect(
+      sending.getByText(
+        "These are the emails, with a made-up title and made-up comments. Each person gets theirs in their own language; this is the English text.",
+      ),
+    ).toBeVisible();
+    const previews = sending.locator("figure.email-preview");
+    await expect(previews.locator("figcaption")).toHaveText([
+      "The email for “accepted”",
+      "The email for “on the waiting list”",
+      "The email for “not accepted”",
+    ]);
+    const settings = (await stored(chair, ROOM)).config;
+    const conference = settings.title.en ?? "";
+    // A preview's made-up proposal has the conference's first format, as on the settings screen.
+    const format = settings.submissionTypes[0]?.name.en ?? "";
+    await expect(previews.locator(".email-subject")).toHaveText([
+      `${conference}: your proposal has been accepted`,
+      `${conference}: your proposal is on the waiting list`,
+      `${conference}: your proposal was not accepted`,
+    ]);
+    await expect(previews.nth(0).locator(".email-body")).toHaveText(
+      [
+        `The chairs of ${conference} have accepted your proposal "A made-up title" (${format}).`,
+        // Every line of a reviewer's comment is quoted, and the line above them says so.
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:",
+        "Reviewer 1:\n> A made-up comment: the argument is clear, and the examples carry it.",
+        "Reviewer 2:\n> Another made-up comment, in two paragraphs.\n>\n> The second one asks for a word about the method.",
+        "You can also read this on the proposal's page:",
+        `${origin}/en/s/…`,
+      ].join("\n\n"),
+      { useInnerText: true },
+    );
+    const yes = sending.getByRole("button", { name: "Yes, send them" });
+    const no = sending.getByRole("button", { name: "No, go back" });
+    await expectTouchTarget(yes);
+    await expectTouchTarget(no);
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+    // "No, go back": nothing was sent, and the button has the focus again.
+    await no.click();
+    await expect(open).toBeFocused();
+    expect((await waitingAt()).accepted).toBe(2);
+    expect(await mailOf("decision_accepted", AUTHORS.first)).toBeNull();
+
+    // Taken back on the proposal's page: it is as if none had been recorded.
+    await chair.goto(`/en/s/${id}#decision`);
+    await expect(section.getByRole("heading", { level: 2, name: "Decision" })).toBeFocused();
+    await takeBack.click();
+    await expect(said).toHaveText("The decision was taken back. Nobody was told.");
+    await expect(said).toBeFocused();
+    await expect(section.getByText("No decision is recorded for this proposal.")).toBeVisible();
+    await expect(takeBack).toHaveCount(0);
+    await expect(choices.getByRole("radio", { checked: true })).toHaveCount(0);
+    // All of it is as it was found.
+    expect(await decisionsOf()).toEqual(before);
+    expect(await waitingAt()).toEqual(waitingBefore);
+
+    // The three emails are among those a chair can reword, each with when it is sent, what it
+    // may name, and the email as it would be sent. Nothing is saved here.
+    await chair.goto(`/en/c/${ROOM}/settings`);
+    await expect(
+      chair.getByRole("heading", { level: 1, name: "Conference settings" }),
+    ).toBeVisible();
+    for (const [name, when] of [
+      [
+        "Decision: accepted, to the authors",
+        "Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is accepted. Nobody can turn this email off. In its standard text it carries the reviewers' comments for the authors. It never carries a reviewer's name, a score, a recommendation or a note for the chairs.",
+      ],
+      [
+        "Decision: on the waiting list, to the authors",
+        "Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is put on the waiting list. Nobody can turn this email off. When a new decision is sent for that proposal later, they get the email for that outcome.",
+      ],
+      [
+        "Decision: not accepted, to the authors",
+        "Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is not accepted. Nobody can turn this email off. In its standard text it carries the reviewers' comments for the authors. It never carries a reviewer's name, a score, a recommendation or a note for the chairs.",
+      ],
+    ] as const) {
+      const email = await openPool(chair, name);
+      await expect(email.locator("p.meta").first()).toHaveText(when);
+      await expect(email.locator(".placeholders dt")).toHaveText([
+        "{title}",
+        "{format}",
+        "{conference}",
+        "{comments}",
+        "{link}",
+      ]);
+    }
+    const accepted = await openPool(chair, "Decision: accepted, to the authors");
+    await expect(accepted.locator(".placeholders dd")).toHaveText([
+      "the proposal's title",
+      "the proposal's format",
+      "the conference's title",
+      "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, with “>” before every line to mark it as their words, and without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.It cannot go in the subject.",
+      "the link to the proposalThe text must contain it, and it cannot go in the subject.",
+    ]);
+    const english = accepted.getByRole("group", { name: "English" });
+    await expect(english.getByLabel("Subject (English)")).toHaveValue(
+      "{conference}: your proposal has been accepted",
+    );
+    await expect(english.locator(".email-body")).toContainText(
+      "Reviewer 1:\n> A made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\n> ",
+    );
+    await expect(english.getByText("This is the standard text.")).toBeVisible();
+    // A text without the link, and a subject with the comments, are refused where they are typed.
+    const subject = english.getByLabel("Subject (English)");
+    const body = english.getByLabel("Text (English)");
+    const standard = { subject: await subject.inputValue(), body: await body.inputValue() };
+    await body.fill("Yes: {title}.\n\n{comments}");
+    await subject.fill("{conference}: {comments}");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(english.locator(".field-error")).toContainText([
+      "The subject cannot contain {comments}. Only the text can.",
+      "The text must contain {link}.",
+    ]);
+    // Without the comments it is taken: the preview shows the email as it would then be sent.
+    await subject.fill(standard.subject);
+    await body.fill("Yes: {title}.\n\n{link}");
+    await expect(english.locator(".email-body")).toHaveText(
+      `Yes: A made-up title.\n\n${origin}/en/s/…`,
+      { useInnerText: true },
+    );
+    await body.fill(standard.body);
+    await expect(english.getByText("This is the standard text.")).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+
+    // In Spanish and in Portuguese: the page, the section of a proposal, and the emails' names.
+    for (const [lang, title, sendTitle, decision, names] of [
+      [
+        "es",
+        "Decisiones",
+        "Enviar las decisiones",
+        "Decisión",
+        [
+          "Decisión: aceptada, para las personas autoras",
+          "Decisión: en lista de espera, para las personas autoras",
+          "Decisión: no aceptada, para las personas autoras",
+        ],
+      ],
+      [
+        "pt",
+        "Decisões",
+        "Enviar as decisões",
+        "Decisão",
+        [
+          "Decisão: aceite, para as pessoas autoras",
+          "Decisão: em lista de espera, para as pessoas autoras",
+          "Decisão: não aceite, para as pessoas autoras",
+        ],
+      ],
+    ] as const) {
+      await chair.goto(`/${lang}/c/${ROOM}/decisions`);
+      await expect(chair.getByRole("heading", { level: 1, name: title })).toBeVisible();
+      const part = chair.getByRole("region", { name: sendTitle });
+      await part.getByRole("button", { name: sendTitle }).click();
+      await expect(part.locator("figure.email-preview")).toHaveCount(3);
+      await expect(part.locator(".email-body").first()).toContainText(
+        lang === "es" ? "Revisión 1:" : "Revisão 1:",
+      );
+      await atBothWidths(() => expectNoHorizontalScroll(chair));
+      await chair.goto(`/${lang}/s/${id}#decision`);
+      await expect(chair.getByRole("region", { name: decision }).getByRole("radio")).toHaveCount(3);
+      await atBothWidths(() => expectNoHorizontalScroll(chair));
+      await chair.goto(`/${lang}/c/${ROOM}/settings`);
+      for (const name of names) {
+        await expect(chair.locator("summary", { hasText: name })).toHaveCount(1);
+      }
+    }
+    expect(await decisionsOf()).toEqual(before);
+  });
+
+  test("a chair sends the decisions after a confirmation; the authors get them with the reviewers' comments, and a waitlisted proposal is accepted afterwards", async () => {
+    test.slow();
+    const origin = new URL(chair.url()).origin;
+    const post = (path: string, method: "PUT" | "POST", data: unknown) =>
+      chair.request.fetch(path, { method, headers: { origin }, data });
+    const ids = {
+      two: await talkId(TALKS.two),
+      one: await talkId(TALKS.one),
+      waits: await talkId(TALKS.waits),
+      none: await talkId(TALKS.none),
+    };
+    const conference = (await stored(chair, ROOM)).config.title.en ?? "";
+    const format = (await stored(chair, ROOM)).config.submissionTypes[0]?.name.en ?? "";
+
+    // Two decisions, each recorded on its proposal's page.
+    await recordOnPage(ids.two, "Accept", "Recorded: accept. Nobody was told.");
+    await recordOnPage(ids.one, "Reject", "Recorded: reject. Nobody was told.");
+
+    await chair.goto(`/en/c/${ROOM}/decisions`);
+    const sending = chair.getByRole("region", { name: "Send the decisions" });
+    // (The second "accepted" is the chair's own talk, which a co-chair decided: counted here,
+    // and never listed or named.)
+    await expect(
+      sending.getByText("Waiting to be sent: 2 accepted, 0 for the waiting list, 1 not accepted."),
+    ).toBeVisible();
+
+    // Behind the page, as another chair would: a third decision is recorded, and the email for
+    // "not accepted" is reworded. (No other test reads this conference's emails.) The fourth
+    // talk gets no decision.
+    const REWORDED =
+      "[Reworded by a browser test] {title} ({format}) was not accepted.\n\n{comments}\n\n{link}";
+    const settings = await stored(chair, ROOM);
+    const worded = await chair.request.put(`/api/conferences/${ROOM}/config`, {
+      headers: { origin, "if-match": `"${settings.token}"` },
+      data: {
+        ...settings.config,
+        messages: { ...settings.config.messages, decision_rejected: { body: { en: REWORDED } } },
+      },
+    });
+    expect(worded.status()).toBe(200);
+    const third = `/api/conferences/${ROOM}/decisions/submissions/${ids.waits}`;
+    expect((await post(third, "PUT", { outcome: "waitlisted" })).status()).toBe(204);
+
+    // The button reads the page again: the confirmation says what waits now, and shows the
+    // email as it is worded now, not what the page read when it was opened.
+    const open = sending.getByRole("button", { name: "Send the decisions" });
+    await open.click();
+    await expect(
+      sending.getByRole("heading", { level: 3, name: "Send these decisions?" }),
+    ).toBeFocused();
+    const numbers = sending.locator(".send-numbers li");
+    await expect(numbers).toHaveText([
+      "Proposals that will be told “accepted”: 2",
+      "Proposals that will be told “on the waiting list”: 1",
+      "Proposals that will be told “not accepted”: 1",
+      "People who will be emailed: 3",
+      "Proposals with no decision yet, which will be told nothing: 1",
+    ]);
+    // The email that was reworded meanwhile is previewed as it will be sent.
+    await expect(sending.locator("figure.email-preview .email-body").nth(2)).toContainText(
+      `[Reworded by a browser test] A made-up title (${format}) was not accepted.\n\nThe lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A made-up comment`,
+    );
+
+    // Another chair changes a decision meanwhile (here, this chair's own session, behind the
+    // page): what would be sent is no longer what the confirmation shows. Nothing is sent, and
+    // the confirmation shows what waits now, to be read again.
+    const elsewhere = `/api/conferences/${ROOM}/decisions/submissions/${ids.one}`;
+    expect((await post(elsewhere, "PUT", { outcome: "accepted" })).status()).toBe(204);
+    const yes = sending.getByRole("button", { name: "Yes, send them" });
+    await yes.click();
+    const note = sending.locator("form.confirm").getByRole("status");
+    await expect(note).toHaveText(
+      "Nothing was sent: what is waiting is no longer what this confirmation showed. It now shows what is waiting. Read it again, then send.",
+    );
+    await expect(numbers.nth(0)).toHaveText("Proposals that will be told “accepted”: 3");
+    await expect(numbers.nth(2)).toHaveText("Proposals that will be told “not accepted”: 0");
+    for (const kind of ["decision_accepted", "decision_waitlisted", "decision_rejected"]) {
+      expect(await mailOf(kind, AUTHORS.first), kind).toBeNull();
+    }
+    await expectAccessibleInBothThemes(chair);
+    // Put back, and confirmed again as it is now: once more the page had the older numbers.
+    expect((await post(elsewhere, "PUT", { outcome: "rejected" })).status()).toBe(204);
+    await yes.click();
+    await expect(numbers.nth(0)).toHaveText("Proposals that will be told “accepted”: 2");
+    await expect(numbers.nth(2)).toHaveText("Proposals that will be told “not accepted”: 1");
+
+    // Confirmed with the numbers as they are: sent. The page says what was sent, there.
+    await yes.click();
+    const said = sending.locator("> .status-line");
+    await expect(said).toHaveText(
+      "The decisions were sent. Accepted: 2. On the waiting list: 1. Not accepted: 1. People emailed: 3.",
+    );
+    await expect(said).toBeFocused();
+    await expect(sending.getByText("No decision is waiting to be sent.")).toBeVisible();
+    await expect(sending.getByRole("button", { name: "Send the decisions" })).toHaveCount(0);
+    // What still awaits a decision: the talk nobody reviewed, and the one on the waiting list.
+    const scientific = chair.getByRole("region", { name: "Scientific committee" });
+    await expect(
+      scientific.getByText("2 proposals await a decision. 1 has no decision yet."),
+    ).toBeVisible();
+    const cards = scientific.locator(".cards > li");
+    await expect(cards.locator("h3")).toHaveText([TALKS.none, TALKS.waits]);
+    await expect(cards.nth(1)).toContainText("On the waiting list");
+    await expect(cards.nth(1)).toContainText("The authors were told.");
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+
+    // The emails, read from the test outbox. The first author owns the accepted talk and the
+    // one that was not accepted; the second is the co-author of the first and owns the one on
+    // the waiting list.
+    const acceptedMail = await mailOf("decision_accepted", AUTHORS.first);
+    expect(acceptedMail?.subject).toBe(`${conference}: your proposal has been accepted`);
+    const text = acceptedMail?.text ?? "";
+    expect(
+      text.startsWith(
+        `The chairs of ${conference} have accepted your proposal "${TALKS.two}" (Individual talk).\n\nThe lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> Made-up comments for the authors, number `,
+      ),
+    ).toBe(true);
+    // Both reviewers' comments, each under a number, every line quoted, with their line breaks.
+    for (const said of ["number one.", "number two."]) {
+      expect(text).toContain(
+        `> Made-up comments for the authors, ${said}\n>\n> A second paragraph of them, to show that line breaks are kept.`,
+      );
+    }
+    expect(text).toContain("\n\nReviewer 2:\n> Made-up comments for the authors, number ");
+    expect(
+      text.endsWith(
+        `\n\nYou can also read this on the proposal's page:\n\n${origin}/en/s/${ids.two}`,
+      ),
+    ).toBe(true);
+    // Never who reviewed, what they scored or recommended, or what they told the chairs.
+    for (const hidden of [
+      "Fictional First Reviewer",
+      "Fictional Second Reviewer",
+      "decisions-room-reviewer",
+      "note for the chairs",
+      "Recommendation",
+      "unsure",
+      "Clarity",
+      "of 5",
+    ]) {
+      expect(text, hidden).not.toContain(hidden);
+    }
+    // The co-author who confirmed gets the same email.
+    expect((await mailOf("decision_accepted", AUTHORS.second))?.text).toBe(text);
+    // Not accepted, in the chairs' own words, with that talk's one review.
+    const rejectedMail = await mailOf("decision_rejected", AUTHORS.first);
+    expect(rejectedMail?.subject).toBe(`${conference}: your proposal was not accepted`);
+    expect(rejectedMail?.text).toBe(
+      [
+        `[Reworded by a browser test] ${TALKS.one} (Individual talk) was not accepted.`,
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:",
+        "Reviewer 1:\n> Made-up comments for the authors, number three.\n>\n> A second paragraph of them, to show that line breaks are kept.",
+        `${origin}/en/s/${ids.one}`,
+      ].join("\n\n"),
+    );
+    const waitlistedMail = await mailOf("decision_waitlisted", AUTHORS.second);
+    expect(waitlistedMail?.subject).toBe(`${conference}: your proposal is on the waiting list`);
+    expect(waitlistedMail?.text).toContain(
+      `have put your proposal "${TALKS.waits}" (Individual talk) on the waiting list. It is not accepted so far, and it may still be: you will get another email when they decide.`,
+    );
+    expect(waitlistedMail?.text).toContain("number four.");
+    // No reviewer is told anything, and the author of the undecided talk only of the others.
+    for (const kind of ["decision_accepted", "decision_waitlisted", "decision_rejected"]) {
+      for (const reviewer of ["decisions-room-reviewer-1", "decisions-room-reviewer-2"]) {
+        expect(await mailOf(kind, `${reviewer}@example.org`), `${kind} ${reviewer}`).toBeNull();
+      }
+    }
+    expect(await mailOf("decision_rejected", AUTHORS.second)).toBeNull();
+
+    // What an author reads from then on. The chair is the author of their own talk, whose
+    // decision a co-chair recorded and this send sent: on its page they are its owner, and
+    // read the decision and the comments, and nothing of who reviewed.
+    const ownMail = await mailOf("decision_accepted", "chair@example.org");
+    // (It comes in the first language of the chair's profile, whichever that is.)
+    const own = /\/(?:en|es|pt)\/s\/([0-9a-f-]{36})$/.exec(ownMail?.text ?? "")?.[1] ?? "";
+    expect(ownMail?.text).toContain(TALKS.own);
+    expect(ownMail?.text).toContain("Made-up comments for the authors, number five.");
+    await chair.goto(`/en/s/${own}`);
+    await expect(chair.getByRole("heading", { level: 1, name: TALKS.own })).toBeVisible();
+    await expect(chair.locator("article .badge").first()).toHaveText("Accepted");
+    await expect(
+      chair.getByText("A decision on this proposal was sent: it can no longer be edited."),
+    ).toBeVisible();
+    const decided = chair.getByRole("region", { name: "Decision" });
+    await expect(decided.getByText("This proposal has been accepted.")).toBeVisible();
+    await expect(decided.getByText(/^The chairs sent this decision on .+\.$/)).toBeVisible();
+    await expect(
+      decided.getByRole("heading", { level: 3, name: "Comments from the reviewers" }),
+    ).toBeVisible();
+    await expect(
+      decided.getByText(
+        "The reviewers wrote these comments for the authors. Reviewers are not named.",
+      ),
+    ).toBeVisible();
+    await expect(decided.getByRole("heading", { level: 4 })).toHaveText(["Reviewer 1"]);
+    await expect(decided.locator(".review-text")).toHaveText(
+      "Made-up comments for the authors, number five.\n\nA second paragraph of them, to show that line breaks are kept.",
+      { useInnerText: true },
+    );
+    // No reviewer, no score, no note, and nothing a chair has: no reviewers, nothing to record.
+    const page = chair.locator("main");
+    for (const hidden of ["Fictional First Reviewer", "note for the chairs", "Recommendation"]) {
+      await expect(page).not.toContainText(hidden);
+    }
+    await expect(chair.getByRole("region", { name: "Reviewers" })).toHaveCount(0);
+    await expect(chair.getByRole("radio", { name: "Accept" })).toHaveCount(0);
+    // An accepted proposal is withdrawn by writing to the conference.
+    await expect(
+      chair.getByText(/^This proposal can no longer be withdrawn here\. To withdraw it, write to /),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await atBothWidths(() => expectNoHorizontalScroll(chair));
+    // "My submissions" says it too.
+    await chair.goto("/en/my");
+    await expect(
+      chair.locator(".card").filter({ hasText: TALKS.own }).locator(".badge"),
+    ).toHaveText("Accepted");
+
+    // For the chairs, a sent accept is final: the page says what the authors were told, and
+    // offers nothing more to record. The proposal takes no new reviewer either.
+    await chair.goto(`/en/s/${ids.two}#decision`);
+    const section = chair.getByRole("region", { name: "Decision" });
+    await expect(
+      section.getByText(
+        /^The authors were told on .+: “Accepted”\. That is final here: no other decision can be recorded for this proposal\.$/,
+      ),
+    ).toBeVisible();
+    await expect(section.getByRole("radio")).toHaveCount(0);
+    await expect(section.getByRole("button")).toHaveCount(0);
+    // Nothing is said there of what no longer applies.
+    await expect(section.getByText("Recording a decision here tells nobody.")).toHaveCount(0);
+    await expect(section.getByText("No decision is recorded for this proposal.")).toHaveCount(0);
+    await expect(
+      chair
+        .getByRole("region", { name: "Reviewers" })
+        .getByText(
+          "This proposal takes no new reviewers: it was withdrawn, or its decision was sent to the authors. You can still remove a reviewer it has.",
+        ),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    // The export says what is decided, whether it was sent, and how many reviews were sent.
+    const csv = await (
+      await chair.request.get(
+        `/api/conferences/${ROOM}/submissions.csv?status=submitted,accepted,waitlisted,rejected`,
+      )
+    ).text();
+    expect(csv.split("\r\n")[0]).toContain('"status","decision","decision_sent","reviews_sent"');
+    expect(csv).toContain(`"${ids.two}","accepted","accepted","yes","2"`);
+    expect(csv).toContain(`"${ids.one}","rejected","rejected","yes","1"`);
+    expect(csv).toContain(`"${ids.waits}","waitlisted","waitlisted","yes","1"`);
+    expect(csv).toContain(`"${ids.none}","submitted","","","0"`);
+
+    // A proposal on the waiting list is given the decision that ends it, by the same two
+    // steps: recorded on its page, where only an accept or a reject is offered, and then sent.
+    await chair.goto(`/en/s/${ids.waits}#decision`);
+    await expect(
+      section.getByText(
+        /^The authors were told on .+: “Waitlisted”\. You can record the decision that ends the waiting list, accept or reject\. It is sent like the first one\.$/,
+      ),
+    ).toBeVisible();
+    await expect(
+      section.getByRole("group", { name: "Decision for this proposal" }).locator("label"),
+    ).toHaveText(["Accept", "Reject"]);
+    // One was sent: the page does not say that none is recorded.
+    await expect(section.getByText("No decision is recorded for this proposal.")).toHaveCount(0);
+    await expectAccessibleInBothThemes(chair);
+    await recordOnPage(ids.waits, "Accept", "Recorded: accept. Nobody was told.");
+    // Until it is sent, its author was told "waiting list" and nothing else.
+    expect((await mailOf("decision_accepted", AUTHORS.second))?.text).toBe(text);
+    await chair.goto(`/en/c/${ROOM}/decisions`);
+    await expect(cards.filter({ hasText: TALKS.waits })).toContainText("On the waiting list");
+    await expect(cards.filter({ hasText: TALKS.waits })).toContainText("Recorded: accept");
+    await open.click();
+    await expect(numbers).toHaveText([
+      "Proposals that will be told “accepted”: 1",
+      "Proposals that will be told “on the waiting list”: 0",
+      "Proposals that will be told “not accepted”: 0",
+      "People who will be emailed: 1",
+      "Proposals with no decision yet, which will be told nothing: 1",
+    ]);
+    await yes.click();
+    await expect(said).toHaveText(
+      "The decisions were sent. Accepted: 1. On the waiting list: 0. Not accepted: 0. People emailed: 1.",
+    );
+    await expect(said).toBeFocused();
+    const later = await mailOf("decision_accepted", AUTHORS.second);
+    expect(later?.text).toContain(
+      `have accepted your proposal "${TALKS.waits}" (Individual talk).`,
+    );
+    expect(later?.text).toContain("number four.");
+    // One talk is left to decide: the others are listed where their status says.
+    const left = await decisionsOf();
+    expect(left.pools[0]?.items.map((x) => [x.title, x.waitlisted, x.recorded])).toEqual([
+      [TALKS.none, false, null],
+    ]);
+    const acceptedNow = (await (
+      await chair.request.get(`/api/conferences/${ROOM}/submissions?status=accepted`)
+    ).json()) as { items: { id: string }[] };
+    // (The chair's own talk is in that list as its author is given it, and it is accepted too.)
+    expect(acceptedNow.items.map((x) => x.id).sort()).toEqual([ids.two, ids.waits, own].sort());
   });
 });

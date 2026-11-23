@@ -1,4 +1,5 @@
 import type { ContributionRole } from "./config";
+import type { DecisionOutcome } from "./decisions";
 import { hasStrayInvisible, removeStrayInvisible } from "./invisible";
 import { LIMITS } from "./limits";
 import { linkSpans } from "./links";
@@ -6,10 +7,10 @@ import type { DeclineReason } from "./reviewForm";
 
 /*
  * The emails the app sends to the people on a proposal, to the people a chair invites to a
- * role at the conference, and to its reviewers and its chairs while proposals are reviewed: one
- * definition of each, shared by the server, which sends them, and the settings screen, where
- * chairs change their wording and see what will be sent. Zod-free, so that the browser can use
- * it.
+ * role at the conference, to its reviewers and its chairs while proposals are reviewed, and to
+ * a proposal's authors when the chairs send the decisions: one definition of each, shared by
+ * the server, which sends them, and the settings screen, where chairs change their wording and
+ * see what will be sent. Zod-free, so that the browser can use it.
  *
  * A message has a subject and a body, each with a standard text in English, Spanish and
  * Portuguese. A text names what is only known when the mail is sent with a placeholder: a name
@@ -66,6 +67,9 @@ export const MESSAGE_KEYS = [
   "review_reminder",
   "reviewer_declined",
   "reviews_complete",
+  "decision_accepted",
+  "decision_waitlisted",
+  "decision_rejected",
 ] as const;
 export type MailMessageKey = (typeof MESSAGE_KEYS)[number];
 
@@ -134,6 +138,16 @@ type MessageDefinition = {
  * the work is ("{link}"), and one to the person's own choices about these emails ("{choices}").
  * Both are required, and both stay out of the subject. One text serves an email about one thing
  * and a summary of several: it says how many.
+ *
+ * The three emails about a decision (`decision_accepted`, `decision_waitlisted`,
+ * `decision_rejected`; spec 03, §1.6) go to a proposal's owner and its confirmed co-authors
+ * when the chairs send the decisions: one text for each outcome, so that each says what it has
+ * to say. They are part of the proposal, so the email names it as the receipt does: its title
+ * (cleaned to one line), its format, and the link to its page, which is required. "{comments}"
+ * stands for what the reviewers wrote for the authors, each review's comments under a number
+ * (commentsBlock): never a name, a score, the note for the chairs or the recommendation. It is
+ * a block of several lines, so it stays out of the subject. A text may leave it out; the
+ * standard texts have it. Nobody can turn these emails off.
  */
 export const MESSAGES = {
   /** To someone an owner has added to a proposal, and again when the owner sends it again. */
@@ -414,6 +428,78 @@ export const MESSAGES = {
       },
     },
   },
+  /**
+   * To a proposal's owner and confirmed co-authors, when the chairs send the decisions and the
+   * proposal is accepted.
+   */
+  decision_accepted: {
+    placeholders: ["title", "format", "conference", "comments", "link"],
+    // Which proposal (a person may be on several), and where the decision can be read again.
+    required: ["link"],
+    // The comments are a block of several lines, and a subject is one.
+    bodyOnly: ["comments", "link"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: your proposal has been accepted",
+        body: 'The chairs of {conference} have accepted your proposal "{title}" ({format}).\n\n{comments}\n\nYou can also read this on the proposal\'s page:\n\n{link}',
+      },
+      es: {
+        subject: "{conference}: tu propuesta ha sido aceptada",
+        body: "Quienes presiden {conference} han aceptado tu propuesta «{title}» ({format}).\n\n{comments}\n\nTambién puedes leerlo en la página de la propuesta:\n\n{link}",
+      },
+      pt: {
+        subject: "{conference}: a sua proposta foi aceite",
+        body: "Quem preside a {conference} aceitou a sua proposta «{title}» ({format}).\n\n{comments}\n\nTambém pode ler isto na página da proposta:\n\n{link}",
+      },
+    },
+  },
+  /**
+   * The same, when the proposal is put on the waiting list. It says what that means: not
+   * accepted so far, and another email when the chairs decide (they record and send a new
+   * decision for it, which is one of the other two emails).
+   */
+  decision_waitlisted: {
+    placeholders: ["title", "format", "conference", "comments", "link"],
+    required: ["link"],
+    bodyOnly: ["comments", "link"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: your proposal is on the waiting list",
+        body: 'The chairs of {conference} have put your proposal "{title}" ({format}) on the waiting list. It is not accepted so far, and it may still be: you will get another email when they decide.\n\n{comments}\n\nYou can also read this on the proposal\'s page:\n\n{link}',
+      },
+      es: {
+        subject: "{conference}: tu propuesta está en lista de espera",
+        body: "Quienes presiden {conference} han puesto tu propuesta «{title}» ({format}) en lista de espera. Por ahora no está aceptada, y todavía puede estarlo: recibirás otro correo cuando lo decidan.\n\n{comments}\n\nTambién puedes leerlo en la página de la propuesta:\n\n{link}",
+      },
+      pt: {
+        subject: "{conference}: a sua proposta está em lista de espera",
+        body: "Quem preside a {conference} colocou a sua proposta «{title}» ({format}) em lista de espera. Por agora não está aceite, e ainda pode vir a estar: receberá outro email quando houver uma decisão.\n\n{comments}\n\nTambém pode ler isto na página da proposta:\n\n{link}",
+      },
+    },
+  },
+  /** The same, when the proposal is not accepted. */
+  decision_rejected: {
+    placeholders: ["title", "format", "conference", "comments", "link"],
+    required: ["link"],
+    bodyOnly: ["comments", "link"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: your proposal was not accepted",
+        body: 'The chairs of {conference} have not accepted your proposal "{title}" ({format}).\n\n{comments}\n\nYou can also read this on the proposal\'s page:\n\n{link}',
+      },
+      es: {
+        subject: "{conference}: tu propuesta no ha sido aceptada",
+        body: "Quienes presiden {conference} no han aceptado tu propuesta «{title}» ({format}).\n\n{comments}\n\nTambién puedes leerlo en la página de la propuesta:\n\n{link}",
+      },
+      pt: {
+        subject: "{conference}: a sua proposta não foi aceite",
+        body: "Quem preside a {conference} não aceitou a sua proposta «{title}» ({format}).\n\n{comments}\n\nTambém pode ler isto na página da proposta:\n\n{link}",
+      },
+    },
+  },
 } as const satisfies Record<MailMessageKey, MessageDefinition>;
 
 /** A placeholder of a message, as a name without its braces. */
@@ -508,6 +594,128 @@ export const DECLINE_REASON_WORDS: Record<MailLang, Record<DeclineReason, string
  */
 export function reasonList(reasons: readonly string[]): string {
   return reasons.join("; ");
+}
+
+/** The email that tells a proposal's authors of each outcome. */
+export const DECISION_MESSAGES = {
+  accepted: "decision_accepted",
+  waitlisted: "decision_waitlisted",
+  rejected: "decision_rejected",
+} as const satisfies Record<DecisionOutcome, MailMessageKey>;
+
+/**
+ * The wording of the three emails about a decision: for each outcome, the subject and the text
+ * in every language mail is written in.
+ */
+export type DecisionWording = Record<
+  DecisionOutcome,
+  Record<MessagePart, Record<MailLang, string>>
+>;
+
+/**
+ * The wording in force for the three emails about a decision: the conference's own where its
+ * chairs wrote one, otherwise the standard text (messageText). It is what the confirmation
+ * before a send shows, and what its token covers: a send goes out in the wording a chair was
+ * shown, or not at all.
+ */
+export function decisionWording(messages: ConferenceMessages | undefined): DecisionWording {
+  const inForce = (key: MailMessageKey, part: MessagePart) =>
+    Object.fromEntries(
+      MAIL_LANGUAGES.map((lang) => [lang, messageText(messages, key, part, lang)]),
+    ) as Record<MailLang, string>;
+  const of = (outcome: DecisionOutcome) => ({
+    subject: inForce(DECISION_MESSAGES[outcome], "subject"),
+    body: inForce(DECISION_MESSAGES[outcome], "body"),
+  });
+  return { accepted: of("accepted"), waitlisted: of("waitlisted"), rejected: of("rejected") };
+}
+
+/**
+ * The app's own words around the reviewers' comments, in each language: the line above them,
+ * which says that the quoted lines are the reviewers' words, the number each review's comments
+ * stand under, the sentence that stands in their place where there are none, and the note
+ * under comments that were cut to fit an email.
+ */
+const COMMENTS_WORDS: Record<
+  MailLang,
+  { heading: string; reviewer: (n: number) => string; none: string; cut: string }
+> = {
+  en: {
+    heading:
+      "The lines that begin with > are comments from the reviewers, in the words they wrote:",
+    reviewer: (n) => `Reviewer ${n}`,
+    none: "No comments from reviewers come with this decision.",
+    cut: "[This comment is longer than an email carries. All of it is on the proposal's page:]",
+  },
+  es: {
+    heading:
+      "Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:",
+    reviewer: (n) => `Revisión ${n}`,
+    none: "Esta decisión no viene acompañada de comentarios de quienes revisan.",
+    cut: "[Este comentario es más largo de lo que cabe en un correo. Está completo en la página de la propuesta:]",
+  },
+  pt: {
+    heading:
+      "As linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:",
+    reviewer: (n) => `Revisão ${n}`,
+    none: "Esta decisão não é acompanhada de comentários de quem revê.",
+    cut: "[Este comentário é mais longo do que cabe num email. Está completo na página da proposta:]",
+  },
+};
+
+/**
+ * What a review's comments stand under where authors read them, in an email and on the
+ * proposal's page: "Reviewer 1", "Reviewer 2". A number, and never a name.
+ */
+export function reviewerLabel(n: number, lang: MailLang): string {
+  return COMMENTS_WORDS[lang].reviewer(n);
+}
+
+/** What stands in the place of the reviewers' comments where a decision comes with none. */
+export function noCommentsSentence(lang: MailLang): string {
+  return COMMENTS_WORDS[lang].none;
+}
+
+/**
+ * One review's comments for the authors as an email carries them: `text` cleaned by the server,
+ * and `cut` where it was shortened to fit (LIMITS.mailedComment).
+ */
+export type MailedComment = { text: string; cut: boolean };
+
+/**
+ * A reviewer's words as an email carries them: every line quoted, as plain-text mail quotes
+ * ("> " before a line, a bare ">" for an empty one). So nothing a reviewer wrote stands at the
+ * left margin, where the conference's own words stand: not a line that reads like a heading
+ * of the email, a second "Reviewer 2:", or a link given as the conference's.
+ */
+const quoted = (text: string): string =>
+  text
+    .split("\n")
+    .map((line) => (line === "" ? ">" : `> ${line}`))
+    .join("\n");
+
+/**
+ * What "{comments}" stands for: the reviewers' comments for the authors, each review's under
+ * its number, in the order given, every line of them quoted; or one sentence that says so
+ * where there are none, so that no text is left with a hole. Comments that were cut say so
+ * outside the quote, in the app's own words, with the link to the proposal's page on a line
+ * of its own, where they can be read whole. `text` is one review's comments as the server
+ * cleaned them (plainText): its only line breaks are line feeds.
+ */
+export function commentsBlock(
+  comments: readonly MailedComment[],
+  link: string,
+  lang: MailLang,
+): string {
+  const words = COMMENTS_WORDS[lang];
+  if (comments.length === 0) return words.none;
+  return [
+    words.heading,
+    ...comments.map(
+      (c, i) =>
+        `${words.reviewer(i + 1)}:\n${quoted(c.text)}${c.cut ? `\n${words.cut}\n${link}` : ""}`,
+    ),
+  ].join("\n\n");
 }
 
 /** What "{owner}" stands for when the owner has no name that can be shown. */

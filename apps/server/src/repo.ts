@@ -5,6 +5,7 @@ import {
   ConferenceConfig,
   type Conflict,
   type Contribution,
+  type Decision,
   isForwardPhaseMove,
   type Person,
   type Review,
@@ -22,6 +23,7 @@ import {
   conferences,
   conflicts,
   contributions,
+  decisions,
   people,
   reviews,
   submissions,
@@ -406,6 +408,47 @@ export async function loadSentReviews(db: Db, conferenceId: string): Promise<Rev
     .from(reviews)
     .where(and(eq(reviews.conferenceId, conferenceId), eq(reviews.status, "sent")));
   return rows.map(toReview);
+}
+
+type DecisionRow = typeof decisions.$inferSelect;
+
+export function toDecision(r: DecisionRow): Decision {
+  return {
+    id: r.id,
+    conferenceId: r.conferenceId,
+    submissionId: r.submissionId,
+    outcome: r.outcome as Decision["outcome"],
+    decidedByPersonId: r.decidedByPersonId,
+    decidedAt: iso(r.decidedAt),
+    sentAt: isoOrNull(r.sentAt),
+    sentByPersonId: r.sentByPersonId,
+    comments: r.sentAt === null ? null : ((r.comments ?? []) as string[]),
+  };
+}
+
+/**
+ * A conference's decisions (spec 03, §1.6): those waiting to be sent, and those that were; of
+ * one proposal, where one is named. They are read for the chairs' pages and for sending, and,
+ * once sent, for the proposal's own people: who is shown what is packages/policy's to say.
+ */
+export async function loadDecisions(
+  db: Db,
+  conferenceId: string,
+  only?: { submissionId: string },
+): Promise<Decision[]> {
+  const rows = await db
+    .select()
+    .from(decisions)
+    .where(
+      only
+        ? and(
+            eq(decisions.conferenceId, conferenceId),
+            eq(decisions.submissionId, only.submissionId),
+          )
+        : eq(decisions.conferenceId, conferenceId),
+    )
+    .orderBy(decisions.decidedAt, decisions.id);
+  return rows.map(toDecision);
 }
 
 /**

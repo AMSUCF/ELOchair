@@ -14,7 +14,7 @@ export const emailsEn = {
   emailsChairHint:
     "When a reviewer cannot review a proposal, and when a proposal has all its reviews. A summary is one email for each of the two.",
   emailsAlways:
-    "Invitations and sign-in emails are always sent: without them you could not take part.",
+    "Invitations, sign-in emails and the decisions about your own proposals are always sent: without them you could not take part.",
   emailsSave: "Save",
   emailsSaveFor: "Save email choices for {conference}",
   emailsSaved: "Your email choices for {conference} are saved.",

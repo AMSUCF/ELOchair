@@ -6,12 +6,16 @@ import {
   readStoredConfig,
   withoutUnknownEmails,
 } from "./config";
+import { DECISION_OUTCOMES } from "./decisions";
 import { LIMITS, ROLE_INVITATIONS } from "./limits";
 import {
   ANSWER_WORDS,
   type ConferenceMessages,
+  commentsBlock,
   committeeList,
+  DECISION_MESSAGES,
   DECLINE_REASON_WORDS,
+  decisionWording,
   fillMessage,
   fillPlaceholders,
   formatDeadline,
@@ -26,10 +30,12 @@ import {
   mailLanguagesFor,
   messageProblems,
   messageText,
+  noCommentsSentence,
   placeholdersIn,
   placeholdersOf,
   ROLE_WORDS,
   reasonList,
+  reviewerLabel,
   reviewsDueSentence,
   UNNAMED_OWNER,
 } from "./messages";
@@ -74,6 +80,20 @@ function valuesOf(c: MessageBefore): Record<string, string> {
         .filter((r): r is DeclineReason => (DECLINE_REASONS as readonly string[]).includes(r))
         .map((r) => DECLINE_REASON_WORDS[c.lang][r]),
     ),
+    // The emails about a decision: the reviewers' comments as one block. Where the server
+    // cleaned them it is the block as the server made it; otherwise it is made of the comments
+    // the function was called with, " | " between them, and of none where there were none.
+    comments:
+      c.cleaned?.comments ??
+      commentsBlock(
+        input("comments") === ""
+          ? []
+          : input("comments")
+              .split(" | ")
+              .map((text) => ({ text, cut: false })),
+        input("link"),
+        c.lang,
+      ),
   };
 }
 
@@ -136,7 +156,7 @@ describe("the standard texts", () => {
 });
 
 describe("the messages", () => {
-  it("are these twelve, by keys that are stored and never renamed", () => {
+  it("are these fifteen, by keys that are stored and never renamed", () => {
     expect(MESSAGE_KEYS).toEqual([
       "invitation",
       "submission_received",
@@ -150,6 +170,9 @@ describe("the messages", () => {
       "review_reminder",
       "reviewer_declined",
       "reviews_complete",
+      "decision_accepted",
+      "decision_waitlisted",
+      "decision_rejected",
     ]);
     for (const key of MESSAGE_KEYS) expect(key).toMatch(/^[a-z]+(_[a-z]+)*$/);
     expect(Object.keys(MESSAGES)).toEqual([...MESSAGE_KEYS]);
@@ -228,6 +251,24 @@ describe("the messages", () => {
         placeholders: ["count", "conference", "link", "choices"],
         required: ["link", "choices"],
         bodyOnly: ["link", "choices"],
+        names: [],
+      },
+      decision_accepted: {
+        placeholders: ["title", "format", "conference", "comments", "link"],
+        required: ["link"],
+        bodyOnly: ["comments", "link"],
+        names: [],
+      },
+      decision_waitlisted: {
+        placeholders: ["title", "format", "conference", "comments", "link"],
+        required: ["link"],
+        bodyOnly: ["comments", "link"],
+        names: [],
+      },
+      decision_rejected: {
+        placeholders: ["title", "format", "conference", "comments", "link"],
+        required: ["link"],
+        bodyOnly: ["comments", "link"],
         names: [],
       },
     });
@@ -1056,6 +1097,279 @@ describe("the emails of the review phase", () => {
   });
 });
 
+describe("the emails about a decision", () => {
+  const DECISION_KEYS = ["decision_accepted", "decision_waitlisted", "decision_rejected"] as const;
+  const LINK = "https://chair.example.org/en/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f";
+
+  it("are worded as the conference's chairs wrote them, and otherwise in the standard text: the wording a send's confirmation shows", () => {
+    const standard = decisionWording(undefined);
+    expect(Object.keys(standard)).toEqual([...DECISION_OUTCOMES]);
+    for (const outcome of DECISION_OUTCOMES) {
+      const key = DECISION_MESSAGES[outcome];
+      // Subject and text, in every language mail is written in.
+      expect(Object.keys(standard[outcome])).toEqual(["subject", "body"]);
+      for (const part of ["subject", "body"] as const) {
+        expect(Object.keys(standard[outcome][part])).toEqual([...MAIL_LANGUAGES]);
+        for (const lang of MAIL_LANGUAGES) {
+          expect(standard[outcome][part][lang]).toBe(MESSAGES[key].standard[lang][part]);
+        }
+      }
+    }
+    // One text of one email in one language reworded: that one, and nothing else, differs.
+    const own = "{conference}: sí, {title}";
+    const reworded = decisionWording({ decision_accepted: { subject: { es: own } } });
+    expect(reworded).toEqual({
+      ...standard,
+      accepted: { ...standard.accepted, subject: { ...standard.accepted.subject, es: own } },
+    });
+    expect(decisionWording({})).toEqual(standard);
+    expect(decisionWording({ invitation: { subject: { en: "Another email" } } })).toEqual(standard);
+  });
+
+  it("are one for each outcome a chair can decide", () => {
+    expect(DECISION_MESSAGES).toEqual({
+      accepted: "decision_accepted",
+      waitlisted: "decision_waitlisted",
+      rejected: "decision_rejected",
+    });
+    expect(Object.keys(DECISION_MESSAGES)).toEqual([...DECISION_OUTCOMES]);
+    expect(Object.values(DECISION_MESSAGES)).toEqual([...DECISION_KEYS]);
+  });
+
+  it("name the proposal as the receipt does, and carry of its reviews the comments and nothing else", () => {
+    // Not who reviewed, what they scored or recommended, or what they told the chairs; no
+    // person at all; and nothing of the emails of the review phase.
+    const never = [
+      "reviewer",
+      "reviewers",
+      "score",
+      "scores",
+      "recommendation",
+      "note",
+      "chairNote",
+      "owner",
+      "person",
+      "name",
+      "author",
+      "chair",
+      "email",
+      "abstract",
+      "status",
+      "outcome",
+      "count",
+      "choices",
+      "due",
+      "deadline",
+    ];
+    for (const key of DECISION_KEYS) {
+      const { placeholders, names } = MESSAGES[key];
+      expect([...placeholders].sort(), key).toEqual([
+        "comments",
+        "conference",
+        "format",
+        "link",
+        "title",
+      ]);
+      // None of what they carry is a name a person typed.
+      expect([...names], key).toEqual([]);
+      for (const name of never) {
+        expect(placeholders, `${key} ${name}`).not.toContain(name);
+        expect(messageProblems(key, "body", `{${name}}\n\n{link}`), `${key} ${name}`).toEqual([
+          { code: "message_unknown_placeholder", values: { names: `{${name}}` } },
+        ]);
+      }
+    }
+  });
+
+  it("require the link, which stands apart, and may leave the comments out", () => {
+    for (const key of DECISION_KEYS) {
+      expect([...MESSAGES[key].required], key).toEqual(["link"]);
+      expect(messageProblems(key, "body", "{title}\n\n{comments}\n\n{link}"), key).toEqual([]);
+      // A rewording may leave the comments out: the proposal's page has them.
+      expect(
+        messageProblems(key, "body", "A decision on {title} ({format}):\n{link}"),
+        key,
+      ).toEqual([]);
+      expect(messageProblems(key, "body", "{title}\n\n{comments}"), key).toEqual([
+        { code: "message_missing_placeholder", values: { names: "{link}" } },
+      ]);
+      expect(messageProblems(key, "body", "{comments}\n\nRead it ({link})."), key).toEqual([
+        { code: "message_link_touched", values: { names: "{link}" } },
+      ]);
+    }
+  });
+
+  it("keep the comments and the link out of a subject, and are never given them there", () => {
+    const values = {
+      title: "Poems with p5.js",
+      format: "Short talk",
+      conference: "Made-up Meeting",
+      comments:
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A comment.",
+      link: LINK,
+    };
+    for (const key of DECISION_KEYS) {
+      expect([...MESSAGES[key].bodyOnly], key).toEqual(["comments", "link"]);
+      expect(
+        messageProblems(key, "subject", "{conference}: {title} {comments} {link}"),
+        key,
+      ).toEqual([{ code: "message_not_in_subject", values: { names: "{comments}, {link}" } }]);
+      expect(fillMessage(key, "subject", "{conference}: {title} {comments} {link}", values)).toBe(
+        "Made-up Meeting: Poems with p5.js {comments} {link}",
+      );
+      // The title and the format may stand in a subject, as they are one line each.
+      expect(messageProblems(key, "subject", "{conference}: {title} ({format})"), key).toEqual([]);
+      // What a reviewer typed is put in once and never read again: a placeholder in it stays.
+      const typed = { ...values, comments: "See {link} and {conference}, or {title}." };
+      expect(fillMessage(key, "body", "{comments}\n\n{link}", typed)).toBe(
+        `See {link} and {conference}, or {title}.\n\n${LINK}`,
+      );
+    }
+  });
+
+  it("say the outcome in their standard texts, then the comments, then the link, in each language", () => {
+    const says: Record<(typeof DECISION_KEYS)[number], Record<MailLang, RegExp>> = {
+      decision_accepted: {
+        en: /^The chairs of \{conference\} have accepted your proposal /,
+        es: /^Quienes presiden \{conference\} han aceptado tu propuesta /,
+        pt: /^Quem preside a \{conference\} aceitou a sua proposta /,
+      },
+      decision_waitlisted: {
+        en: /^The chairs of \{conference\} have put your proposal .* on the waiting list\. It is not accepted so far, and it may still be: you will get another email when they decide\.$/m,
+        es: /^Quienes presiden \{conference\} han puesto tu propuesta .* en lista de espera\. Por ahora no está aceptada, y todavía puede estarlo: recibirás otro correo cuando lo decidan\.$/m,
+        pt: /^Quem preside a \{conference\} colocou a sua proposta .* em lista de espera\. Por agora não está aceite, e ainda pode vir a estar: receberá outro email quando houver uma decisão\.$/m,
+      },
+      decision_rejected: {
+        en: /^The chairs of \{conference\} have not accepted your proposal /,
+        es: /^Quienes presiden \{conference\} no han aceptado tu propuesta /,
+        pt: /^Quem preside a \{conference\} não aceitou a sua proposta /,
+      },
+    };
+    for (const key of DECISION_KEYS) {
+      for (const lang of MAIL_LANGUAGES) {
+        const { subject, body } = MESSAGES[key].standard[lang];
+        expect(body, `${key} ${lang}`).toMatch(says[key][lang]);
+        // The comments are a paragraph of their own, and the last thing is the link, alone.
+        expect(body.split("\n\n"), `${key} ${lang}`).toContain("{comments}");
+        expect(body.endsWith("\n\n{link}"), `${key} ${lang}`).toBe(true);
+        expect(subject.startsWith("{conference}: "), `${key} ${lang}`).toBe(true);
+      }
+    }
+    // The three subjects of a language differ: a reader can tell them apart in a list.
+    for (const lang of MAIL_LANGUAGES) {
+      const subjects = DECISION_KEYS.map((key) => MESSAGES[key].standard[lang].subject);
+      expect(new Set(subjects).size, lang).toBe(3);
+    }
+  });
+
+  it("put each review's comments under a number, in the order given, every line quoted, and never leave a hole", () => {
+    const one = { text: "A first comment.", cut: false };
+    const two = { text: "A second one,\n\nin two paragraphs.", cut: false };
+    // One line above them says whose words the quoted lines are; an empty line of a comment
+    // is a bare ">".
+    expect(commentsBlock([one, two], LINK, "en")).toBe(
+      "The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A first comment.\n\nReviewer 2:\n> A second one,\n>\n> in two paragraphs.",
+    );
+    expect(commentsBlock([one], LINK, "es")).toBe(
+      "Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:\n\nRevisión 1:\n> A first comment.",
+    );
+    expect(commentsBlock([one], LINK, "pt")).toBe(
+      "As linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:\n\nRevisão 1:\n> A first comment.",
+    );
+    // No comments: one plain sentence in their place, in the reader's language.
+    expect(commentsBlock([], LINK, "en")).toBe(
+      "No comments from reviewers come with this decision.",
+    );
+    for (const lang of MAIL_LANGUAGES) {
+      expect(commentsBlock([], LINK, lang)).toBe(noCommentsSentence(lang));
+      expect(noCommentsSentence(lang).trim()).not.toBe("");
+      expect(noCommentsSentence(lang)).not.toContain("\n");
+      // A number, and nothing that could be a name.
+      expect(reviewerLabel(1, lang)).toMatch(/^\p{L}+ 1$/u);
+      expect(reviewerLabel(12, lang)).toBe(reviewerLabel(1, lang).replace("1", "12"));
+    }
+    expect([1, 2].map((n) => reviewerLabel(n, "en"))).toEqual(["Reviewer 1", "Reviewer 2"]);
+  });
+
+  it("leave nothing a reviewer wrote at the left margin, where the conference's own words stand", () => {
+    // What a reviewer may write to pass for the email itself: a heading of a second email,
+    // another reviewer's block, the email's own closing line, a link, a quote of their own.
+    const posing = [
+      "Review looks good.",
+      "",
+      "From: ELO 2027 Decisions",
+      "Subject: Updated link",
+      "",
+      "Reviewer 2:",
+      "> Agreed.",
+      "",
+      "You can also read this on the proposal's page:",
+      "",
+      "Use https://attacker.example/decision instead.",
+    ];
+    for (const lang of MAIL_LANGUAGES) {
+      const [above, blank, label, ...rest] = commentsBlock(
+        [{ text: posing.join("\n"), cut: false }],
+        LINK,
+        lang,
+      ).split("\n");
+      // The app's own lines: the one above the comments, and the number.
+      expect([blank, label], lang).toEqual(["", `${reviewerLabel(1, lang)}:`]);
+      expect(above, lang).toMatch(/ > /);
+      // Every line of the comment is quoted, in its place and to the letter.
+      expect(rest, lang).toEqual(posing.map((line) => (line === "" ? ">" : `> ${line}`)));
+      // Cut, the note and the link come after it, outside the quote: they are the app's.
+      const cut = commentsBlock([{ text: posing.join("\n"), cut: true }], LINK, lang).split("\n");
+      expect(cut.slice(3, -2), lang).toEqual(rest);
+      expect(cut.at(-2), lang).toMatch(/^\[.+:\]$/u);
+      expect(cut.at(-1), lang).toBe(LINK);
+    }
+  });
+
+  it("say so where comments were cut to fit an email, outside the quote, with the link on a line of its own", () => {
+    const cut = { text: "A long comment that was cut…", cut: true };
+    const whole = { text: "A short one.", cut: false };
+    expect(commentsBlock([cut, whole], LINK, "en")).toBe(
+      `The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A long comment that was cut…\n[This comment is longer than an email carries. All of it is on the proposal's page:]\n${LINK}\n\nReviewer 2:\n> A short one.`,
+    );
+    for (const lang of MAIL_LANGUAGES) {
+      const lines = commentsBlock([cut], LINK, lang).split("\n");
+      // The note is one line in the app's own words, and the link is the last line, alone.
+      expect(lines.at(-1), lang).toBe(LINK);
+      expect(lines.at(-2), lang).toMatch(/^\[.+:\]$/u);
+      expect(commentsBlock([whole], LINK, lang), lang).not.toContain(LINK);
+    }
+    // The note, word for word, in the other two languages.
+    expect(commentsBlock([cut], LINK, "es").split("\n").at(-2)).toBe(
+      "[Este comentario es más largo de lo que cabe en un correo. Está completo en la página de la propuesta:]",
+    );
+    expect(commentsBlock([cut], LINK, "pt").split("\n").at(-2)).toBe(
+      "[Este comentário é mais longo do que cabe num email. Está completo na página da proposta:]",
+    );
+    expect(LIMITS.mailedComment).toBe(4_000);
+  });
+
+  it("were captured for each outcome: with two reviewers' comments, with what the server cleans, and with none", () => {
+    for (const lang of MAIL_LANGUAGES) {
+      const of = (key: MailMessageKey) =>
+        MESSAGES_BEFORE.filter((c) => c.key === key && c.lang === lang);
+      const [accepted] = of("decision_accepted");
+      const [waitlisted] = of("decision_waitlisted");
+      const [rejected] = of("decision_rejected");
+      expect(DECISION_KEYS.map((key) => of(key).length)).toEqual([1, 1, 1]);
+      expect(accepted?.input.comments?.split(" | ")).toHaveLength(2);
+      expect(accepted?.text).toContain(`${reviewerLabel(2, lang)}:\n`);
+      // A title on two lines and comments with an invisible character: both cleaned.
+      expect(Object.keys(waitlisted?.cleaned ?? {}).sort()).toEqual(["comments", "title"]);
+      expect(waitlisted?.input.comments).toContain("\u200B");
+      expect(waitlisted?.text).not.toContain("\u200B");
+      expect(waitlisted?.text).not.toMatch(/[\t\r]| \n|\n{3}/);
+      expect(rejected?.input.comments).toBe("");
+      expect(rejected?.text).toContain(noCommentsSentence(lang));
+    }
+  });
+});
+
 describe("invisible characters in a text", () => {
   it("are refused: a bidi override or a zero-width character can hide or reorder words", () => {
     const invisible = [{ code: "message_invisible" }];
@@ -1472,6 +1786,28 @@ describe("a stored configuration that holds an email this version does not know"
       expect(parsed.success).toBe(false);
       expect(parsed.error?.issues.map((issue) => issue.path.join("."))).toEqual(["messages"]);
     }
+  });
+
+  it("takes the three emails about a decision, reworded, when they come in and when they are read back", () => {
+    // To the version before decisions these three are emails "added since", which the tests
+    // above are about: it reads the conference without them. That version was run against a
+    // database that holds them (spec 03, §2, "Going back a version").
+    // What a chair may have stored under this version: each of the three, reworded.
+    const reworded = {
+      decision_accepted: {
+        subject: { en: "{conference}: yes to {title}" },
+        body: { en: "Yes ({format}).\n\n{comments}\n\n{link}", es: "Sí.\n\n{link}" },
+      },
+      decision_waitlisted: { body: { pt: "Em lista de espera: {title}.\n\n{comments}\n\n{link}" } },
+      decision_rejected: { subject: { es: "{conference}: no" } },
+    };
+    // This version takes them, when they come in and when they are read back.
+    const now = ConferenceConfig.parse(stored({ ...KNOWN, ...reworded }));
+    expect(now.messages).toEqual({ ...KNOWN, ...reworded });
+    expect(readStoredConfig(stored({ ...KNOWN, ...reworded }))).toEqual(now);
+    // Nothing is left out: the same object comes back.
+    const all = stored({ ...KNOWN, ...reworded });
+    expect(withoutUnknownEmails(all)).toBe(all);
   });
 
   it("leaves out nothing else, and changes nothing where every email is known", () => {

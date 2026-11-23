@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -328,6 +329,62 @@ export const reviews = pgTable(
     check("reviews_sent_check", sql`(${t.status} = 'sent') = (${t.sentAt} is not null)`),
     index("reviews_conference_idx").on(t.conferenceId, t.status),
     index("reviews_reviewer_idx").on(t.reviewerId),
+  ],
+);
+
+/**
+ * The decisions about proposals (spec 03, §1.6): accept, waitlist or reject, as a chair
+ * recorded each, and whether it was sent to the authors.
+ *
+ * A decision is kept here, apart from its proposal, until the chairs send the decisions. Only
+ * the sending writes `submissions.status`, which is what the proposal's people see and what
+ * every rule reads: a decision that is not sent changes nothing outside this table. The
+ * version of the app before this table reads none of it.
+ * - A proposal has at most one decision that is not sent (the partial unique index): recording
+ *   again changes it, and taking it back deletes it.
+ * - A sent decision is never changed or deleted. A proposal on the waiting list can get another
+ *   one later, so a proposal may have two sent rows: the last is what its authors were told.
+ * - `comments` is what the authors were sent of the reviews, written when the decision is
+ *   sent: each sent review's comments for the authors, in the order they are numbered for them.
+ *   No reviewer's id is kept with it, so nothing an author is shown leads back to one.
+ *
+ * It goes with its proposal and its conference (cascade), as the proposal's reviews do, and it
+ * outlives the chairs it names (their ids become null).
+ */
+export const decisions = pgTable(
+  "decisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    outcome: text("outcome").notNull(),
+    /** The chair who recorded it, or last changed it. Null on one made on the server. */
+    decidedByPersonId: uuid("decided_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    /** When it was recorded, or last changed. */
+    decidedAt: ts("decided_at").notNull(),
+    /** When it was sent to the authors; null until it is. */
+    sentAt: ts("sent_at"),
+    sentByPersonId: uuid("sent_by_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    /** A list of texts: the reviewers' comments for the authors, as they were sent. */
+    comments: jsonb("comments"),
+  },
+  (t) => [
+    check("decisions_outcome_check", sql`${t.outcome} in ('accepted','waitlisted','rejected')`),
+    // Sent is said once: a sent decision has what the authors were sent with it, and one that
+    // is not sent has nothing of the kind yet.
+    check("decisions_sent_check", sql`(${t.sentAt} is null) = (${t.comments} is null)`),
+    // One decision waiting to be sent for a proposal, whatever was checked before writing it.
+    uniqueIndex("decisions_one_waiting").on(t.submissionId).where(sql`${t.sentAt} is null`),
+    index("decisions_conference_idx").on(t.conferenceId, t.sentAt),
+    index("decisions_submission_idx").on(t.submissionId),
   ],
 );
 

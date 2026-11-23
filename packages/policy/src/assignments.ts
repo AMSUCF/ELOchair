@@ -47,10 +47,11 @@ export function canManageReviewers(viewer: Viewer, ctx: SubmissionContext): view
 }
 
 /**
- * Whether a proposal is one that takes new reviewers: it has been submitted and no decision has
- * been recorded for it. A draft and a withdrawn proposal never are. Every other status that an
- * assigned reviewer can still read (accepted, waitlisted, rejected, confirmed) carries a
- * decision: the reviewers it has keep it, and nobody new is asked to judge what is judged.
+ * Whether a proposal is one that takes new reviewers: it has been submitted and no decision
+ * about it has been sent. A draft and a withdrawn proposal never are. Every other status that
+ * an assigned reviewer can still read (accepted, waitlisted, rejected, confirmed) carries a
+ * decision that was sent: the reviewers it has keep it, and nobody new is asked to judge what
+ * is judged.
  */
 export function underConsideration(s: Pick<Submission, "status" | "submittedAt">): boolean {
   return s.status === "submitted" && s.submittedAt !== null;

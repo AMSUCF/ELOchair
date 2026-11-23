@@ -20,10 +20,10 @@ import {
   reviewersCanRead,
   reviewPoolFor,
   type SubmissionIssue,
-  type SubmissionStatus,
 } from "@elochair/schema";
 import type { ZodError } from "zod";
 import type { ConferenceRow } from "../repo";
+import { LIVE_STATUSES } from "./submissions";
 
 /*
  * Changing a conference's configuration through the app (spec 02, §1.9): what a change would
@@ -126,15 +126,6 @@ export function configIssues(error: ZodError, input: unknown): ConfigIssue[] {
     };
   });
 }
-
-/** Work that has been sent in and not withdrawn or turned down: it must stay valid. */
-const LIVE: readonly SubmissionStatus[] = [
-  "submitted",
-  "accepted",
-  "waitlisted",
-  "confirmed",
-  "published",
-];
 
 export type Blocked = {
   /** Submitted proposals that would have a problem they do not have now. */
@@ -516,7 +507,8 @@ export function reviewConfig(args: {
   let blockedCount = 0;
   for (const record of records) {
     const status = record.submission.status;
-    if (status !== "draft" && !LIVE.includes(status)) continue;
+    // Work that was sent in and not withdrawn or turned down must stay valid.
+    if (status !== "draft" && !LIVE_STATUSES.includes(status)) continue;
     const codes = new Set(gained(record, next).map((i) => i.code));
     if (codes.size === 0) continue;
     if (status === "draft") {

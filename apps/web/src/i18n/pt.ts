@@ -1,4 +1,5 @@
 import { assignmentsPt } from "./assignments.pt";
+import { decisionsPt } from "./decisions.pt";
 import { emailsPt } from "./emails.pt";
 import type { Messages } from "./en";
 import { peoplePt } from "./people.pt";
@@ -12,6 +13,7 @@ export const pt: Messages = {
   ...settingsPt,
   ...peoplePt,
   ...assignmentsPt,
+  ...decisionsPt,
   ...reviewsPt,
   ...emailsPt,
   appName: "ELOchair",

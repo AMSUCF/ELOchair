@@ -1,6 +1,7 @@
 import {
   ConferenceConfig,
   type ContributionRole,
+  type DecisionOutcome,
   type DeclineReason,
   type MailMessageKey,
   MESSAGES,
@@ -17,6 +18,7 @@ import {
   type Answer,
   answeredMessage,
   chairInvitationMessage,
+  decisionMessage,
   draftDeletedMessage,
   invitationMessage,
   invitationWithdrawnMessage,
@@ -40,7 +42,7 @@ import { call, makeTestApp, ORIGIN, personId, signIn, type TestApp } from "./tes
 
 const TO = "reader@example.org";
 
-/** One of the twelve functions, called with a captured case's input. */
+/** One of the thirteen functions, called with a captured case's input. */
 function send(wording: Wording, c: MessageBefore): MailMessage {
   const v = (name: string) => c.input[name] ?? "";
   /** What the four emails of the review phase have in common. */
@@ -50,6 +52,17 @@ function send(wording: Wording, c: MessageBefore): MailMessage {
     link: v("link"),
     choices: v("choices"),
   });
+  /** One function serves the three emails about a decision: the outcome says which. */
+  const decision = (outcome: DecisionOutcome) => () =>
+    decisionMessage(wording, c.lang, TO, {
+      outcome,
+      conference: v("conference"),
+      format: v("format"),
+      title: v("title"),
+      link: v("link"),
+      // The comments it was called with, " | " between them; none where it is empty.
+      comments: v("comments") === "" ? [] : v("comments").split(" | "),
+    });
   const calls: Record<MailMessageKey, () => MailMessage> = {
     invitation: () =>
       invitationMessage(wording, c.lang, TO, {
@@ -111,6 +124,9 @@ function send(wording: Wording, c: MessageBefore): MailMessage {
         reasons: v("reasons").split(" | ") as DeclineReason[],
       }),
     reviews_complete: () => reviewsCompleteMessage(wording, c.lang, TO, reviewPhase()),
+    decision_accepted: decision("accepted"),
+    decision_waitlisted: decision("waitlisted"),
+    decision_rejected: decision("rejected"),
   };
   return calls[c.key]();
 }
@@ -936,11 +952,20 @@ describe("chairs change the wording, and people are sent it", () => {
     ];
     const sent = (await Promise.all(everyone.map(kinds))).flat();
     // (The four emails of the review phase are made by a job, not by a route: they are sent in
-    // a conference's own words in notifications.test.ts.)
-    const byJob = ["new_assignments", "review_reminder", "reviewer_declined", "reviews_complete"];
+    // a conference's own words in notifications.test.ts. The three about a decision need a
+    // conference that was reviewed and is being decided: they are in decisions.test.ts.)
+    const elsewhere = [
+      "new_assignments",
+      "review_reminder",
+      "reviewer_declined",
+      "reviews_complete",
+      "decision_accepted",
+      "decision_waitlisted",
+      "decision_rejected",
+    ];
     expect([...new Set(sent)].sort()).toEqual(
       Object.keys(MESSAGES)
-        .filter((key) => !byJob.includes(key))
+        .filter((key) => !elsewhere.includes(key))
         .sort(),
     );
 

@@ -1,0 +1,115 @@
+/* Decisions: the section on a proposal's page, the Decisions page, and what authors read. */
+
+/* What a proposal's authors read once its decision was sent. */
+.author-decision {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.author-decision h2,
+.author-decision h3,
+.author-decision h4,
+.author-decision p {
+  margin: 0;
+}
+
+.author-decision .decided {
+  font-weight: 600;
+}
+
+.author-decision .author-comment {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--sunken);
+}
+
+/* The section above a proposal's reviewers: what is recorded, and recording it. */
+.decision,
+.send-decisions {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.decision > h2,
+.decision > p,
+.send-decisions > h2,
+.send-decisions > p {
+  margin: 0;
+}
+
+/* A line that says what happened keeps no room while it has nothing to say. */
+.decision .status-line:empty,
+.send-decisions .status-line:empty,
+.decisions-page .status-line:empty {
+  min-height: 0;
+}
+
+.decisions-page {
+  display: grid;
+  gap: 8px;
+}
+
+.decisions-page section {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.decisions-page section > h2,
+.decisions-page section > p {
+  margin: 0;
+}
+
+/* One proposal to a card: its title, its format, where its decision stands, its reviews. */
+.decisions-page .cards {
+  margin: 4px 0;
+}
+
+.decisions-page .card {
+  display: grid;
+  gap: 4px;
+}
+
+.decisions-page .card h3,
+.decisions-page .card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decisions-page .card h3 {
+  font-size: 1.15rem;
+}
+
+/* What sending will do, as a list of numbers, and the emails under it. */
+.send-numbers {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 4px;
+}
+
+.send-decisions .confirm {
+  display: grid;
+  gap: 10px;
+}
+
+.send-decisions .confirm p,
+.send-decisions .email-preview {
+  margin: 0;
+}
+
+.send-decisions .email-preview figcaption {
+  font-weight: 600;
+}
+
+.send-decisions .email-preview dd {
+  overflow-wrap: anywhere;
+}

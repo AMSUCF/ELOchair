@@ -737,6 +737,147 @@ describe("what is done as a chair, and the locks it takes", () => {
     }
   });
 
+  it("a decision recorded, changed, taken back and sent: the proposals' rows, the roles lock and the chair read again, then the conference's row", async () => {
+    const owner = await w.person("locks-decide-author@example.org", "Ava Authorperson");
+    const one = await submit(w, owner, await talk(w, owner, "A talk that gets a decision"));
+    const two = await submit(w, owner, await talk(w, owner, "Another talk that gets one"));
+    const on = (id: string) => at(w.slug, `decisions/submissions/${id}`);
+    const WRITES_A_DECISION =
+      /^(insert into|update|delete from) "(decisions|submissions|audit_log)"|^insert into "outbox"/;
+    /** What every write about decisions has in common: its locks, in the one order. */
+    const expectLocks = (what: string, sent: string[]) => {
+      const proposal = first(sent, LOCKS_PROPOSAL);
+      // Never "for update": a removal's record of a release must be able to point to the row.
+      expect(first(sent, LOCKS_SUBMISSION), what).toBe(-1);
+      const role = first(sent, SHARES_ROLES);
+      const conference = first(sent, SHARES_CONFERENCE);
+      expect(proposal, `${what}: the proposals' rows`).toBeGreaterThanOrEqual(0);
+      expect(role, `${what}: the roles lock`).toBeGreaterThan(proposal);
+      // The chair's roles are read again after the lock, and before the conference's row.
+      const reread = sent.findIndex((q, i) => i > role && READS_ROLES.test(q));
+      expect(reread, `${what}: reads the chair again`).toBeGreaterThan(role);
+      expect(conference, `${what}: the conference's row`).toBeGreaterThan(reread);
+      // Rows are taken in one statement, then the conference's; the roles lock once, shared.
+      expect(
+        sent.filter((q) => / for (no key update|update|share)$/.test(q)),
+        what,
+      ).toHaveLength(2);
+      expect(
+        sent.filter((q) => /pg_advisory/.test(q)),
+        what,
+      ).toHaveLength(1);
+      expect(
+        sent.filter((q) => LOCKS_ROLES.test(q)),
+        what,
+      ).toEqual([]);
+      // Nothing is written before the last of them.
+      const write = first(sent, WRITES_A_DECISION);
+      if (write >= 0) expect(write, `${what}: writes after its locks`).toBeGreaterThan(conference);
+      return { proposal, conference, write };
+    };
+    let phase = "cfp_open";
+    const move = async (to: string) => {
+      const moved = await asChair("PUT", at(w.slug, "phase"), { phase: to, from: phase });
+      expect(moved.status, to).toBe(200);
+      phase = to;
+    };
+    // Decisions are recorded once the conference is in review.
+    await move("reviewing");
+    try {
+      /** Each write in turn: what it is, how it is asked for, its answer, and what it writes first. */
+      const steps: [string, () => Promise<{ status: number }>, number, RegExp | null][] = [
+        [
+          "record",
+          () => asChair("PUT", on(one.id), { outcome: "accepted" }),
+          204,
+          /^insert into "decisions"/,
+        ],
+        [
+          "change",
+          () => asChair("PUT", on(one.id), { outcome: "rejected" }),
+          204,
+          /^update "decisions"/,
+        ],
+        ["take back", () => asChair("DELETE", on(one.id)), 204, /^delete from "decisions"/],
+        // Refused under the same locks: what is refused was read as it is when others commit.
+        ["take back what is not there", () => asChair("DELETE", on(one.id)), 409, null],
+        [
+          "record again",
+          () => asChair("PUT", on(one.id), { outcome: "accepted" }),
+          204,
+          /^insert into "decisions"/,
+        ],
+        [
+          "record for another",
+          () => asChair("PUT", on(two.id), { outcome: "waitlisted" }),
+          204,
+          /^insert into "decisions"/,
+        ],
+      ];
+      for (const [what, run, status, writes] of steps) {
+        let answered = { status: 0 };
+        const sent = await w.t.statements(async () => {
+          answered = await run();
+        });
+        expect(answered.status, what).toBe(status);
+        const order = expectLocks(what, sent);
+        // The proposal is not read before its row is taken, and the decision that waits is
+        // read only under all three.
+        expect(first(sent, /from "submissions"/), what).toBe(order.proposal);
+        expect(first(sent, /from "decisions"/), what).toBeGreaterThan(order.conference);
+        if (writes) expect(sent[order.write], what).toMatch(writes);
+        else expect(order.write, `${what}: writes nothing`).toBe(-1);
+      }
+
+      // Decisions are sent once the conference is deciding. Sending is the one request that
+      // holds the rows of several proposals.
+      await move("deciding");
+      const asked = await call(w.t.public, "GET", at(w.slug, "decisions/send"), {
+        cookie: w.chair,
+      });
+      expect(asked.json).toMatchObject({ accepted: 1, waitlisted: 1, rejected: 0 });
+      let answered = { status: 0 };
+      const sent = await w.t.statements(async () => {
+        answered = await asChair("POST", at(w.slug, "decisions/send"), {
+          token: asked.json.token,
+        });
+      });
+      expect(answered.status).toBe(200);
+      const order = expectLocks("send", sent);
+      // It takes them all in one statement, in the order of their ids, before every other
+      // lock: so two sends, and a send and any write to one proposal, cannot hold what the
+      // other waits for. Before that it only reads which proposals have a decision waiting.
+      const rows = sent.filter((q) => LOCKS_PROPOSAL.test(q));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatch(/ order by "submissions"\."id" for no key update$/);
+      expect(
+        sent.slice(0, order.proposal).filter((q) => !/^select /.test(q) || / for \w/.test(q)),
+      ).toEqual([]);
+      // What it sends is read again under all of them: the decisions as they are when it
+      // commits, not as they were when it looked for the rows to take.
+      const plan = sent.findIndex((q, i) => i > order.conference && /from "decisions"/.test(q));
+      expect(plan).toBeGreaterThan(order.conference);
+      expect(plan).toBeLessThan(order.write);
+      // Each proposal gets its status, each decision is marked sent, and its owner is written to.
+      expect(sent.filter((q) => /^update "submissions"/.test(q))).toHaveLength(2);
+      expect(sent.filter((q) => /^update "decisions"/.test(q))).toHaveLength(2);
+      expect(sent.filter((q) => /^insert into "outbox"/.test(q))).toHaveLength(2);
+      expect(first(sent, /^update "submissions"/)).toBeGreaterThan(order.conference);
+    } finally {
+      // The call is open again, for the tests that write to a proposal.
+      expect(
+        (
+          await asChair("PUT", at(w.slug, "phase"), {
+            phase: "cfp_open",
+            from: phase,
+            force: true,
+            reason: "Back as it was",
+          })
+        ).status,
+      ).toBe(200);
+    }
+  });
+
   it("a review saved, sent, changed and given back: the proposal's row, the roles lock and the reviewer read again, then the conference's row", async () => {
     const owner = await w.person("locks-review-author@example.org", "Ava Authorperson");
     const first2 = await submit(w, owner, await talk(w, owner, "A talk that gets a review"));

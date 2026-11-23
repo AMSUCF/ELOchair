@@ -77,7 +77,7 @@ export const assignmentsEn = {
   reviewersTakes_call_not_closed:
     "No reviewer can be assigned yet: the call has not closed. Reviewers can be assigned once its closing date has passed, or once the conference is in review.",
   reviewersTakes_not_under_consideration:
-    "This proposal takes no new reviewers: it was withdrawn, or a decision has been recorded for it. You can still remove a reviewer it has.",
+    "This proposal takes no new reviewers: it was withdrawn, or its decision was sent to the authors. You can still remove a reviewer it has.",
   reviewersNoCandidates:
     "No reviewer of this committee can be assigned to this proposal. Chairs invite reviewers on the People page.",
   reviewersFind: "Find a reviewer by name or email address",

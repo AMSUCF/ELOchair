@@ -17,6 +17,7 @@ import { assignmentRoutes } from "./routes/assignments";
 import { authRoutes } from "./routes/auth";
 import { Refusal } from "./routes/common";
 import { conferenceRoutes } from "./routes/conferences";
+import { authorDecisionRoutes, decisionRoutes } from "./routes/decisions";
 import { invitationRoutes } from "./routes/invitations";
 import { meRoutes } from "./routes/me";
 import { peopleRoutes, roleInvitationRoutes } from "./routes/people";
@@ -173,8 +174,10 @@ export function createApp(deps: Deps, exposure: Exposure) {
   app.route("/api/conferences", conferenceRoutes);
   app.route("/api/conferences/:slug/people", peopleRoutes);
   app.route("/api/conferences/:slug/assignments", assignmentRoutes);
+  app.route("/api/conferences/:slug/decisions", decisionRoutes);
   app.route("/api/submissions", submissionRoutes);
   app.route("/api/submissions", reviewRoutes);
+  app.route("/api/submissions", authorDecisionRoutes);
   app.route("/api/invitations", invitationRoutes);
   app.route("/api/role-invitations", roleInvitationRoutes);
   app.all("/api/mcp", mcpHandler);

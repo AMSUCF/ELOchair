@@ -119,3 +119,29 @@ export function removeStrayInvisible(text: string): string {
   const { chars, stray } = scan(text);
   return chars.filter((_, i) => !stray[i]).join("");
 }
+
+/**
+ * Text of several lines that a person wrote, as plain text with its line breaks: what the
+ * authors are given of a review's comments, on the proposal's page and by email (spec 03,
+ * §1.6). One function, so that what is stored, shown and mailed is one text.
+ * - Invisible format characters (bidi overrides, zero-width spaces) go, as from a title
+ *   (removeStrayInvisible): they could hide or reorder words.
+ * - Every kind of line break becomes one line feed. Tabs and other control characters become
+ *   spaces, spaces at the end of a line go, and more than one empty line becomes one.
+ * - Text with nothing in it to read is the empty string.
+ * Cleaning what is clean changes nothing.
+ */
+export function plainText(text: string | null | undefined): string {
+  return (
+    removeStrayInvisible(text ?? "")
+      .replace(/\r\n?|[\p{Zl}\p{Zp}]/gu, "\n")
+      .replace(/[^\S\n]|(?!\n)\p{Cc}/gu, " ")
+      // Line by line: a pattern for "spaces at the end of a line" takes long over a long run
+      // of spaces that ends nowhere, and this runs while a send holds its rows.
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}

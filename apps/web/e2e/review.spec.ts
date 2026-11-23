@@ -897,9 +897,9 @@ test.describe("a reviewer's screens", () => {
     // What cannot be turned off is said, and why: once, right under the heading.
     await expect(emails.locator("> *").first()).toHaveText("Emails about reviewing");
     await expect(emails.locator("> *").nth(1)).toHaveText(
-      "Invitations and sign-in emails are always sent: without them you could not take part.",
+      "Invitations, sign-in emails and the decisions about your own proposals are always sent: without them you could not take part.",
     );
-    await expect(emails.getByText("Invitations and sign-in emails")).toHaveCount(1);
+    await expect(emails.getByText("Invitations, sign-in emails")).toHaveCount(1);
     // The chairs' notices are not a reviewer's to choose: they are not on the page.
     await expect(emails.getByRole("group", { name: /^As a chair/ })).toHaveCount(0);
     const save = emails.getByRole("button", { name: `Save email choices for ${title}` });
@@ -944,13 +944,13 @@ test.describe("a reviewer's screens", () => {
         "es",
         "Correos sobre la revisión",
         "Cuando te asignen propuestas",
-        "Las invitaciones y los correos para entrar se envían siempre: sin ellos no podrías participar.",
+        "Las invitaciones, los correos para entrar y las decisiones sobre tus propias propuestas se envían siempre: sin ellos no podrías participar.",
       ],
       [
         "pt",
         "Emails sobre a revisão",
         "Quando lhe forem atribuídas propostas",
-        "Os convites e os emails para entrar são sempre enviados: sem eles não poderia participar.",
+        "Os convites, os emails para entrar e as decisões sobre as suas próprias propostas são sempre enviados: sem eles não poderia participar.",
       ],
     ] as const) {
       await page.goto(`/${lang}/me`);

@@ -68,7 +68,7 @@ export const assignmentsEs: Record<keyof typeof assignmentsEn, string> = {
   reviewersTakes_call_not_closed:
     "Todavía no se puede asignar a nadie: la convocatoria no ha cerrado. Se podrá asignar cuando pase su fecha de cierre, o cuando el congreso esté en revisión.",
   reviewersTakes_not_under_consideration:
-    "Esta propuesta ya no admite nuevas asignaciones: fue retirada, o ya tiene una decisión registrada. Todavía puedes quitar a quien la tiene asignada.",
+    "Esta propuesta ya no admite nuevas asignaciones: fue retirada, o su decisión ya se envió a las personas autoras. Todavía puedes quitar a quien la tiene asignada.",
   reviewersNoCandidates:
     "Nadie de este comité puede revisar esta propuesta. La presidencia invita a quienes revisan en la página Personas.",
   reviewersFind: "Buscar por nombre o dirección de correo",

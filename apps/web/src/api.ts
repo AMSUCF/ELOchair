@@ -4,6 +4,8 @@ import type {
   ConferencePhase,
   ContributionRole,
   ContributionStatus,
+  DecisionOutcome,
+  DecisionWording,
   LocalizedText,
   NoticeFrequency,
   Recommendation,
@@ -374,4 +376,92 @@ export type Assignments = {
   /** Proposals not listed: the chair's own, and those they have a conflict with. */
   excluded: number;
   pools: AssignmentsPool[];
+};
+
+/** How many of a proposal's sent reviews recommend each of the three. */
+export type RecommendationCounts = Record<Recommendation, number>;
+
+/** One proposal on the chairs' Decisions page (the Decisions projection in packages/policy). */
+export type DecisionsProposal = {
+  id: string;
+  title: string;
+  typeKey: string;
+  /** Its authors were told that it is on the waiting list. */
+  waitlisted: boolean;
+  /** How many reviews of it were sent, and what they recommend. */
+  sent: number;
+  recommendations: RecommendationCounts;
+  /** The decision recorded and not sent yet. */
+  recorded: DecisionOutcome | null;
+};
+
+/** One review pool on that page: its totals, and one page of its proposals. */
+export type DecisionsPool = {
+  key: string;
+  /** How many reviews the committee asks for per proposal. */
+  needed: number;
+  proposals: number;
+  /** How many of them have no decision at all yet. */
+  undecided: number;
+  items: DecisionsProposal[];
+  nextCursor: string | null;
+};
+
+export type Decisions = {
+  view: "decisions";
+  canRecord: boolean;
+  canSend: boolean;
+  /** Proposals not listed: the chair's own, and those they have a conflict with. */
+  excluded: number;
+  pools: DecisionsPool[];
+};
+
+/**
+ * What sending the decisions would do, or did: numbers that count every decision waiting at
+ * the conference, also for proposals the chair is not shown.
+ */
+export type SendSummary = {
+  view: "send_decisions";
+  canSend: boolean;
+  accepted: number;
+  waitlisted: number;
+  rejected: number;
+  people: number;
+  /** Proposals under consideration with no decision: they are told nothing. */
+  undecided: number;
+  /** Decisions that are not sent because their proposal was withdrawn or returned to a draft. */
+  dropped: number;
+};
+
+/**
+ * The confirmation: the numbers, the wording in force for the three emails (subject and text,
+ * in every language), and the token a send has to name, which covers both.
+ */
+export type SendConfirmation = SendSummary & {
+  emails: DecisionWording;
+  token: string;
+};
+
+/** The Decision section of a proposal's page, for a chair who manages it. */
+export type ProposalDecision = {
+  view: "proposal_decision";
+  submissionId: string;
+  takes: "yes" | "not_in_review" | "decided" | "not_under_consideration";
+  /** The outcomes that can be recorded now. */
+  outcomes: DecisionOutcome[];
+  recorded: { outcome: DecisionOutcome; at: string } | null;
+  /** What the authors were last told, and when. */
+  told: { outcome: DecisionOutcome; at: string } | null;
+  reviews: { sent: number; asked: number; recommendations: RecommendationCounts };
+  canSend: boolean;
+};
+
+/** The decision about a proposal, as its owner and confirmed co-authors read it once sent. */
+export type AuthorDecision = {
+  view: "author_decision";
+  submissionId: string;
+  outcome: DecisionOutcome;
+  sentAt: string;
+  /** The reviewers' comments for the authors: the first is "Reviewer 1". Never a name. */
+  comments: string[];
 };

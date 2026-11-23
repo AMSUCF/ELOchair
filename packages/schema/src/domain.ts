@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ContributionRole, Key } from "./config";
+import { DECISION_OUTCOMES } from "./decisions";
 import { LanguageCode } from "./i18n";
 import { MAIL_LANGUAGES } from "./messages";
 import { RECOMMENDATIONS } from "./reviewForm";
@@ -217,6 +218,39 @@ export const Review = z.object({
   sentAt: z.iso.datetime({ offset: true }).nullable(),
 });
 export type Review = z.infer<typeof Review>;
+
+/**
+ * A decision about a proposal (spec 03, §1.6): accept, waitlist or reject, as a chair recorded
+ * it. It is kept apart from the proposal until the chairs send the decisions: only then does
+ * the proposal's status become the outcome, and only then are its authors told. So a decision
+ * that is not sent changes nothing its authors can read.
+ *
+ * A proposal has at most one decision that is not sent, and it can be changed or taken back. A
+ * sent one stays as it was sent. A proposal on the waiting list can be given another decision
+ * later, which is recorded and sent in its turn: such a proposal ends with two sent decisions.
+ */
+export const Decision = z.object({
+  id: Id,
+  conferenceId: Id,
+  submissionId: Id,
+  outcome: z.enum(DECISION_OUTCOMES),
+  /** The chair who recorded it, or last changed it. Null for one made on the server. */
+  decidedByPersonId: Id.nullable(),
+  /** When it was recorded, or last changed. */
+  decidedAt: z.iso.datetime({ offset: true }),
+  /** When it was sent to the authors; null until it is. */
+  sentAt: z.iso.datetime({ offset: true }).nullable(),
+  /** The chair who sent the decisions it was sent with. */
+  sentByPersonId: Id.nullable(),
+  /**
+   * What the authors were sent of the reviews with it: each sent review's comments for the
+   * authors, in the order they are numbered for them ("Reviewer 1", "Reviewer 2"), which says
+   * nothing of who wrote them. No name, no score, no note for the chairs, no recommendation.
+   * Kept as it was sent, so that the authors' page shows what their email did; null until then.
+   */
+  comments: z.array(z.string()).nullable(),
+});
+export type Decision = z.infer<typeof Decision>;
 
 /** Per-conference role grants. Scope narrows track chairs to tracks and reviewers to pools. */
 export const ConferenceRole = z.enum(["admin", "chair", "track_chair", "reviewer"]);
