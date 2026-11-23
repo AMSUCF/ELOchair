@@ -298,7 +298,13 @@ export function ProposalReviewersSection({
       {heading}
       <p>
         {t(reviewersCanRead(phase) ? "reviewersDoes_now" : "reviewersDoes_before", { how })}{" "}
-        {t("reviewersNoMail")}
+        {t(
+          phase === "reviewing"
+            ? "reviewersMail_now"
+            : reviewersCanRead(phase)
+              ? "reviewersMail_after"
+              : "reviewersMail_before",
+        )}
       </p>
       <p>{t("reviewersReviewsIntro")}</p>
       <p>

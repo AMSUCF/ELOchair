@@ -2,12 +2,14 @@ import type { ContributionRole } from "./config";
 import { hasStrayInvisible, removeStrayInvisible } from "./invisible";
 import { LIMITS } from "./limits";
 import { linkSpans } from "./links";
+import type { DeclineReason } from "./reviewForm";
 
 /*
- * The emails the app sends to the people on a proposal, and to the people a chair invites to a
- * role at the conference: one definition of each, shared by the server, which sends them, and
- * the settings screen, where chairs change their wording and see what will be sent. Zod-free, so
- * that the browser can use it.
+ * The emails the app sends to the people on a proposal, to the people a chair invites to a
+ * role at the conference, and to its reviewers and its chairs while proposals are reviewed: one
+ * definition of each, shared by the server, which sends them, and the settings screen, where
+ * chairs change their wording and see what will be sent. Zod-free, so that the browser can use
+ * it.
  *
  * A message has a subject and a body, each with a standard text in English, Spanish and
  * Portuguese. A text names what is only known when the mail is sent with a placeholder: a name
@@ -44,6 +46,12 @@ export function mailLanguagesFor(mainLanguage: string): MailLang[] {
  * The messages, by key. Keys are stored in configurations and in the audit log: one is never
  * renamed or reused. A stored configuration is read through the schema, so removing a key or a
  * placeholder would make a conference that uses it unreadable.
+ *
+ * Adding a key is safe to take back. The wording of an email this version does not know (one a
+ * later version added, found after the app was rolled back) is left out when a stored
+ * configuration is read, so the conference loads: readStoredConfig in config.ts. A new
+ * placeholder, part or language of an email that exists already has no such way back: an
+ * earlier version refuses a text that uses one.
  */
 export const MESSAGE_KEYS = [
   "invitation",
@@ -54,6 +62,10 @@ export const MESSAGE_KEYS = [
   "draft_deleted",
   "reviewer_invitation",
   "chair_invitation",
+  "new_assignments",
+  "review_reminder",
+  "reviewer_declined",
+  "reviews_complete",
 ] as const;
 export type MailMessageKey = (typeof MESSAGE_KEYS)[number];
 
@@ -113,6 +125,15 @@ type MessageDefinition = {
  * for a name a person typed are marked (`names`), a text may let only brackets, quotation marks
  * and the punctuation that ends a phrase touch them, and the name is set apart by a space
  * wherever it and its neighbours would still read as a link or an address.
+ *
+ * The four emails of the review phase (`new_assignments`, `review_reminder`, to a reviewer;
+ * `reviewer_declined`, `reviews_complete`, to a chair; spec 03, §1.7) go to people who hold a
+ * role at the conference, about their own work there. They carry nothing a person typed either:
+ * no title, no author, no reviewer's name, no word of a review or of a note. What they name is
+ * a number, the conference, a day, a reason out of three, and two links: one to the page where
+ * the work is ("{link}"), and one to the person's own choices about these emails ("{choices}").
+ * Both are required, and both stay out of the subject. One text serves an email about one thing
+ * and a summary of several: it says how many.
  */
 export const MESSAGES = {
   /** To someone an owner has added to a proposal, and again when the owner sends it again. */
@@ -298,6 +319,101 @@ export const MESSAGES = {
       },
     },
   },
+  /**
+   * To a reviewer, when proposals were assigned to them: one email for each, or one summary a
+   * day, as they chose. It says how many, never which: the list is one tap away.
+   */
+  new_assignments: {
+    placeholders: ["count", "conference", "due", "link", "choices"],
+    // Where the proposals are, and where the person says how often they want these emails.
+    required: ["link", "choices"],
+    bodyOnly: ["link", "choices"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: proposals assigned to you for review",
+        body: 'The chairs of {conference} have assigned proposals to you for review.\n\nNewly assigned: {count}\n{due}\n\nYour list is here, with each proposal and its review form:\n\n{link}\n\nYou are getting this email because you review for {conference}. To get these emails less often, or not at all, change your choices under "Your account":\n\n{choices}',
+      },
+      es: {
+        subject: "{conference}: te han asignado propuestas para revisar",
+        body: "Quienes presiden {conference} te han asignado propuestas para revisar.\n\nNuevas asignaciones: {count}\n{due}\n\nTu lista está aquí, con cada propuesta y su formulario de revisión:\n\n{link}\n\nRecibes este correo porque revisas para {conference}. Para recibir estos correos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\n{choices}",
+      },
+      pt: {
+        subject: "{conference}: foram-lhe atribuídas propostas para rever",
+        body: "Quem preside a {conference} atribuiu-lhe propostas para rever.\n\nNovas atribuições: {count}\n{due}\n\nA sua lista está aqui, com cada proposta e o respetivo formulário de revisão:\n\n{link}\n\nRecebe este email porque revê para {conference}. Para receber estes emails com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\n{choices}",
+      },
+    },
+  },
+  /**
+   * To a reviewer who has reviews that are not sent, some days before the day reviews are due.
+   * It is only sent where the chairs have set that day, which "{due}" says in a sentence, as
+   * in the email about new assignments.
+   */
+  review_reminder: {
+    placeholders: ["count", "conference", "due", "link", "choices"],
+    required: ["link", "choices"],
+    bodyOnly: ["link", "choices"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: reviews are due soon",
+        body: 'A reminder about your reviews for {conference}.\n\n{due}\nReviews you have not sent yet: {count}\n\nYour list is here:\n\n{link}\n\nYou are getting this reminder because you review for {conference} and have reviews that are not sent. To get no reminder from this conference, change your choices under "Your account":\n\n{choices}',
+      },
+      es: {
+        subject: "{conference}: se acerca la entrega de las revisiones",
+        body: "Un recordatorio sobre tus revisiones para {conference}.\n\n{due}\nRevisiones que aún no has enviado: {count}\n\nTu lista está aquí:\n\n{link}\n\nRecibes este recordatorio porque revisas para {conference} y tienes revisiones sin enviar. Para no recibir recordatorios de este congreso, cambia tus preferencias en «Tu cuenta»:\n\n{choices}",
+      },
+      pt: {
+        subject: "{conference}: aproxima-se a entrega das revisões",
+        body: "Um lembrete sobre as suas revisões para {conference}.\n\n{due}\nRevisões que ainda não enviou: {count}\n\nA sua lista está aqui:\n\n{link}\n\nRecebe este lembrete porque revê para {conference} e tem revisões por enviar. Para não receber lembretes deste congresso, altere as suas escolhas em «A sua conta»:\n\n{choices}",
+      },
+    },
+  },
+  /**
+   * To a chair, when a reviewer said they cannot review a proposal and gave it back. It says
+   * how many proposals, and why in the app's own words; who it was is on the proposal's page.
+   */
+  reviewer_declined: {
+    placeholders: ["count", "reason", "conference", "link", "choices"],
+    required: ["link", "choices"],
+    bodyOnly: ["link", "choices"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: proposals given back by reviewers",
+        body: 'This is a notice for the chairs of {conference}.\n\nProposals that a reviewer gave back, saying they cannot review them: {count}\nReason given: {reason}\n\nThe Assignments page lists the proposals that still need reviewers first, and each proposal\'s page says who gave it back and why:\n\n{link}\n\nYou are getting this email because you are a chair of {conference}. To get these notices less often, or not at all, change your choices under "Your account":\n\n{choices}',
+      },
+      es: {
+        subject: "{conference}: propuestas devueltas por quienes revisan",
+        body: "Aviso para quienes presiden {conference}.\n\nPropuestas que alguien devolvió porque no puede revisarlas: {count}\nMotivo indicado: {reason}\n\nLa página de asignaciones muestra primero las propuestas a las que aún les falta quien las revise, y la página de cada propuesta dice quién la devolvió y por qué:\n\n{link}\n\nRecibes este correo porque presides {conference}. Para recibir estos avisos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\n{choices}",
+      },
+      pt: {
+        subject: "{conference}: propostas devolvidas por quem revê",
+        body: "Aviso para quem preside a {conference}.\n\nPropostas que alguém devolveu por não as poder rever: {count}\nMotivo indicado: {reason}\n\nA página de atribuições mostra primeiro as propostas a que ainda falta quem as reveja, e a página de cada proposta diz quem a devolveu e porquê:\n\n{link}\n\nRecebe este email porque preside a {conference}. Para receber estes avisos com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\n{choices}",
+      },
+    },
+  },
+  /** To a chair, when a proposal has as many sent reviews as its committee asks for. */
+  reviews_complete: {
+    placeholders: ["count", "conference", "link", "choices"],
+    required: ["link", "choices"],
+    bodyOnly: ["link", "choices"],
+    names: [],
+    standard: {
+      en: {
+        subject: "{conference}: proposals that have all their reviews",
+        body: 'This is a notice for the chairs of {conference}.\n\nProposals that now have all the reviews their committee asks for: {count}\n\nThe Assignments page lists every proposal with how many reviews of it were sent; open a proposal to read them:\n\n{link}\n\nYou are getting this email because you are a chair of {conference}. To get these notices less often, or not at all, change your choices under "Your account":\n\n{choices}',
+      },
+      es: {
+        subject: "{conference}: propuestas que ya tienen todas sus revisiones",
+        body: "Aviso para quienes presiden {conference}.\n\nPropuestas que ya tienen todas las revisiones que pide su comité: {count}\n\nLa página de asignaciones muestra cada propuesta con las revisiones que se han enviado; abre una propuesta para leerlas:\n\n{link}\n\nRecibes este correo porque presides {conference}. Para recibir estos avisos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\n{choices}",
+      },
+      pt: {
+        subject: "{conference}: propostas que já têm todas as revisões",
+        body: "Aviso para quem preside a {conference}.\n\nPropostas que já têm todas as revisões que a respetiva comissão pede: {count}\n\nA página de atribuições mostra cada proposta com as revisões que foram enviadas; abra uma proposta para as ler:\n\n{link}\n\nRecebe este email porque preside a {conference}. Para receber estes avisos com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\n{choices}",
+      },
+    },
+  },
 } as const satisfies Record<MailMessageKey, MessageDefinition>;
 
 /** A placeholder of a message, as a name without its braces. */
@@ -364,6 +480,36 @@ export function committeeList(names: readonly string[]): string {
   return names.join(", ");
 }
 
+/**
+ * The words that "{reason}" stands for: why a reviewer said they cannot review a proposal. They
+ * read after "Reason given:" and its translations.
+ */
+export const DECLINE_REASON_WORDS: Record<MailLang, Record<DeclineReason, string>> = {
+  en: {
+    conflict: "a conflict of interest",
+    expertise: "outside what they can judge",
+    time: "no time",
+  },
+  es: {
+    conflict: "un conflicto de interés",
+    expertise: "fuera de lo que puede juzgar",
+    time: "falta de tiempo",
+  },
+  pt: {
+    conflict: "um conflito de interesses",
+    expertise: "fora do que consegue avaliar",
+    time: "falta de tempo",
+  },
+};
+
+/**
+ * What "{reason}" stands for in a summary of several proposals given back: each reason that was
+ * given, once, in the order the app lists them.
+ */
+export function reasonList(reasons: readonly string[]): string {
+  return reasons.join("; ");
+}
+
 /** What "{owner}" stands for when the owner has no name that can be shown. */
 export const UNNAMED_OWNER: Record<MailLang, string> = {
   en: "Someone",
@@ -385,6 +531,27 @@ export function formatDeadline(iso: string, timeZone: string, lang: MailLang): s
   }).format(new Date(iso));
   return `${when} (${timeZone})`;
 }
+
+/**
+ * What "{due}" stands for, in the two emails to a reviewer: a sentence that says when reviews
+ * are due, or that the chairs have set no day. A sentence, not a date, so that a text reads
+ * well either way. `when` is the day as formatDeadline writes it, or nothing.
+ */
+export function reviewsDueSentence(when: string | null | undefined, lang: MailLang): string {
+  if (!when) return NO_REVIEWS_DUE[lang];
+  const sentences: Record<MailLang, string> = {
+    en: `Reviews are due by ${when}.`,
+    es: `Las revisiones se entregan hasta el ${when}.`,
+    pt: `As revisões são entregues até ${when}.`,
+  };
+  return sentences[lang];
+}
+
+const NO_REVIEWS_DUE: Record<MailLang, string> = {
+  en: "The chairs have not set a day when reviews are due.",
+  es: "La presidencia no ha fijado un día de entrega de las revisiones.",
+  pt: "A presidência não fixou um dia de entrega das revisões.",
+};
 
 /**
  * A placeholder as it is written: braces around anything that is on one line and holds no
@@ -559,11 +726,19 @@ export function messageText(
 /** A subject is one line: no control character (a line break is one) and no line separator. */
 const NOT_ONE_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 /**
+ * The placeholders that stand for an address: a message's link, and in the emails of the review
+ * phase the link to the reader's own choices about them.
+ */
+const LINK_PLACEHOLDERS = ["link", "choices"] as const;
+/**
  * A link that something touches: text right before it, or right after it. Whatever touches an
  * address may be taken for part of it ("{link}." or "{link}{role}"), and then the link an
  * invitee needs does not work. Nothing shows that in a preview.
  */
-const LINK_TOUCHED = /(?<!^|\s)\{link\}|\{link\}(?!\s|$)/u;
+const LINK_TOUCHED: Record<(typeof LINK_PLACEHOLDERS)[number], RegExp> = {
+  link: /(?<!^|\s)\{link\}|\{link\}(?!\s|$)/u,
+  choices: /(?<!^|\s)\{choices\}|\{choices\}(?!\s|$)/u,
+};
 /**
  * What may touch a name, so that it stays a word of its own. Before it, between it and the
  * space or the start: only brackets and quotation marks that open, and the Spanish ¿ and ¡.
@@ -611,7 +786,8 @@ export type MessageProblem = {
  * - It names only this message's placeholders, and a subject none that is for the body only
  *   (placeholdersOf).
  * - A body names every placeholder the message requires.
- * - In a body the link stands apart, with a space or a line break (or nothing) on either side.
+ * - In a body a link stands apart, with a space or a line break (or nothing) on either side:
+ *   the message's own, and the link to a person's choices about the emails of the review phase.
  * - A placeholder that stands for a name a person typed stands as a word of its own
  *   (NAME_OPENS, NAME_CLOSES).
  */
@@ -645,8 +821,11 @@ export function messageProblems(
     if (missing.length > 0) {
       out.push({ code: "message_missing_placeholder", values: { names: inBraces(missing) } });
     }
-    if (known.includes("link") && LINK_TOUCHED.test(text)) {
-      out.push({ code: "message_link_touched", values: { names: inBraces(["link"]) } });
+    const touchedLinks = LINK_PLACEHOLDERS.filter(
+      (name) => known.includes(name) && LINK_TOUCHED[name].test(text),
+    );
+    if (touchedLinks.length > 0) {
+      out.push({ code: "message_link_touched", values: { names: inBraces(touchedLinks) } });
     }
   }
   const names: readonly string[] = MESSAGES[key].names;

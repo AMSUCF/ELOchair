@@ -256,7 +256,7 @@ export const submissionEn = {
   phaseDoes_cfp_open:
     "The conference is public, and proposals can be started, edited and submitted between the opening and closing dates in the settings. Reviewers cannot open the proposals assigned to them in this phase.",
   phaseDoes_reviewing:
-    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them.",
+    "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen.",
   phaseDoes_deciding:
     "What people can do is the same as in “{reviewing}”: the call is closed and a submitted proposal can still be withdrawn; the list of conferences shows the new phase.",
   phaseDoes_confirming: "The call is closed and a submitted proposal can no longer be withdrawn.",

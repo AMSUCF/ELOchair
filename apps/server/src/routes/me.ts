@@ -1,11 +1,17 @@
 import { projectSelf, projectSubmission } from "@elochair/policy";
-import { AnswerInvitationInput, isCallOpen, ProfileInput } from "@elochair/schema";
+import {
+  AnswerInvitationInput,
+  isCallOpen,
+  NotificationChoicesInput,
+  ProfileInput,
+} from "@elochair/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { audit } from "../audit";
 import type { AppEnv } from "../context";
 import { contributions, people, submissions } from "../db/schema";
 import { type ConferenceRow, getPerson, listConferences, loadSubmissionRecords } from "../repo";
+import { readEmailChoices, saveEmailChoices } from "../services/notifications";
 import { myReviews } from "../services/reviews";
 import { ownCapCount } from "../services/submissions";
 import { person, writer } from "./common";
@@ -99,6 +105,17 @@ export const meRoutes = new Hono<AppEnv>()
   .get("/reviews", async (c) =>
     c.json({ conferences: await myReviews(c.get("deps").db, person(c)) }),
   )
+  // The person's own choices about the emails of the review phase (spec 03, §1.7), at each
+  // conference where they review or chair. In person: an agent gets no email and has no choice
+  // to see (401, as for the public) or to make (403 `agents_read_only`).
+  .get("/notifications", async (c) =>
+    c.json({ conferences: await readEmailChoices(c.get("deps").db, person(c)) }),
+  )
+  .put("/notifications/:slug", async (c) => {
+    const viewer = writer(c);
+    const input = NotificationChoicesInput.parse(await c.req.json());
+    return c.json(await saveEmailChoices(c.get("deps"), viewer, c.req.param("slug"), input));
+  })
   .post("/invitations/:submissionId/answer", async (c) => {
     const viewer = writer(c);
     const input = AnswerInvitationInput.parse(await c.req.json());

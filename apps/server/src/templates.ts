@@ -5,6 +5,8 @@ import {
   type ConferenceConfig,
   type ContributionRole,
   committeeList,
+  DECLINE_REASON_WORDS,
+  type DeclineReason,
   fillMessage,
   HOST_WITH_PATH,
   type InvitationAnswer,
@@ -16,7 +18,9 @@ import {
   type MessageValues,
   messageText,
   ROLE_WORDS,
+  reasonList,
   removeStrayInvisible,
+  reviewsDueSentence,
   SCHEME_LINK,
   UNNAMED_OWNER,
 } from "@elochair/schema";
@@ -36,6 +40,10 @@ import type { MailMessage } from "./mail";
  * - Invitations to a role (reviewer, chair) go to people who have agreed to nothing as well.
  *   They carry nothing a person typed: not the inviting chair's name, and not the name that
  *   chair typed for the invitee. What they name comes from the conference's configuration.
+ * - The emails of the review phase (new assignments and the reminder to a reviewer; a proposal
+ *   given back and a proposal with all its reviews to a chair) carry nothing a person typed
+ *   either: a number, the conference, a day, a reason in the app's own words, and two links.
+ *   No title, no author, no reviewer, no word of a review or of a note.
  *
  * A conference's own wording changes none of that:
  * - Every value is cleaned here, before it is put in, exactly as for the standard text. No text
@@ -292,5 +300,91 @@ export function chairInvitationMessage(
   return message(wording, "chair_invitation", lang, to, {
     conference: v.conference,
     link: v.link,
+  });
+}
+
+/** What the four emails of the review phase have in common. */
+type ReviewPhaseMail = {
+  conference: string;
+  /** How many: proposals newly assigned, reviews not sent, proposals given back or complete. */
+  count: number;
+  /** Where the work is: "My reviews" for a reviewer, the Assignments page for a chair. */
+  link: string;
+  /** Where the reader says how often they want these emails: "Your account". */
+  choices: string;
+};
+
+/**
+ * To a reviewer: proposals were assigned to them (spec 03, §1.7). How many, when reviews are
+ * due (a sentence that also says when no day is set), and the link to their list. Which
+ * proposals is not said: an email holds no title and no author, in any committee. `deadline`
+ * is the day reviews are due as formatDeadline writes it, or null where the chairs set none.
+ */
+export function newAssignmentsMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: ReviewPhaseMail & { deadline: string | null },
+): MailMessage {
+  return message(wording, "new_assignments", lang, to, {
+    count: String(v.count),
+    conference: v.conference,
+    due: reviewsDueSentence(v.deadline, lang),
+    link: v.link,
+    choices: v.choices,
+  });
+}
+
+/**
+ * To a reviewer: reviews are due soon, and how many of theirs are not sent. `deadline` is the
+ * day reviews are due as formatDeadline writes it: there is one, or no reminder is sent.
+ */
+export function reviewReminderMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: ReviewPhaseMail & { deadline: string },
+): MailMessage {
+  return message(wording, "review_reminder", lang, to, {
+    count: String(v.count),
+    conference: v.conference,
+    due: reviewsDueSentence(v.deadline, lang),
+    link: v.link,
+    choices: v.choices,
+  });
+}
+
+/**
+ * To a chair: reviewers gave proposals back. How many, and the reasons that were given, each
+ * once, in the app's own words. Who it was, and what they wrote for the chairs, is on the
+ * proposal's page and never in an email.
+ */
+export function reviewerDeclinedMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: ReviewPhaseMail & { reasons: readonly DeclineReason[] },
+): MailMessage {
+  return message(wording, "reviewer_declined", lang, to, {
+    count: String(v.count),
+    reason: reasonList(v.reasons.map((reason) => DECLINE_REASON_WORDS[lang][reason])),
+    conference: v.conference,
+    link: v.link,
+    choices: v.choices,
+  });
+}
+
+/** To a chair: proposals have all the reviews their committee asks for. How many. */
+export function reviewsCompleteMessage(
+  wording: Wording,
+  lang: MailLang,
+  to: string,
+  v: ReviewPhaseMail,
+): MailMessage {
+  return message(wording, "reviews_complete", lang, to, {
+    count: String(v.count),
+    conference: v.conference,
+    link: v.link,
+    choices: v.choices,
   });
 }

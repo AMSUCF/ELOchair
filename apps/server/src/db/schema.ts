@@ -571,3 +571,107 @@ export const roleInvitationSends = pgTable(
     index("role_invitation_sends_recipient_idx").on(t.recipientPersonId, t.sentAt),
   ],
 );
+
+/**
+ * A person's choices about the emails of the review phase at one conference (spec 03, §1.7):
+ * at most one row for the two. No row means the defaults (DEFAULT_NOTIFICATION_CHOICES): one
+ * summary a day, and the reminder. The first two choices are read while the person reviews
+ * there, the third while they chair it; the row stays when a role goes, and means nothing then.
+ */
+export const notificationChoices = pgTable(
+  "notification_choices",
+  {
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    /** When proposals are assigned to them: each one, one summary a day, or none. */
+    assignments: text("assignments").notNull().default("daily"),
+    /** The one reminder before reviews are due. */
+    reminder: boolean("reminder").notNull().default(true),
+    /** For a chair, notices about reviewing: each one, one summary a day, or none. */
+    chairNotices: text("chair_notices").notNull().default("daily"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.personId, t.conferenceId] }),
+    check(
+      "notification_choices_assignments_check",
+      sql`${t.assignments} in ('each','daily','none')`,
+    ),
+    check(
+      "notification_choices_chair_notices_check",
+      sql`${t.chairNotices} in ('each','daily','none')`,
+    ),
+  ],
+);
+
+/**
+ * Something a person is to be told about by email (spec 03, §1.7): written when it happens, in
+ * the transaction of what caused it, and looked at afterwards by one job (services/
+ * notifications.ts), which makes an email of it, or of several, as that person chose, or none.
+ * IDs, a kind, a reason out of three and times: nothing a person typed.
+ * - `assigned`: to a reviewer, a proposal was assigned to them;
+ * - `declined`: to a chair, a reviewer gave a proposal back (`reason` says why);
+ * - `reviews_complete`: to a chair, a proposal has all the reviews its committee asks for.
+ * A row is `pending` until the job has decided: `sent` once an email that counts it is in the
+ * outbox, `dropped` when none will be (the person chose no email, or it is no longer true). The
+ * mark and the outbox row are written in one transaction, so a second run finds nothing to do.
+ *
+ * It goes with its conference, its proposal and its person (cascade): nothing is left to send
+ * about what is gone, and deleting any of them never fails on it.
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    /** Who is to be told. */
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    /** The proposal it is about. Never named in an email: it is how the job checks it again. */
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    /** For `declined`: why the reviewer said they cannot review it. Null for the other kinds. */
+    reason: text("reason"),
+    createdAt: created(),
+    status: text("status").notNull().default("pending"),
+    /** When the job decided; null while the row is pending. */
+    doneAt: ts("done_at"),
+  },
+  (t) => [
+    check("notifications_kind_check", sql`${t.kind} in ('assigned','declined','reviews_complete')`),
+    check("notifications_reason_check", sql`${t.reason} in ('conflict','expertise','time')`),
+    check("notifications_status_check", sql`${t.status} in ('pending','sent','dropped')`),
+    // Decided is said once: a row that is not pending has the time it was decided.
+    check("notifications_done_check", sql`(${t.status} = 'pending') = (${t.doneAt} is null)`),
+    index("notifications_pending_idx").on(t.status, t.conferenceId),
+  ],
+);
+
+/**
+ * Every reminder before reviews are due that has gone out: one row for a conference and the
+ * day it was for (spec 03, §1.7), written in the transaction that puts the reminders in the
+ * outbox. The reminder is decided once for all of a conference's reviewers together, so this is
+ * all that has to be remembered. Rows are kept: a day that was reminded once is never reminded
+ * again, also when the chairs move the day away and back. A day they have not had before is
+ * another day.
+ */
+export const reviewReminders = pgTable(
+  "review_reminders",
+  {
+    conferenceId: uuid("conference_id")
+      .notNull()
+      .references(() => conferences.id, { onDelete: "cascade" }),
+    /** The day reviews were due when it went out. */
+    reviewsDue: ts("reviews_due").notNull(),
+    sentAt: ts("sent_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.conferenceId, t.reviewsDue] })],
+);

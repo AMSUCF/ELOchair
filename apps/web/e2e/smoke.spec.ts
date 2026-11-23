@@ -116,8 +116,11 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+/** The latest sign-in email to an address, by its kind: other email may reach it meanwhile. */
 async function latestMail(request: APIRequestContext, email: string) {
-  return (await (await request.get(`/api/_test/outbox/latest?to=${email}`)).json()) as {
+  return (await (
+    await request.get(`/api/_test/outbox/latest?kind=magic_link&to=${email}`)
+  ).json()) as {
     text: string;
   };
 }

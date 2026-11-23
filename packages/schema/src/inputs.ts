@@ -3,8 +3,9 @@ import { ContributionRole, Key } from "./config";
 import { FieldValue, Id, InvitableRole, ParticipationMode, SubmissionStatus } from "./domain";
 import { LanguageCode } from "./i18n";
 import { hasStrayInvisible } from "./invisible";
-import { LIMITS, ROLE_INVITATIONS } from "./limits";
+import { LIMITS, REVIEW_EMAILS, ROLE_INVITATIONS } from "./limits";
 import { MAIL_LANGUAGES } from "./messages";
+import { NOTICE_FREQUENCIES } from "./notifications";
 import { DECLINE_REASONS, RECOMMENDATIONS } from "./reviewForm";
 
 /*
@@ -57,7 +58,7 @@ const Text = (max: number) =>
     .refine((s) => !hasStrayControl(s), NO_CONTROL)
     .refine(isWellFormed, WELL_FORMED);
 
-export { LIMITS, ROLE_INVITATIONS };
+export { LIMITS, REVIEW_EMAILS, ROLE_INVITATIONS };
 
 const Version = z.int().min(1);
 
@@ -263,6 +264,23 @@ export const AssignReviewerInput = z
   .object({ reviewerId: Id, confirmedFull: z.boolean().optional() })
   .strict();
 export type AssignReviewerInput = z.infer<typeof AssignReviewerInput>;
+
+/**
+ * A person's choices about the emails of the review phase at one conference (spec 03, §1.7).
+ * The conference is named by the address, and the person is whoever is signed in: nothing here
+ * can name another. Each choice is optional, and one that is left out stays as it is. The first
+ * two are a reviewer's and the third a chair's: the server refuses one that is not the
+ * person's to make.
+ */
+export const NotificationChoicesInput = z
+  .object({
+    assignments: z.enum(NOTICE_FREQUENCIES).optional(),
+    reminder: z.boolean().optional(),
+    chairNotices: z.enum(NOTICE_FREQUENCIES).optional(),
+  })
+  .strict()
+  .refine((v) => Object.values(v).some((x) => x !== undefined), "at least one choice");
+export type NotificationChoicesInput = z.infer<typeof NotificationChoicesInput>;
 
 /** Your own profile. Email and id are not editable here; sending them is an error. */
 export const ProfileInput = z

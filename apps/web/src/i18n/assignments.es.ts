@@ -11,7 +11,11 @@ export const assignmentsEs: Record<keyof typeof assignmentsEn, string> = {
   reviewersHow_double: "de forma anónima: sin los nombres de las personas autoras",
   reviewersHow_single: "con los nombres y las instituciones de las personas autoras",
   reviewersHow_open: "con los nombres, las instituciones y las biografías de las personas autoras",
-  reviewersNoMail: "No se envía ningún correo cuando asignas o quitas a alguien.",
+  reviewersMail_before:
+    "Se le avisa por correo cuando lo esté, con la frecuencia que haya elegido. No se envía ningún correo cuando quitas a alguien.",
+  reviewersMail_now:
+    "Se le avisa por correo, con la frecuencia que haya elegido. No se envía ningún correo cuando quitas a alguien.",
+  reviewersMail_after: "No se envía ningún correo: el congreso ya no está en revisión.",
   reviewersReviewsIntro:
     "Una revisión aparece aquí cuando quien la escribió la envía, con su nombre. A las personas autoras nunca se les dice quién revisó.",
   reviewersCount: "Personas asignadas para revisarla: {n} de {needed}.",
@@ -79,7 +83,7 @@ export const assignmentsEs: Record<keyof typeof assignmentsEn, string> = {
   reviewersFullDoes:
     "{name} dijo que aceptaría como máximo {max} propuestas, y tiene {n}. Ese número es lo que ofreció, no un límite: puedes asignársela igualmente.",
   reviewersDoAssign: "Sí, asignar",
-  reviewersAssigned: "{name} ya revisa esta propuesta. No se envió ningún correo.",
+  reviewersAssigned: "{name} ya revisa esta propuesta.",
   reviewersNowFull:
     "Aún sin asignar: {name} ya tiene el número de propuestas que dijo que aceptaría. Lee los números y confirma.",
   reviewersNotOffered:
@@ -96,7 +100,7 @@ export const assignmentsEs: Record<keyof typeof assignmentsEn, string> = {
   assignmentsNoAccess:
     "Solo quienes presiden este congreso pueden ver quién revisa sus propuestas.",
   assignmentsIntro:
-    "Todas las propuestas a las que se puede asignar a alguien para revisarlas, bajo el comité que las revisa. Primero aparecen las que aún necesitan a alguien, y después las que aún esperan revisiones. Para asignar o quitar a una persona, o para leer las revisiones enviadas, abre la propuesta. Nada se asigna automáticamente, y no se envía ningún correo.",
+    "Todas las propuestas a las que se puede asignar a alguien para revisarlas, bajo el comité que las revisa. Primero aparecen las que aún necesitan a alguien, y después las que aún esperan revisiones. Para asignar o quitar a una persona, o para leer las revisiones enviadas, abre la propuesta. Nada se asigna automáticamente.",
   assignmentsCallOpen:
     "La convocatoria aún no ha cerrado, así que todavía no se puede asignar a nadie. Se muestran las propuestas enviadas hasta ahora.",
   assignmentsExcludedOne: "No aparece 1 propuesta: es tuya, o tienes un conflicto con ella.",

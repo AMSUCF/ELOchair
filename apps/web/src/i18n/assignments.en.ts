@@ -10,7 +10,9 @@ export const assignmentsEn = {
   reviewersTitle: "Reviewers",
   /*
    * What assigning does, in one sentence: {how} is one of the three reviewersHow_ phrases, by
-   * how the proposal's format is reviewed. The second sentence is reviewersNoMail.
+   * how the proposal's format is reviewed. The second sentence is one of the three
+   * reviewersMail_ sentences: who is told by email, by where the conference stands (a new
+   * assignment is announced while the conference is in review, and never after it).
    */
   reviewersDoes_before:
     "A reviewer you assign here will be able to read this proposal once the conference is in review, {how}.",
@@ -18,7 +20,11 @@ export const assignmentsEn = {
   reviewersHow_double: "anonymized: without the authors' names",
   reviewersHow_single: "with the authors' names and affiliations",
   reviewersHow_open: "with the authors' names, affiliations and bios",
-  reviewersNoMail: "Nobody is emailed when you assign or remove a reviewer.",
+  reviewersMail_before:
+    "They are told by email once it is, as often as they have chosen. Nobody is emailed when you remove one.",
+  reviewersMail_now:
+    "They are told by email, as often as they have chosen. Nobody is emailed when you remove one.",
+  reviewersMail_after: "Nobody is emailed: the conference is no longer in review.",
   reviewersReviewsIntro:
     "A review appears here once its reviewer has sent it, with who wrote it. The authors are never told who reviewed.",
   reviewersCount: "Reviewers assigned: {n} of {needed}.",
@@ -86,7 +92,7 @@ export const assignmentsEn = {
   reviewersFullDoes:
     "{name} said they would take at most {max} proposals, and has {n}. That number is what they offered, not a limit: you can still assign them.",
   reviewersDoAssign: "Yes, assign",
-  reviewersAssigned: "{name} is now a reviewer of this proposal. Nobody was emailed.",
+  reviewersAssigned: "{name} is now a reviewer of this proposal.",
   reviewersNowFull:
     "Not assigned yet: {name} has reached the number of proposals they said they would take. Read the numbers, then confirm.",
   reviewersNotOffered:
@@ -103,7 +109,7 @@ export const assignmentsEn = {
   assignmentsTitle: "Assignments",
   assignmentsNoAccess: "Only the chairs of this conference can see who reviews its proposals.",
   assignmentsIntro:
-    "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first, then those still waiting for reviews. To assign or remove a reviewer, or to read the reviews that were sent, open the proposal. Nothing is assigned automatically, and nobody is emailed.",
+    "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first, then those still waiting for reviews. To assign or remove a reviewer, or to read the reviews that were sent, open the proposal. Nothing is assigned automatically.",
   assignmentsCallOpen:
     "The call has not closed yet, so no reviewer can be assigned. The proposals submitted so far are listed.",
   assignmentsExcludedOne:

@@ -5,6 +5,7 @@ import {
   assignments,
   conflicts,
   contributions,
+  notificationChoices,
   people,
   reviewerProfiles,
   submissions,
@@ -687,7 +688,8 @@ export async function seedPhaseRoom(
  * each assigned to the chair, who holds the reviewer's role for the committee that reviews
  * talks. In development, and for the browser test of a chair's own review (a chair reads a
  * proposal as a chair and reviews it like anyone: spec 03, §1.4), which writes to nothing that
- * another test reads. Nothing is seeded where the chair's address is not a person yet.
+ * another test reads. Nothing is seeded where the chair's address is not a person yet. A second
+ * reviewer of that committee is there to be assigned: they chose an email for each one.
  */
 export async function seedChairReviews(
   db: Db,
@@ -764,6 +766,32 @@ export async function seedChairReviews(
   await db
     .insert(assignments)
     .values(made.map((s) => ({ conferenceId: conf.id, reviewerId: chair.id, submissionId: s.id })));
+  // A second reviewer of that committee, who has nothing assigned and has asked for an email
+  // for each new assignment (spec 03, §1.7): in development, and for the browser test that
+  // assigns them a talk and reads the email it makes. Nobody signs in as them.
+  const [second] = await db
+    .insert(people)
+    .values({
+      email: `${slug}-reviewer@example.org`,
+      displayName: "Fictional Reviewer",
+      affiliation: "Institute of Imaginary Letters",
+      languages: ["en"],
+      bios: {},
+    })
+    .returning({ id: people.id });
+  if (!second) return { conferenceId: conf.id, slug };
+  await grantRole(db, {
+    conferenceId: conf.id,
+    personId: second.id,
+    role: "reviewer",
+    scope: [pool],
+  });
+  await db
+    .insert(reviewerProfiles)
+    .values({ conferenceId: conf.id, personId: second.id, pools: [pool], languages: ["en"] });
+  await db
+    .insert(notificationChoices)
+    .values({ personId: second.id, conferenceId: conf.id, assignments: "each" });
   return { conferenceId: conf.id, slug };
 }
 

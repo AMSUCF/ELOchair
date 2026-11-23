@@ -52,6 +52,10 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsLabel_placeholder: "Indicar en la página del congreso que es provisional",
   settingsLabel_rules_presenterCap_max: "Máximo de roles principales y de presentación por persona",
   settingsLabel_rules_bio_maxWords: "Máximo de palabras de una biografía",
+  settingsLabel_rules_reviewReminderDays:
+    "Recordatorio a quienes revisan: días antes de la entrega de las revisiones",
+  settingsReminderDaysHint:
+    "Opcional. Si lo dejas vacío, son {days} días. Esos días antes del día de entrega de las revisiones, desde las {hour} en la zona horaria del congreso, cada persona que revisa y todavía tiene revisiones por enviar recibe un correo, salvo que lo haya desactivado. No se envía ningún recordatorio mientras no haya un día fijado. Si cambias el día después, se les vuelve a recordar antes del nuevo, salvo que el recordatorio de ese día ya se haya enviado.",
   settingsLabel_type_name: "Nombre",
   settingsLabel_type_description: "Descripción",
   settingsLabel_type_abstract_label: "Cómo se llama el resumen",
@@ -108,7 +112,7 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quienes revisan en este grupo ven este texto encima de cada propuesta que se les asigna, en su idioma si lo has escrito en él y, si no, en el idioma principal del congreso. Los saltos de línea se conservan.",
   settingsEmailsIntro:
-    "La aplicación envía estos correos a las personas de una propuesta, y a las personas a quienes la presidencia invita a revisar o a presidir. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
+    "La aplicación envía estos correos a las personas de una propuesta, a las personas a quienes la presidencia invita a revisar o a presidir, y a quienes revisan y presiden mientras se revisan las propuestas. Puedes cambiar su redacción en inglés, español y portugués. Cada cuadro muestra el texto que se envía: el texto estándar, hasta que lo cambies.",
   settingsEmailsNote:
     "Están los tres idiomas, tenga el congreso los que tenga, porque cada persona recibe el correo en su idioma: se puede invitar a alguien en portugués a un congreso que se celebra en inglés y español. Un idioma que no hayas cambiado conserva el texto estándar. Estos textos no son privados: como el resto de esta configuración, puede leerlos cualquiera que pueda ver el congreso. El correo para entrar es igual para todo el mundo y no se puede cambiar aquí.",
   settingsEmail_invitation: "Invitación a una propuesta",
@@ -120,6 +124,11 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsEmail_draft_deleted: "Aviso a quienes tenían una invitación a un borrador eliminado",
   settingsEmail_reviewer_invitation: "Invitación para revisar",
   settingsEmail_chair_invitation: "Invitación para presidir",
+  settingsEmail_new_assignments: "Nuevas asignaciones, para quien revisa",
+  settingsEmail_review_reminder:
+    "Recordatorio antes de la entrega de las revisiones, para quien revisa",
+  settingsEmail_reviewer_declined: "Alguien no puede revisar una propuesta, para la presidencia",
+  settingsEmail_reviews_complete: "Una propuesta tiene todas sus revisiones, para la presidencia",
   settingsEmailWhen_invitation:
     "Se envía a una persona cuando quien creó una propuesta la incluye en ella, y otra vez si le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada.",
   settingsEmailWhen_submission_received:
@@ -136,6 +145,14 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
     "Se envía a una persona cuando alguien de la presidencia la invita, en la página Personas, a revisar, y otra vez si se le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada, así que el correo no nombra a nadie: ni a quien invita ni el nombre que esa persona escribió para ella.",
   settingsEmailWhen_chair_invitation:
     "Se envía a una persona cuando alguien de la presidencia la invita, en la página Personas, a presidir, y otra vez si se le vuelve a enviar la invitación. Esa persona todavía no ha aceptado nada, así que el correo no nombra a nadie: ni a quien invita ni el nombre que esa persona escribió para ella.",
+  settingsEmailWhen_new_assignments:
+    "Se envía a quien revisa cuando alguien de la presidencia le asigna propuestas mientras el congreso está en revisión, y por las propuestas asignadas antes, cuando lo esté: un correo por cada una, un resumen al día (desde las {hour} en la zona horaria del congreso) o ninguno, según lo que esa persona haya elegido en «Tu cuenta». Dice cuántas propuestas y nunca cuáles: no nombra ninguna propuesta ni a ninguna persona autora.",
+  settingsEmailWhen_review_reminder:
+    "Se envía a cada persona que revisa y tiene revisiones sin enviar, desde las {hour} en la zona horaria del congreso, unos días antes del día de entrega de las revisiones: {days} días, salvo que fijes otro número entre los plazos. Se envía una vez por el día que fijes. No se envía mientras no haya un día fijado, ni a quien haya desactivado los recordatorios en «Tu cuenta».",
+  settingsEmailWhen_reviewer_declined:
+    "Se envía a quienes presiden el congreso cuando alguien dice que no puede revisar una propuesta y la devuelve: un correo por cada una, un resumen al día (desde las {hour} en la zona horaria del congreso) o ninguno, según lo que cada persona de la presidencia haya elegido en «Tu cuenta». No nombra ninguna propuesta ni a quien revisa: quién la devolvió está en la página de la propuesta. Nadie de la presidencia recibe uno sobre su propia propuesta ni sobre una con la que tiene un conflicto.",
+  settingsEmailWhen_reviews_complete:
+    "Se envía a quienes presiden el congreso cuando una propuesta tiene tantas revisiones enviadas como pide su comité: un correo por cada una, un resumen al día (desde las {hour} en la zona horaria del congreso) o ninguno, según lo que cada persona de la presidencia haya elegido en «Tu cuenta». No nombra ninguna propuesta. Nadie de la presidencia recibe uno sobre su propia propuesta ni sobre una con la que tiene un conflicto.",
   settingsEmailPlaceholders:
     "Puedes poner estas palabras, con sus llaves, en el asunto y en el texto. Cada una se sustituye cuando se envía el correo:",
   settingsEmailPlaceholder_conference: "el título del congreso",
@@ -155,6 +172,22 @@ export const settingsEs: Record<keyof typeof settingsEn, string> = {
   settingsEmailPlaceholder_person:
     "la persona que respondió: su nombre, o su dirección, como lo escribió quien creó la propuesta",
   settingsEmailPlaceholder_answer: "lo que hizo esa persona",
+  settingsEmailPlaceholder_count: "de cuántas trata el correo",
+  settingsEmailPlaceholder_count_new_assignments:
+    "cuántas propuestas se le acaban de asignar a quien revisa",
+  settingsEmailPlaceholder_count_review_reminder:
+    "cuántas revisiones le quedan por enviar a quien revisa",
+  settingsEmailPlaceholder_count_reviewer_declined: "cuántas propuestas se devolvieron",
+  settingsEmailPlaceholder_count_reviews_complete:
+    "cuántas propuestas tienen ya todas sus revisiones",
+  settingsEmailPlaceholder_due:
+    "una frase que dice cuándo se entregan las revisiones, o que la presidencia no ha fijado un día",
+  settingsEmailPlaceholder_reason:
+    "por qué esa persona no puede revisarla; en un resumen, cada motivo que se dio",
+  settingsEmailPlaceholder_choices:
+    "el enlace a las preferencias de la persona sobre estos correos, en «Tu cuenta»",
+  settingsEmailPlaceholder_reviewsLink: "el enlace a la lista de quien revisa, «Mis revisiones»",
+  settingsEmailPlaceholder_assignmentsLink: "el enlace a la página de asignaciones del congreso",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "El texto debe contenerla.",
   settingsEmailBodyOnly: "No puede ir en el asunto.",

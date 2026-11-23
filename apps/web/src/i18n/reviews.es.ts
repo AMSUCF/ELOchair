@@ -102,9 +102,9 @@ export const reviewsEs: Record<keyof typeof reviewsEn, string> = {
 
   cannotTitle: "No puedo revisar esta propuesta",
   cannotDoes:
-    "La presidencia ve que no puedes revisarla, con tu motivo y tu nota, y puede dar la propuesta a otra persona. No se envía ningún correo. La propuesta sale de tu lista y ya no podrás abrirla.",
+    "A la presidencia se le avisa por correo de que se devolvió una propuesta. En la página de la propuesta ve quién la devolvió, con tu motivo y tu nota, y puede dársela a otra persona. La propuesta sale de tu lista y ya no podrás abrirla.",
   cannotDoesChair:
-    "La presidencia ve que no puedes revisarla, con tu motivo y tu nota, y puede dar la propuesta a otra persona. No se envía ningún correo. La propuesta sale de tu lista de revisiones. Podrás seguir abriéndola como parte de la presidencia, salvo que tu motivo sea un conflicto de interés: entonces ya no podrás abrirla.",
+    "A la presidencia se le avisa por correo de que se devolvió una propuesta. En la página de la propuesta ve quién la devolvió, con tu motivo y tu nota, y puede dársela a otra persona. La propuesta sale de tu lista de revisiones. Podrás seguir abriéndola como parte de la presidencia, salvo que tu motivo sea un conflicto de interés: entonces ya no podrás abrirla.",
   cannotWhy: "¿Por qué?",
   cannotReason_conflict: "Tengo un conflicto de interés, o sé de quién es este trabajo",
   cannotReason_expertise: "Queda fuera de lo que puedo valorar",

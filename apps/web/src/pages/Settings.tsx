@@ -3,6 +3,7 @@ import {
   ANSWER_WORDS,
   type ConfigChange,
   configChanges,
+  DECLINE_REASON_WORDS,
   fillMessage,
   isMailLanguage,
   localize,
@@ -11,6 +12,7 @@ import {
   MESSAGE_KEYS,
   MESSAGES,
   type MessagePlaceholder,
+  REVIEW_EMAILS,
   ROLE_WORDS,
   type Setting,
   type SettingId,
@@ -110,6 +112,7 @@ const LABELS: Record<SettingId, MessageKey> = {
   "deadlines.finalMaterials": "deadline_finalMaterials",
   "rules.presenterCap.max": "settingsLabel_rules_presenterCap_max",
   "rules.bio.maxWords": "settingsLabel_rules_bio_maxWords",
+  "rules.reviewReminderDays": "settingsLabel_rules_reviewReminderDays",
   "type.name": "settingsLabel_type_name",
   "type.description": "settingsLabel_type_description",
   "type.abstract.label": "settingsLabel_type_abstract_label",
@@ -615,7 +618,11 @@ function SettingsForm({
   // The conference's own texts lead: its title and theme, then the invitation's two.
   const named = (s: Setting) => s.id === "title" || s.id === "theme";
   const invitationText = (s: Setting) => INVITATION_TEXTS.some((x) => x.id === s.id);
-  const rules = under("rules.");
+  // The days before the reminder are kept among the rules and offered among the deadlines,
+  // right after the day they count back from.
+  const reminderDays = (s: Setting) => s.id === "rules.reviewReminderDays";
+  const rules = under("rules.").filter((s) => !reminderDays(s));
+  const deadlines = settings.filter((s) => s.path.startsWith("deadlines.") || reminderDays(s));
   const emails = under("messages.");
 
   /**
@@ -725,7 +732,7 @@ function SettingsForm({
         <p className="setting-hint" id="settings-offset-hint">
           {t("settingsDeadlineOffsetHint")}
         </p>
-        <div className="stack wide">{controls(under("deadlines."))}</div>
+        <div className="stack wide">{controls(deadlines)}</div>
 
         {rules.length > 0 && (
           <>
@@ -1041,9 +1048,14 @@ function Control({
           ? t("settingsAgreementUrlHint")
           : s.id === "agreement.version"
             ? t("settingsAgreementVersionHint")
-            : s.optional && !s.lang
-              ? t("settingsOptionalHint")
-              : "";
+            : s.id === "rules.reviewReminderDays"
+              ? t("settingsReminderDaysHint", {
+                  days: REVIEW_EMAILS.reminderDays,
+                  hour: `${REVIEW_EMAILS.dailyHour}:00`,
+                })
+              : s.optional && !s.lang
+                ? t("settingsOptionalHint")
+                : "";
   const common = {
     id,
     "aria-invalid": issues.some((i) => i.path === s.path) ? (true as const) : undefined,
@@ -1232,7 +1244,7 @@ function Deadline({
 }
 
 /** The placeholders that stand for fixed words in each language, and those words. */
-const WORDS = { role: ROLE_WORDS, answer: ANSWER_WORDS };
+const WORDS = { role: ROLE_WORDS, answer: ANSWER_WORDS, reason: DECLINE_REASON_WORDS };
 
 /**
  * One email the app sends: when it goes and to whom, what its texts may name, and its subject
@@ -1272,7 +1284,13 @@ function Email({
   const langs = [...new Set(list.flatMap((s) => (s.lang ? [s.lang] : [])))].filter(isMailLanguage);
   return (
     <>
-      <p className="meta">{t(emailWhenKey(emailKey))}</p>
+      {/* The hour and the days are the server's own: the sentences that name them are told. */}
+      <p className="meta">
+        {t(emailWhenKey(emailKey), {
+          hour: `${REVIEW_EMAILS.dailyHour}:00`,
+          days: REVIEW_EMAILS.reminderDays,
+        })}
+      </p>
       {/* The whole list describes the two boxes of each language: the sentence and what it lists. */}
       <div className="placeholders" id={hint}>
         <p>{t("settingsEmailPlaceholders")}</p>
@@ -1287,7 +1305,7 @@ function Email({
                 <dd>
                   <span>{t(placeholderKey(emailKey, name))}</span>
                   {/* Words the app supplies: a chair who rewords the sentence needs them. */}
-                  {(name === "role" || name === "answer") &&
+                  {(name === "role" || name === "answer" || name === "reason") &&
                     langs.map((lang) => (
                       <span key={lang} lang={lang}>
                         {t("settingsEmailWords", {

@@ -9,6 +9,7 @@ import {
   type Person,
   type Review,
   type RoleGrant,
+  readStoredConfig,
   reviewersCanRead,
   type Submission,
 } from "@elochair/schema";
@@ -50,12 +51,19 @@ export type ConferenceRow = {
 
 type ConferenceDbRow = typeof conferences.$inferSelect;
 
-/** A conference's row as a record. `config` is given where it was validated already. */
+/**
+ * A conference's row as a record. `config` is given where it was validated already (it has
+ * just been written). Otherwise the stored configuration is read here, and nowhere else:
+ * through readStoredConfig, which leaves out the wording of emails this version does not know
+ * (a later version's, after a roll-back) and validates the rest as strictly as a save does.
+ * Every write of a configuration still goes through ConferenceConfig itself (the settings save
+ * and its review, saveConference, createConferenceIfMissing, the CLI's import-config).
+ */
 const toConference = (row: ConferenceDbRow, config?: ConferenceConfig): ConferenceRow => ({
   id: row.id,
   slug: row.slug,
   phase: row.phase,
-  config: config ?? ConferenceConfig.parse(row.config),
+  config: config ?? readStoredConfig(row.config),
   reviewBeganAt: isoOrNull(row.reviewBeganAt),
 });
 

@@ -81,6 +81,14 @@ const STAGE_ONE = [
     kind: "datetime",
     optional: true,
   },
+  // Beside the day reviews are due on the screen, though it is kept among the rules: a number
+  // of days is no deadline, and every reader of `deadlines` takes each of them for an instant.
+  {
+    id: "rules.reviewReminderDays",
+    pattern: "rules.reviewReminderDays",
+    kind: "int",
+    optional: true,
+  },
   { id: "deadlines.notification", pattern: "deadlines.notification", kind: "datetime" },
   { id: "deadlines.finalMaterials", pattern: "deadlines.finalMaterials", kind: "datetime" },
   { id: "rules.presenterCap.max", pattern: "rules.presenterCap.max", kind: "int" },

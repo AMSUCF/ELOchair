@@ -8,6 +8,7 @@ import {
   AssignmentsPoolQuery,
   AssignmentsQuery,
   AssignReviewerInput,
+  NotificationChoicesInput,
   OneLine,
   ProfileInput,
   RoleInvitationAnswerInput,
@@ -455,6 +456,45 @@ describe("assignments (spec 03, §1.3)", () => {
       { ...release, submissionId: null },
     ]) {
       expect(ok(AssignmentRelease, bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+});
+
+describe("a person's choices about the emails of the review phase (spec 03, §1.7)", () => {
+  const takes = (v: unknown) => NotificationChoicesInput.safeParse(v).success;
+
+  it("takes any of the three choices, each on its own or together", () => {
+    for (const often of ["each", "daily", "none"]) {
+      expect(takes({ assignments: often }), often).toBe(true);
+      expect(takes({ chairNotices: often }), often).toBe(true);
+    }
+    expect(takes({ reminder: false })).toBe(true);
+    expect(takes({ assignments: "none", reminder: true, chairNotices: "each" })).toBe(true);
+  });
+
+  it("refuses a value that is not one of them, and a request that chooses nothing", () => {
+    for (const bad of [
+      {},
+      { assignments: "weekly" },
+      { assignments: "" },
+      { assignments: null },
+      { chairNotices: "always" },
+      { reminder: "yes" },
+      { reminder: 1 },
+    ]) {
+      expect(takes(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("names nobody and no conference: those are whoever is signed in, and the address", () => {
+    for (const more of [
+      { personId: "00000000-0000-4000-8000-000000000001" },
+      { conferenceId: "00000000-0000-4000-8000-000000000002" },
+      { email: "someone@example.org" },
+      { slug: "another-conference" },
+      { status: "sent" },
+    ]) {
+      expect(takes({ assignments: "each", ...more }), JSON.stringify(more)).toBe(false);
     }
   });
 });

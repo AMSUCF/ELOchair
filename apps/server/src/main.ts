@@ -7,6 +7,7 @@ import { loadEnv } from "./env";
 import { seedChairReviews, seedOpenCall, seedPhaseRoom, seedSandbox } from "./fixtures";
 import { deliverPending } from "./mail";
 import { createConferenceIfMissing, getConference, markReviewBegun } from "./repo";
+import { runNotifications } from "./services/notifications";
 
 const env = loadEnv();
 const dataDir = env.DATA_DIR ?? (env.DATABASE_URL ? undefined : ".data/pglite");
@@ -58,8 +59,14 @@ console.log(
   `ELOchair internal listener http://${env.INTERNAL_HOST}:${env.INTERNAL_PORT} (tier C agents only)`,
 );
 
+// Every half minute: first the emails of the review phase are made of what has happened (spec
+// 03, §1.7: decided by each person's choice, and safe to run as often as one likes), then
+// whatever is in the outbox is delivered. A failure of the first does not hold up the second.
 const mailTimer = setInterval(() => {
-  deliverPending(deps.db, deps.mail).catch((err) => console.error("mail delivery failed", err));
+  runNotifications(deps)
+    .catch((err) => console.error("notifications failed", err))
+    .then(() => deliverPending(deps.db, deps.mail))
+    .catch((err) => console.error("mail delivery failed", err));
 }, 30_000);
 
 async function shutdown() {

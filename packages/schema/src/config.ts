@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LanguageCode, LocalizedText } from "./i18n";
-import { LIMITS } from "./limits";
+import { LIMITS, REVIEW_EMAILS } from "./limits";
 import {
   MAIL_LANGUAGES,
   MESSAGE_KEYS,
@@ -360,6 +360,12 @@ const ConferenceConfigShape = z.object({
       .nullable(),
     /** Whether contributors are asked for a bio, and how long it may be. Missing: not asked. */
     bio: z.object({ requested: z.boolean(), maxWords: z.int().positive() }).optional(),
+    /**
+     * How many days before the day reviews are due (`deadlines.reviewsDue`) reviewers are
+     * reminded of what they have not sent (spec 03, §1.7). Left out: three
+     * (REVIEW_EMAILS.reminderDays). It means nothing while no such day is set.
+     */
+    reviewReminderDays: z.int().min(1).max(REVIEW_EMAILS.maxReminderDays).optional(),
   }),
   agreements: z.array(Agreement).default([]),
   tracks: z.array(z.object({ key: Key, name: LocalizedText })).default([]),
@@ -633,5 +639,43 @@ function checkConfig(c: Shape, ctx: z.core.$RefinementCtx<Shape>): void {
 export const ConferenceConfig = ConferenceConfigShape.superRefine(checkConfig);
 export type ConferenceConfig = z.infer<typeof ConferenceConfig>;
 export type ConferenceConfigInput = z.input<typeof ConferenceConfig>;
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * A stored configuration without the wording of emails this version of the app does not send:
+ * whatever `messages` holds under a key that is not one of MESSAGE_KEYS is left out, and
+ * `messages` itself goes where that leaves it with nothing. Everything else is as it was
+ * handed in, to be validated like any configuration: this judges nothing.
+ */
+export function withoutUnknownEmails(stored: unknown): unknown {
+  if (!isRecord(stored) || !isRecord(stored.messages)) return stored;
+  const all = Object.entries(stored.messages);
+  const known = all.filter(([key]) => (MESSAGE_KEYS as readonly string[]).includes(key));
+  if (known.length === all.length) return stored;
+  const { messages: _stored, ...rest } = stored;
+  return known.length > 0 ? { ...rest, messages: Object.fromEntries(known) } : rest;
+}
+
+/**
+ * A configuration as it is read back from where it was stored. This is for reading only: what
+ * comes in (a settings save, its review, an imported file) goes through ConferenceConfig, which
+ * refuses an email it does not know.
+ *
+ * One thing is different on reading. A later version of the app may have stored the wording of
+ * an email that this version does not send (the next step's emails, after the app was rolled
+ * back one version). Refusing the whole conference for that would take its pages, and the list
+ * of conferences with them, away from everyone. So that wording is left out
+ * (withoutUnknownEmails), and what is left is held to the schema exactly as before: an unknown
+ * part or language of an email this version does send, a text it cannot send, and `messages`
+ * stored with nothing in it are refused on reading as they are on saving.
+ *
+ * What is left out is not kept anywhere: a save by this version stores the configuration as
+ * it read it, like every other value a later version added and this one does not know.
+ */
+export function readStoredConfig(stored: unknown): ConferenceConfig {
+  return ConferenceConfig.parse(withoutUnknownEmails(stored));
+}
 
 export { effectiveBlindMode, findType } from "./lookup";

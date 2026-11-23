@@ -18,6 +18,14 @@ import type { MailLang, MailMessageKey } from "./messages";
  * server cleans, and the invitation to be a chair. `committees` holds the names it was called
  * with, separated by " | ".
  *
+ * The four emails of the review phase (`new_assignments`, `review_reminder`,
+ * `reviewer_declined`, `reviews_complete`) came with those emails. Their cases, at the end, are
+ * the output of their four functions in templates.ts as they were first written: every
+ * language; new assignments with a day reviews are due and without one; a proposal given back
+ * for one reason, and several for all three; and each email about one thing and about several.
+ * `deadline` is the day as the caller had formatted it, or null where the chairs set none;
+ * `reasons` holds the reasons it was called with, separated by " | ".
+ *
  * A case changes only when the standard wording is changed on purpose, and then in the same
  * commit as the text in messages.ts. People and conferences are made up.
  */
@@ -870,5 +878,236 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
     },
     subject: "Encontro Inventado 2031: convite para presidir ao congresso",
     text: "Quem preside a Encontro Inventado 2031 convida-o/a a juntar-se à presidência do congresso.\n\nSe aceitar, poderá ver todas as propostas e todas as pessoas que nelas constam, alterar a configuração do congresso, convidar pessoas e passar o congresso de uma fase para a seguinte.\n\nAbra este link para ler o convite e aceitá-lo ou recusá-lo. Não precisa de ter conta:\n\nhttps://chair.example.org/pt/role-invitation#token=made-up-token\n\nO link funciona durante 30 dias. Se não esperava este convite, recuse-o ou ignore este email: não recebe nenhum papel se não aceitar.",
+  },
+  {
+    key: "new_assignments",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      count: "1",
+      deadline: "March 28, 2031 at 11:59 PM (America/Bogota)",
+      link: "https://chair.example.org/en/reviews",
+      choices: "https://chair.example.org/en/me#emails",
+    },
+    subject: "Made-up Meeting 2031: proposals assigned to you for review",
+    text: 'The chairs of Made-up Meeting 2031 have assigned proposals to you for review.\n\nNewly assigned: 1\nReviews are due by March 28, 2031 at 11:59 PM (America/Bogota).\n\nYour list is here, with each proposal and its review form:\n\nhttps://chair.example.org/en/reviews\n\nYou are getting this email because you review for Made-up Meeting 2031. To get these emails less often, or not at all, change your choices under "Your account":\n\nhttps://chair.example.org/en/me#emails',
+  },
+  {
+    key: "new_assignments",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      count: "4",
+      deadline: null,
+      link: "https://chair.example.org/en/reviews",
+      choices: "https://chair.example.org/en/me#emails",
+    },
+    subject: "Made-up Meeting 2031: proposals assigned to you for review",
+    text: 'The chairs of Made-up Meeting 2031 have assigned proposals to you for review.\n\nNewly assigned: 4\nThe chairs have not set a day when reviews are due.\n\nYour list is here, with each proposal and its review form:\n\nhttps://chair.example.org/en/reviews\n\nYou are getting this email because you review for Made-up Meeting 2031. To get these emails less often, or not at all, change your choices under "Your account":\n\nhttps://chair.example.org/en/me#emails',
+  },
+  {
+    key: "review_reminder",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      count: "3",
+      deadline: "March 28, 2031 at 11:59 PM (America/Bogota)",
+      link: "https://chair.example.org/en/reviews",
+      choices: "https://chair.example.org/en/me#emails",
+    },
+    subject: "Made-up Meeting 2031: reviews are due soon",
+    text: 'A reminder about your reviews for Made-up Meeting 2031.\n\nReviews are due by March 28, 2031 at 11:59 PM (America/Bogota).\nReviews you have not sent yet: 3\n\nYour list is here:\n\nhttps://chair.example.org/en/reviews\n\nYou are getting this reminder because you review for Made-up Meeting 2031 and have reviews that are not sent. To get no reminder from this conference, change your choices under "Your account":\n\nhttps://chair.example.org/en/me#emails',
+  },
+  {
+    key: "reviewer_declined",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      count: "1",
+      reasons: "time",
+      link: "https://chair.example.org/en/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/en/me#emails",
+    },
+    subject: "Made-up Meeting 2031: proposals given back by reviewers",
+    text: 'This is a notice for the chairs of Made-up Meeting 2031.\n\nProposals that a reviewer gave back, saying they cannot review them: 1\nReason given: no time\n\nThe Assignments page lists the proposals that still need reviewers first, and each proposal\'s page says who gave it back and why:\n\nhttps://chair.example.org/en/c/made-up-2031/assignments\n\nYou are getting this email because you are a chair of Made-up Meeting 2031. To get these notices less often, or not at all, change your choices under "Your account":\n\nhttps://chair.example.org/en/me#emails',
+  },
+  {
+    key: "reviewer_declined",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      count: "3",
+      reasons: "conflict | expertise | time",
+      link: "https://chair.example.org/en/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/en/me#emails",
+    },
+    subject: "Made-up Meeting 2031: proposals given back by reviewers",
+    text: 'This is a notice for the chairs of Made-up Meeting 2031.\n\nProposals that a reviewer gave back, saying they cannot review them: 3\nReason given: a conflict of interest; outside what they can judge; no time\n\nThe Assignments page lists the proposals that still need reviewers first, and each proposal\'s page says who gave it back and why:\n\nhttps://chair.example.org/en/c/made-up-2031/assignments\n\nYou are getting this email because you are a chair of Made-up Meeting 2031. To get these notices less often, or not at all, change your choices under "Your account":\n\nhttps://chair.example.org/en/me#emails',
+  },
+  {
+    key: "reviews_complete",
+    lang: "en",
+    input: {
+      conference: "Made-up Meeting 2031",
+      count: "2",
+      link: "https://chair.example.org/en/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/en/me#emails",
+    },
+    subject: "Made-up Meeting 2031: proposals that have all their reviews",
+    text: 'This is a notice for the chairs of Made-up Meeting 2031.\n\nProposals that now have all the reviews their committee asks for: 2\n\nThe Assignments page lists every proposal with how many reviews of it were sent; open a proposal to read them:\n\nhttps://chair.example.org/en/c/made-up-2031/assignments\n\nYou are getting this email because you are a chair of Made-up Meeting 2031. To get these notices less often, or not at all, change your choices under "Your account":\n\nhttps://chair.example.org/en/me#emails',
+  },
+  {
+    key: "new_assignments",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      count: "1",
+      deadline: "28 de marzo de 2031, 11:59 p. m. (America/Bogota)",
+      link: "https://chair.example.org/es/reviews",
+      choices: "https://chair.example.org/es/me#emails",
+    },
+    subject: "Encuentro Inventado 2031: te han asignado propuestas para revisar",
+    text: "Quienes presiden Encuentro Inventado 2031 te han asignado propuestas para revisar.\n\nNuevas asignaciones: 1\nLas revisiones se entregan hasta el 28 de marzo de 2031, 11:59 p. m. (America/Bogota).\n\nTu lista está aquí, con cada propuesta y su formulario de revisión:\n\nhttps://chair.example.org/es/reviews\n\nRecibes este correo porque revisas para Encuentro Inventado 2031. Para recibir estos correos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\nhttps://chair.example.org/es/me#emails",
+  },
+  {
+    key: "new_assignments",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      count: "4",
+      deadline: null,
+      link: "https://chair.example.org/es/reviews",
+      choices: "https://chair.example.org/es/me#emails",
+    },
+    subject: "Encuentro Inventado 2031: te han asignado propuestas para revisar",
+    text: "Quienes presiden Encuentro Inventado 2031 te han asignado propuestas para revisar.\n\nNuevas asignaciones: 4\nLa presidencia no ha fijado un día de entrega de las revisiones.\n\nTu lista está aquí, con cada propuesta y su formulario de revisión:\n\nhttps://chair.example.org/es/reviews\n\nRecibes este correo porque revisas para Encuentro Inventado 2031. Para recibir estos correos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\nhttps://chair.example.org/es/me#emails",
+  },
+  {
+    key: "review_reminder",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      count: "3",
+      deadline: "28 de marzo de 2031, 11:59 p. m. (America/Bogota)",
+      link: "https://chair.example.org/es/reviews",
+      choices: "https://chair.example.org/es/me#emails",
+    },
+    subject: "Encuentro Inventado 2031: se acerca la entrega de las revisiones",
+    text: "Un recordatorio sobre tus revisiones para Encuentro Inventado 2031.\n\nLas revisiones se entregan hasta el 28 de marzo de 2031, 11:59 p. m. (America/Bogota).\nRevisiones que aún no has enviado: 3\n\nTu lista está aquí:\n\nhttps://chair.example.org/es/reviews\n\nRecibes este recordatorio porque revisas para Encuentro Inventado 2031 y tienes revisiones sin enviar. Para no recibir recordatorios de este congreso, cambia tus preferencias en «Tu cuenta»:\n\nhttps://chair.example.org/es/me#emails",
+  },
+  {
+    key: "reviewer_declined",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      count: "1",
+      reasons: "time",
+      link: "https://chair.example.org/es/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/es/me#emails",
+    },
+    subject: "Encuentro Inventado 2031: propuestas devueltas por quienes revisan",
+    text: "Aviso para quienes presiden Encuentro Inventado 2031.\n\nPropuestas que alguien devolvió porque no puede revisarlas: 1\nMotivo indicado: falta de tiempo\n\nLa página de asignaciones muestra primero las propuestas a las que aún les falta quien las revise, y la página de cada propuesta dice quién la devolvió y por qué:\n\nhttps://chair.example.org/es/c/made-up-2031/assignments\n\nRecibes este correo porque presides Encuentro Inventado 2031. Para recibir estos avisos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\nhttps://chair.example.org/es/me#emails",
+  },
+  {
+    key: "reviewer_declined",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      count: "3",
+      reasons: "conflict | expertise | time",
+      link: "https://chair.example.org/es/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/es/me#emails",
+    },
+    subject: "Encuentro Inventado 2031: propuestas devueltas por quienes revisan",
+    text: "Aviso para quienes presiden Encuentro Inventado 2031.\n\nPropuestas que alguien devolvió porque no puede revisarlas: 3\nMotivo indicado: un conflicto de interés; fuera de lo que puede juzgar; falta de tiempo\n\nLa página de asignaciones muestra primero las propuestas a las que aún les falta quien las revise, y la página de cada propuesta dice quién la devolvió y por qué:\n\nhttps://chair.example.org/es/c/made-up-2031/assignments\n\nRecibes este correo porque presides Encuentro Inventado 2031. Para recibir estos avisos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\nhttps://chair.example.org/es/me#emails",
+  },
+  {
+    key: "reviews_complete",
+    lang: "es",
+    input: {
+      conference: "Encuentro Inventado 2031",
+      count: "2",
+      link: "https://chair.example.org/es/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/es/me#emails",
+    },
+    subject: "Encuentro Inventado 2031: propuestas que ya tienen todas sus revisiones",
+    text: "Aviso para quienes presiden Encuentro Inventado 2031.\n\nPropuestas que ya tienen todas las revisiones que pide su comité: 2\n\nLa página de asignaciones muestra cada propuesta con las revisiones que se han enviado; abre una propuesta para leerlas:\n\nhttps://chair.example.org/es/c/made-up-2031/assignments\n\nRecibes este correo porque presides Encuentro Inventado 2031. Para recibir estos avisos con menos frecuencia, o no recibirlos, cambia tus preferencias en «Tu cuenta»:\n\nhttps://chair.example.org/es/me#emails",
+  },
+  {
+    key: "new_assignments",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      count: "1",
+      deadline: "28 de março de 2031 às 23:59 (America/Bogota)",
+      link: "https://chair.example.org/pt/reviews",
+      choices: "https://chair.example.org/pt/me#emails",
+    },
+    subject: "Encontro Inventado 2031: foram-lhe atribuídas propostas para rever",
+    text: "Quem preside a Encontro Inventado 2031 atribuiu-lhe propostas para rever.\n\nNovas atribuições: 1\nAs revisões são entregues até 28 de março de 2031 às 23:59 (America/Bogota).\n\nA sua lista está aqui, com cada proposta e o respetivo formulário de revisão:\n\nhttps://chair.example.org/pt/reviews\n\nRecebe este email porque revê para Encontro Inventado 2031. Para receber estes emails com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\nhttps://chair.example.org/pt/me#emails",
+  },
+  {
+    key: "new_assignments",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      count: "4",
+      deadline: null,
+      link: "https://chair.example.org/pt/reviews",
+      choices: "https://chair.example.org/pt/me#emails",
+    },
+    subject: "Encontro Inventado 2031: foram-lhe atribuídas propostas para rever",
+    text: "Quem preside a Encontro Inventado 2031 atribuiu-lhe propostas para rever.\n\nNovas atribuições: 4\nA presidência não fixou um dia de entrega das revisões.\n\nA sua lista está aqui, com cada proposta e o respetivo formulário de revisão:\n\nhttps://chair.example.org/pt/reviews\n\nRecebe este email porque revê para Encontro Inventado 2031. Para receber estes emails com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\nhttps://chair.example.org/pt/me#emails",
+  },
+  {
+    key: "review_reminder",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      count: "3",
+      deadline: "28 de março de 2031 às 23:59 (America/Bogota)",
+      link: "https://chair.example.org/pt/reviews",
+      choices: "https://chair.example.org/pt/me#emails",
+    },
+    subject: "Encontro Inventado 2031: aproxima-se a entrega das revisões",
+    text: "Um lembrete sobre as suas revisões para Encontro Inventado 2031.\n\nAs revisões são entregues até 28 de março de 2031 às 23:59 (America/Bogota).\nRevisões que ainda não enviou: 3\n\nA sua lista está aqui:\n\nhttps://chair.example.org/pt/reviews\n\nRecebe este lembrete porque revê para Encontro Inventado 2031 e tem revisões por enviar. Para não receber lembretes deste congresso, altere as suas escolhas em «A sua conta»:\n\nhttps://chair.example.org/pt/me#emails",
+  },
+  {
+    key: "reviewer_declined",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      count: "1",
+      reasons: "time",
+      link: "https://chair.example.org/pt/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/pt/me#emails",
+    },
+    subject: "Encontro Inventado 2031: propostas devolvidas por quem revê",
+    text: "Aviso para quem preside a Encontro Inventado 2031.\n\nPropostas que alguém devolveu por não as poder rever: 1\nMotivo indicado: falta de tempo\n\nA página de atribuições mostra primeiro as propostas a que ainda falta quem as reveja, e a página de cada proposta diz quem a devolveu e porquê:\n\nhttps://chair.example.org/pt/c/made-up-2031/assignments\n\nRecebe este email porque preside a Encontro Inventado 2031. Para receber estes avisos com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\nhttps://chair.example.org/pt/me#emails",
+  },
+  {
+    key: "reviewer_declined",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      count: "3",
+      reasons: "conflict | expertise | time",
+      link: "https://chair.example.org/pt/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/pt/me#emails",
+    },
+    subject: "Encontro Inventado 2031: propostas devolvidas por quem revê",
+    text: "Aviso para quem preside a Encontro Inventado 2031.\n\nPropostas que alguém devolveu por não as poder rever: 3\nMotivo indicado: um conflito de interesses; fora do que consegue avaliar; falta de tempo\n\nA página de atribuições mostra primeiro as propostas a que ainda falta quem as reveja, e a página de cada proposta diz quem a devolveu e porquê:\n\nhttps://chair.example.org/pt/c/made-up-2031/assignments\n\nRecebe este email porque preside a Encontro Inventado 2031. Para receber estes avisos com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\nhttps://chair.example.org/pt/me#emails",
+  },
+  {
+    key: "reviews_complete",
+    lang: "pt",
+    input: {
+      conference: "Encontro Inventado 2031",
+      count: "2",
+      link: "https://chair.example.org/pt/c/made-up-2031/assignments",
+      choices: "https://chair.example.org/pt/me#emails",
+    },
+    subject: "Encontro Inventado 2031: propostas que já têm todas as revisões",
+    text: "Aviso para quem preside a Encontro Inventado 2031.\n\nPropostas que já têm todas as revisões que a respetiva comissão pede: 2\n\nA página de atribuições mostra cada proposta com as revisões que foram enviadas; abra uma proposta para as ler:\n\nhttps://chair.example.org/pt/c/made-up-2031/assignments\n\nRecebe este email porque preside a Encontro Inventado 2031. Para receber estes avisos com menos frequência, ou não os receber, altere as suas escolhas em «A sua conta»:\n\nhttps://chair.example.org/pt/me#emails",
   },
 ];

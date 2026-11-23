@@ -71,7 +71,11 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.getByLabel("Email address").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByText("Check your email.")).toBeVisible();
-  const code = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, email)).text);
+  // The sign-in email, by its kind: other email may reach the same address meanwhile.
+  const mail = await request.get(
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+  );
+  const code = /\b(\d{4}) (\d{4})\b/.exec(((await mail.json()) as { text: string }).text);
   await page.getByLabel("Code from the email").fill(`${code?.[1]}${code?.[2]}`);
   await page.getByRole("button", { name: "Sign in with code" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
@@ -1334,7 +1338,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   ).toBeFocused();
   await expect(
     phase.getByText(
-      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them.",
+      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen.",
     ),
   ).toBeVisible();
   const reason = phase.getByLabel("Reason for going back");

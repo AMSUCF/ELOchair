@@ -19,7 +19,7 @@ import {
   reviewIssues,
   reviewPoolFor,
 } from "@elochair/schema";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { Db } from "../db/client";
@@ -35,6 +35,7 @@ import {
 } from "../repo";
 import { Refusal } from "../routes/common";
 import { releaseAssignments } from "./assignments";
+import { chairsToTell, recordNotifications } from "./notifications";
 import { lockRoles } from "./roles";
 
 /*
@@ -244,6 +245,26 @@ export async function saveReview(
           .returning();
     const [row] = written;
     if (!row) throw new Refusal(409, "stale", { version });
+    // A review sent for the first time may be the one that gives the proposal all the reviews
+    // its committee asks for: the chairs are to be told (spec 03, §1.7). Counted under the
+    // proposal's row, so two reviews sent at once are counted one after the other, and the
+    // number is reached once. A sent review that is changed adds none.
+    if (input.send && current?.status !== "sent") {
+      const [sent] = await tx
+        .select({ n: count() })
+        .from(reviews)
+        .where(and(eq(reviews.submissionId, submissionId), eq(reviews.status, "sent")));
+      if (sent?.n === pool.reviewsPerSubmission) {
+        await recordNotifications(tx, {
+          conferenceId: conference.id,
+          submissionId,
+          kind: "reviews_complete",
+          personIds: await chairsToTell(tx, conference.id),
+          by: actor.personId,
+          now,
+        });
+      }
+    }
     await audit(tx, viewer, {
       action: !input.send
         ? "review.draft_saved"
@@ -270,6 +291,8 @@ export async function saveReview(
  * what a stranger gets.
  * - 409 `review_sent` once their review was sent: a sent review is part of the proposal's
  *   record. They change it, or write to the chairs.
+ *
+ * The chairs are told by email that a proposal was given back, as often as each has chosen.
  */
 export async function declineReview(
   deps: Deps,
@@ -312,5 +335,17 @@ export async function declineReview(
         details: { personId: actor.personId, kind: "declared" },
       });
     }
+    // The chairs are to be told that a proposal was given back, and why in the app's own
+    // words (spec 03, §1.7): never the note, and never to a chair who is kept from the
+    // proposal, which is decided when the email is made.
+    await recordNotifications(tx, {
+      conferenceId: conference.id,
+      submissionId,
+      kind: "declined",
+      personIds: await chairsToTell(tx, conference.id),
+      by: actor.personId,
+      reason: input.reason,
+      now,
+    });
   });
 }

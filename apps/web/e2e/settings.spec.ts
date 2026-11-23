@@ -77,7 +77,10 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.getByLabel("Email address").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByText("Check your email.")).toBeVisible();
-  const mail = await request.get(`/api/_test/outbox/latest?to=${encodeURIComponent(email)}`);
+  // The sign-in email, by its kind: other email may reach the same address meanwhile.
+  const mail = await request.get(
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+  );
   const code = /\b(\d{4}) (\d{4})\b/.exec(((await mail.json()) as { text: string }).text);
   await page.getByLabel("Code from the email").fill(`${code?.[1]}${code?.[2]}`);
   await page.getByRole("button", { name: "Sign in with code" }).click();
@@ -124,6 +127,7 @@ type Stored = {
       notification: string;
       reviewsDue?: string;
     };
+    rules: { reviewReminderDays?: number };
     distinction?: Record<string, string>;
     invitation?: Record<string, string>;
     contributionGroups: {
@@ -1814,7 +1818,7 @@ test.describe("conference settings", () => {
     await openSettings(chair);
     await expect(
       chair.getByText(
-        "The app sends these emails to the people on a proposal, and to the people a chair invites as reviewers or chairs.",
+        "The app sends these emails to the people on a proposal, to the people a chair invites as reviewers or chairs, and to reviewers and chairs while proposals are reviewed.",
         { exact: false },
       ),
     ).toBeVisible();
@@ -1901,6 +1905,153 @@ test.describe("conference settings", () => {
   });
 
   /*
+   * The four emails of the review phase (spec 03, §1.7) are messages like the others: the
+   * Emails section offers each, with when it is sent and to whom. Nothing is saved here.
+   */
+  test("the emails of the review phase are among the emails a chair can reword, each with when it is sent and to whom", async () => {
+    test.slow();
+    await openSettings(chair);
+    const often =
+      "an email for each one, one summary a day (from 8:00 in the conference's time zone), or none";
+    for (const [name, when, placeholders] of [
+      [
+        "New assignments, to a reviewer",
+        `Sent to a reviewer when a chair assigns proposals to them while the conference is in review, and for proposals assigned earlier once it is: ${often}, as that reviewer chose under “Your account”. It says how many proposals and never which: it names no proposal and no author.`,
+        ["{count}", "{conference}", "{due}", "{link}", "{choices}"],
+      ],
+      [
+        "Reminder before reviews are due, to a reviewer",
+        "Sent to each reviewer who has reviews that are not sent, from 8:00 in the conference's time zone, some days before the day reviews are due: 3 days, unless you set another number among the deadlines. Sent once for the day you set. Not sent while no day is set, and not to a reviewer who turned reminders off under “Your account”.",
+        ["{count}", "{conference}", "{due}", "{link}", "{choices}"],
+      ],
+      [
+        "A reviewer cannot review a proposal, to the chairs",
+        `Sent to the conference's chairs when a reviewer says they cannot review a proposal and gives it back: ${often}, as each chair chose under “Your account”. It names no proposal and no reviewer: who gave it back is on the proposal's page. A chair gets none about their own proposal or one they have a conflict with.`,
+        ["{count}", "{reason}", "{conference}", "{link}", "{choices}"],
+      ],
+      [
+        "A proposal has all its reviews, to the chairs",
+        `Sent to the conference's chairs when a proposal has as many sent reviews as its committee asks for: ${often}, as each chair chose under “Your account”. It names no proposal. A chair gets none about their own proposal or one they have a conflict with.`,
+        ["{count}", "{conference}", "{link}", "{choices}"],
+      ],
+    ] as const) {
+      const section = await openPool(chair, name);
+      await expect(section.locator("p.meta").first()).toHaveText(when);
+      await expect(section.locator(".placeholders dt")).toHaveText([...placeholders]);
+      // Both links must be in a text, and neither can go in a subject.
+      for (const link of ["{link}", "{choices}"]) {
+        await expect(
+          section
+            .locator(".placeholders dl > div")
+            .filter({ has: chair.locator("dt", { hasText: link }) })
+            .locator("strong"),
+        ).toHaveText("The text must contain it, and it cannot go in the subject.");
+      }
+    }
+
+    // New assignments: the standard text is in the boxes, and the preview is the email as it
+    // would be sent, with a number, the real addresses, and what it says of the day reviews are
+    // due (the call has none set).
+    const assigned = await openPool(chair, "New assignments, to a reviewer");
+    await expect(assigned.locator(".placeholders dd")).toHaveText([
+      "how many proposals were newly assigned to the reviewer",
+      "the conference's title",
+      "a sentence that says when reviews are due, or that the chairs have set no day",
+      "the link to the reviewer's list, “My reviews”The text must contain it, and it cannot go in the subject.",
+      "the link to the person's own choices about these emails, under “Your account”The text must contain it, and it cannot go in the subject.",
+    ]);
+    const english = assigned.getByRole("group", { name: "English" });
+    await expect(english.getByLabel("Subject (English)")).toHaveValue(
+      "{conference}: proposals assigned to you for review",
+    );
+    const origin = new URL(chair.url()).origin;
+    await expect(english.locator(".email-body")).toContainText(
+      `Newly assigned: 3\nThe chairs have not set a day when reviews are due.\n\nYour list is here, with each proposal and its review form:\n\n${origin}/en/reviews\n\n`,
+    );
+    await expect(english.locator(".email-body")).toContainText(
+      /You are getting this email because you review for .+\. To get these emails less often, or not at all, change your choices under "Your account":\n\nhttp[^\n]+\/en\/me#emails$/,
+    );
+    await expect(english.getByText("This is the standard text.")).toBeVisible();
+    // A text that leaves out the link to the reader's choices, or names a proposal's title, is
+    // refused where it is typed.
+    const body = english.getByLabel("Text (English)");
+    const standard = await body.inputValue();
+    await body.fill("{count} new proposals:\n\n{link}");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(english.locator(".field-error")).toContainText("The text must contain {choices}.");
+    await body.fill("{title}\n\n{link}\n\n{choices}");
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(english.locator(".field-error")).toContainText(
+      "This email has nothing to put in place of {title}.",
+    );
+    await body.fill(standard);
+    await expect(english.getByText("This is the standard text.")).toBeVisible();
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+
+    // A proposal given back: the reasons are the app's own words, listed for whoever rewords.
+    const declined = await openPool(chair, "A reviewer cannot review a proposal, to the chairs");
+    const reason = declined
+      .locator(".placeholders dl > div")
+      .filter({ has: chair.locator("dt", { hasText: "{reason}" }) });
+    await expect(reason.locator("dd")).toContainText(
+      "why the reviewer cannot review it; in a summary, each reason that was given",
+    );
+    await expect(reason.locator("dd")).toContainText(
+      "English: a conflict of interest · outside what they can judge · no time",
+    );
+    await expect(
+      declined.getByRole("group", { name: "English" }).locator(".email-body"),
+    ).toContainText(`Reason given: no time\n`);
+    await expect(
+      declined.getByRole("group", { name: "English" }).locator(".email-body"),
+    ).toContainText(`${origin}/en/c/${CALL}/assignments\n`);
+    // Nothing was changed: nothing is kept in this browser.
+    await chair.getByRole("button", { name: "Review changes" }).click();
+    await expect(chair.getByRole("status")).toHaveText("Nothing has been changed.");
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+
+    // In Spanish and in Portuguese, each has its name and its line.
+    for (const [lang, names, line] of [
+      [
+        "es",
+        [
+          "Nuevas asignaciones, para quien revisa",
+          "Recordatorio antes de la entrega de las revisiones, para quien revisa",
+          "Alguien no puede revisar una propuesta, para la presidencia",
+          "Una propuesta tiene todas sus revisiones, para la presidencia",
+        ],
+        "Se envía a quien revisa cuando alguien de la presidencia le asigna propuestas",
+      ],
+      [
+        "pt",
+        [
+          "Novas atribuições, para quem revê",
+          "Lembrete antes da entrega das revisões, para quem revê",
+          "Alguém não pode rever uma proposta, para a presidência",
+          "Uma proposta tem todas as revisões, para a presidência",
+        ],
+        "É enviado a quem revê quando alguém da presidência lhe atribui propostas",
+      ],
+    ] as const) {
+      await chair.goto(`/${lang}/c/${CALL}/settings`);
+      for (const name of names) {
+        await expect(chair.locator("summary", { hasText: name })).toHaveCount(1);
+      }
+      const section = chair
+        .locator("details")
+        .filter({ has: chair.locator("summary", { hasText: names[0] }) });
+      await section.locator("summary").click();
+      await expect(section.locator("p.meta").first()).toContainText(line);
+      await expect(section.locator(`.email-body[lang="${lang}"]`)).toContainText(
+        `${origin}/${lang}/me#emails`,
+      );
+      await expectNoHorizontalScroll(chair);
+    }
+    await expect.poll(() => unsavedKeys(chair)).toEqual([]);
+  });
+
+  /*
    * Assignments (spec 03, §1.3). They are here because this file has a chair signed in, who
    * chairs the sandbox too: nobody signs in below, and no conference's phase is moved.
    *
@@ -1974,7 +2125,7 @@ test.describe("conference settings", () => {
     await expect(chair.getByRole("heading", { level: 1, name: "Assignments" })).toBeFocused();
     await expect(
       chair.getByText(
-        "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first, then those still waiting for reviews. To assign or remove a reviewer, or to read the reviews that were sent, open the proposal. Nothing is assigned automatically, and nobody is emailed.",
+        "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first, then those still waiting for reviews. To assign or remove a reviewer, or to read the reviews that were sent, open the proposal. Nothing is assigned automatically.",
       ),
     ).toBeVisible();
     await expect(
@@ -2005,7 +2156,9 @@ test.describe("conference settings", () => {
       ),
     ).toBeVisible();
     await expect(
-      early.getByText(/will be able to read this proposal once the conference is in review/),
+      early.getByText(
+        /will be able to read this proposal once the conference is in review, .+\. They are told by email once it is, as often as they have chosen\. Nobody is emailed when you remove one\.$/,
+      ),
     ).toBeVisible();
     await expect(early.getByRole("button")).toHaveCount(0);
 
@@ -2123,10 +2276,10 @@ test.describe("conference settings", () => {
       await expect(chair).toHaveURL(new RegExp(`/en/s/${proposal.id}#reviewers$`));
       const section = chair.getByRole("region", { name: "Reviewers" });
       await expect(section.getByRole("heading", { level: 2, name: "Reviewers" })).toBeFocused();
-      // What assigning does, in a sentence, and that it mails nobody.
+      // What assigning does, in a sentence, and who is told of it by email.
       await expect(
         section.getByText(
-          /^A reviewer you assign here can read this proposal from then on, (anonymized: without the authors' names|with the authors' names and affiliations)\. Nobody is emailed when you assign or remove a reviewer\.$/,
+          /^A reviewer you assign here can read this proposal from then on, (anonymized: without the authors' names|with the authors' names and affiliations)\. They are told by email, as often as they have chosen\. Nobody is emailed when you remove one\.$/,
         ),
       ).toBeVisible();
       await expect(
@@ -2205,9 +2358,7 @@ test.describe("conference settings", () => {
         await assign.click();
       }
       // Done: the page says so where it was done, and the line takes focus.
-      await expect(said).toHaveText(
-        `${name} is now a reviewer of this proposal. Nobody was emailed.`,
-      );
+      await expect(said).toHaveText(`${name} is now a reviewer of this proposal.`);
       await expect(said).toBeFocused();
       await expect(
         section.getByText(
@@ -2399,7 +2550,7 @@ test.describe("conference settings", () => {
    * on the open call, where nobody reviews yet and no other test reads these values, and put
    * back as it was found.
    */
-  test("a chair words the review form, sets its limits and the day reviews are due, and puts it all back", async () => {
+  test("a chair words the review form, sets its limits, the day reviews are due and the days before the reminder, and puts it all back", async () => {
     test.slow();
     const before = await stored(chair, CALL);
     const pool = before.config.reviewPools[0];
@@ -2445,6 +2596,27 @@ test.describe("conference settings", () => {
     await dueGroup.getByLabel("Date").fill(day);
     await expect(dueGroup.getByText(/Conference time/)).toBeVisible();
     await expect(dueGroup.getByText("No day is set.")).toHaveCount(0);
+    // Right after it, how many days before that day reviewers are reminded: three, unless the
+    // chairs set another number.
+    expect(before.config.rules).not.toHaveProperty("reviewReminderDays");
+    const remind = chair.getByLabel("Reminder to reviewers: days before reviews are due");
+    await expect(remind).toHaveValue("");
+    await expect(remind).toHaveAccessibleDescription(
+      "Optional. Left empty, it is 3 days. That many days before the day reviews are due, from 8:00 in the conference's time zone, each reviewer who still has reviews to send gets one email, unless they turned it off. No reminder is sent while no day is set. If you move the day afterwards, reviewers are reminded again before the new one, unless the reminder for that day has already gone out.",
+    );
+    await expectTouchTarget(remind);
+    // Between the day reviews are due and the day decisions are sent.
+    expect(
+      await remind.evaluate((el) => {
+        const after = (id: string) =>
+          Boolean(
+            (document.getElementById(id)?.compareDocumentPosition(el) ?? 0) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          );
+        return [after("field-deadlines-reviewsDue"), after("field-deadlines-notification")];
+      }),
+    ).toEqual([true, false]);
+    await remind.fill("5");
 
     // The form's settings are in the committee's own section.
     const section = await openPool(chair, poolName);
@@ -2497,7 +2669,7 @@ test.describe("conference settings", () => {
     await fewest.fill("20");
     await most.fill("10");
     await hasNote.uncheck();
-    await expect(chair.getByText("Values changed and not saved yet: 6.")).toBeVisible();
+    await expect(chair.getByText("Values changed and not saved yet: 7.")).toBeVisible();
     await expectAccessibleInBothThemes(chair);
     await expectNoHorizontalScroll(chair);
     await chair.setViewportSize({ width: 360, height: 740 });
@@ -2522,7 +2694,7 @@ test.describe("conference settings", () => {
     await chair.getByRole("button", { name: "Review changes" }).click();
     const review = chair.getByRole("region", { name: "Review your changes" });
     await expect(chair.getByRole("heading", { name: "Review your changes" })).toBeFocused();
-    await expect(review.getByRole("listitem")).toHaveCount(6);
+    await expect(review.getByRole("listitem")).toHaveCount(7);
     /** One change in the review: the value by its full name, what it was and what it becomes. */
     const changed = (name: string, from: string, to: string) =>
       expect(review.getByRole("listitem").filter({ hasText: name })).toContainText(
@@ -2533,6 +2705,7 @@ test.describe("conference settings", () => {
       "empty",
       `${shownInBogota(due)} (${before.config.timezone}), stored as ${due}`,
     );
+    await changed("Reminder to reviewers: days before reviews are due", "empty", "5");
     await changed(`${poolName} · ${label} · Description (English)`, "empty", explained);
     await changed(
       `${poolName} · Comments for the authors: what is written under the field (English)`,
@@ -2550,6 +2723,7 @@ test.describe("conference settings", () => {
     // It is what the conference holds now, and so what the next reviewer's form is made from.
     const saved = (await stored(chair, CALL)).config;
     expect(saved.deadlines.reviewsDue).toBe(due);
+    expect(saved.rules.reviewReminderDays).toBe(5);
     expect(saved.reviewPools[0]?.criteria[0]?.description).toEqual({ en: explained });
     expect(saved.reviewPools[0]?.form).toEqual({
       comments: { description: { en: worded }, minWords: 5, maxWords: 400 },
@@ -2564,6 +2738,7 @@ test.describe("conference settings", () => {
     ).toBeVisible();
     await expect(chair.getByText(RESTORED)).toHaveCount(0);
     await expect(dueGroup.getByLabel("Date")).toHaveValue(day);
+    await expect(remind).toHaveValue("5");
     await openPool(chair, poolName);
     await expect(described).toHaveValue(explained);
     await expect(fewest).toHaveValue("5");
@@ -2574,6 +2749,7 @@ test.describe("conference settings", () => {
     // the day away, an emptied box its limit or its text.
     await dueGroup.getByLabel("Date").fill("");
     await expect(dueGroup.getByText("No day is set.")).toBeVisible();
+    await remind.fill("");
     await described.fill("");
     await under.fill("");
     await fewest.fill("");
@@ -2582,9 +2758,258 @@ test.describe("conference settings", () => {
     await reviewAndSave(chair);
     const after = await stored(chair, CALL);
     expect(after.config.deadlines).toEqual(before.config.deadlines);
+    expect(after.config.rules).toEqual(before.config.rules);
     expect(after.config.reviewPools).toEqual(before.config.reviewPools);
     expect(after.token).toBe(before.token);
     await expect.poll(() => unsavedValues(chair)).toBeNull();
+  });
+
+  /*
+   * The emails of the review phase, as a chair chooses them (spec 03, §1.7). The chair of these
+   * tests chairs four conferences and reviews at one of them, `chair-reviews`: each part of the
+   * choices is shown only where its role is held. What is changed is the chair's own choice at
+   * `phase-room`, an empty conference where nothing ever happens to be told of, so that no
+   * email follows from it. A second attempt finds what the first one left: the page is held
+   * to what the server says, and the test chooses another.
+   */
+  test("a chair chooses how often they are told of what happens in the review, on Your account", async () => {
+    type Choices = {
+      conference: { slug: string; title: Record<string, string> };
+      reviewer: { assignments: string; reminder: boolean; reminderDays: number } | null;
+      chair: { notices: "each" | "daily" | "none" } | null;
+    };
+    const mine = async () =>
+      (
+        (await (await chair.request.get("/api/me/notifications")).json()) as {
+          conferences: Choices[];
+        }
+      ).conferences;
+    const before = await mine();
+    const at = (list: Choices[], slug: string) => {
+      const found = list.find((k) => k.conference.slug === slug);
+      if (!found) throw new Error(`the chair has no email choices at ${slug}`);
+      return found;
+    };
+    // A reviewer's choices only where the chair reviews; a chair's wherever they chair.
+    expect(before.filter((k) => k.reviewer).map((k) => k.conference.slug)).toEqual([
+      "chair-reviews",
+    ]);
+    for (const slug of ["chair-reviews", CALL, "phase-room", "sandbox"]) {
+      expect(at(before, slug).chair, slug).not.toBeNull();
+    }
+    const room = at(before, "phase-room");
+    const both = at(before, "chair-reviews");
+    const LABELS = {
+      each: "An email for each one",
+      daily: "One summary a day",
+      none: "No email",
+    } as const;
+
+    await chair.goto("/en/me");
+    await expect(chair.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+    const emails = chair.getByRole("region", { name: "Emails about reviewing" });
+    const formOf = (k: Choices) =>
+      emails.locator("form").filter({
+        has: chair.getByRole("heading", {
+          level: 3,
+          name: k.conference.title.en ?? "",
+          exact: true,
+        }),
+      });
+    // Where they also review: the reviewer's two choices, then the chair's.
+    const reviews = formOf(both);
+    await expect(
+      reviews.getByRole("group", { name: "When proposals are assigned to you" }).getByRole("radio"),
+    ).toHaveCount(3);
+    await expect(reviews.getByRole("checkbox")).toHaveAccessibleName(
+      "Remind me 3 days before reviews are due",
+    );
+    await expect(
+      reviews.getByRole("group", { name: "As a chair: notices about reviewing" }),
+    ).toBeVisible();
+    // Where they only chair: the chair's choice, and nothing about assignments or a reminder.
+    const form = formOf(room);
+    const notices = form.getByRole("group", { name: "As a chair: notices about reviewing" });
+    await expect(
+      notices.getByText(
+        "When a reviewer cannot review a proposal, and when a proposal has all its reviews. A summary is one email for each of the two.",
+      ),
+    ).toBeVisible();
+    await expect(notices.locator("label")).toHaveText([LABELS.each, LABELS.daily, LABELS.none]);
+    await expect(
+      notices.getByRole("radio", { name: LABELS[room.chair?.notices ?? "daily"] }),
+    ).toBeChecked();
+    await expect(
+      form.getByRole("group", { name: "When proposals are assigned to you" }),
+    ).toHaveCount(0);
+    await expect(form.getByRole("checkbox")).toHaveCount(0);
+    // What cannot be turned off is said once, under the heading: not again for each of the
+    // four conferences this chair has.
+    const always = emails.getByText(
+      "Invitations and sign-in emails are always sent: without them you could not take part.",
+    );
+    await expect(always).toHaveCount(1);
+    await expect(always).toBeVisible();
+    await expect(emails.locator("form")).toHaveCount(4);
+    await expect(emails.locator("> *").nth(1)).toHaveText(
+      "Invitations and sign-in emails are always sent: without them you could not take part.",
+    );
+    await expect(form.getByText("Invitations and sign-in emails")).toHaveCount(0);
+    const title = room.conference.title.en ?? "";
+    const save = form.getByRole("button", { name: `Save email choices for ${title}` });
+    for (const label of await notices.locator("label").all()) await expectTouchTarget(label);
+    await expectTouchTarget(save);
+    await expectAccessibleInBothThemes(chair);
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 360, height: 740 });
+    await expectNoHorizontalScroll(chair);
+    await chair.setViewportSize({ width: 390, height: 844 });
+
+    // Another choice, saved: the page says so in that conference's own part, and it is kept.
+    const next = room.chair?.notices === "each" ? "none" : "each";
+    await notices.getByRole("radio", { name: LABELS[next] }).check();
+    await save.click();
+    await expect(form.getByRole("status")).toHaveText(`Your email choices for ${title} are saved.`);
+    await expect(form.getByRole("status")).toBeFocused();
+    const after = await mine();
+    expect(at(after, "phase-room").chair).toEqual({ notices: next });
+    // The others are as they were: each conference is saved by itself.
+    for (const slug of ["chair-reviews", CALL, "sandbox"]) {
+      expect(at(after, slug), slug).toEqual(at(before, slug));
+    }
+    await chair.reload();
+    await expect(notices.getByRole("radio", { name: LABELS[next] })).toBeChecked();
+
+    // In Spanish and in Portuguese, the chair's part is in that language.
+    for (const [lang, heading, legend] of [
+      ["es", "Correos sobre la revisión", "Como parte de la presidencia: avisos sobre la revisión"],
+      ["pt", "Emails sobre a revisão", "Como membro da presidência: avisos sobre a revisão"],
+    ] as const) {
+      await chair.goto(`/${lang}/me`);
+      const part = chair.getByRole("region", { name: heading });
+      await expect(part.getByRole("group", { name: legend })).toHaveCount(4);
+      await expectNoHorizontalScroll(chair);
+    }
+  });
+
+  /*
+   * A new assignment is announced by email, as often as the reviewer chose (spec 03, §1.7).
+   * `chair-reviews` is seeded with a second reviewer who asked for an email for each one and
+   * has nothing assigned: nobody signs in as them, and no other test reads their mail or
+   * assigns them anything. The chair assigns them one of that conference's talks, the job that
+   * makes these emails is run at once (the test server has an address for that, so that nothing
+   * waits for its timer), and the email is read from the test outbox. They are removed again:
+   * the talk ends with the reviewers it had.
+   */
+  test("a chair assigns a proposal to a reviewer who wants an email for each one, and the email says how many and where", async () => {
+    const ROOM = "chair-reviews";
+    const REVIEWER = "chair-reviews-reviewer@example.org";
+    const NAME = "Fictional Reviewer";
+    type Holder = { personId: string; displayName: string | null; email: string };
+    type Section = { assigned: Holder[]; candidates: Holder[] };
+    const origin = new URL(chair.url()).origin;
+    const sectionOf = async (id: string) =>
+      (await (
+        await chair.request.get(`/api/conferences/${ROOM}/assignments/submissions/${id}`)
+      ).json()) as Section;
+    const runJob = async () => {
+      const res = await chair.request.get("/api/_test/notifications/run");
+      expect(res.ok()).toBe(true);
+      return (await res.json()) as { emails: number; reminders: number; dropped: number };
+    };
+    const latest = async () => {
+      const res = await chair.request.get(
+        `/api/_test/outbox/latest?kind=new_assignments&to=${encodeURIComponent(REVIEWER)}`,
+      );
+      return res.ok() ? ((await res.json()) as { subject: string; text: string }) : null;
+    };
+    // The last of the chair's own talks there, by id: whichever of them another test writes a
+    // review of, nothing here changes it.
+    const talks = (
+      (await (await chair.request.get("/api/me/reviews")).json()) as {
+        conferences: {
+          conference: { slug: string };
+          proposals: { submissionId: string; title: string }[];
+        }[];
+      }
+    ).conferences.find((k) => k.conference.slug === ROOM)?.proposals;
+    const talk = [...(talks ?? [])]
+      .sort((a, b) => a.submissionId.localeCompare(b.submissionId))
+      .at(-1);
+    if (!talk) throw new Error("chair-reviews has no talk");
+    let before = await sectionOf(talk.submissionId);
+    // An earlier attempt of this test may have stopped with them still on the talk.
+    const left = before.assigned.find((a) => a.email === REVIEWER);
+    if (left) {
+      await chair.request.delete(
+        `/api/conferences/${ROOM}/assignments/submissions/${talk.submissionId}/reviewers/${left.personId}`,
+        { headers: { origin }, data: {} },
+      );
+      before = await sectionOf(talk.submissionId);
+    }
+    if (!before.candidates.some((c) => c.email === REVIEWER)) {
+      throw new Error("the second reviewer of chair-reviews is not offered");
+    }
+    // Whatever waited before this test is answered first: what follows is this assignment's.
+    await runJob();
+    const earlier = await latest();
+    if (test.info().retry === 0) expect(earlier).toBeNull();
+
+    await chair.goto(`/en/s/${talk.submissionId}#reviewers`);
+    const section = chair.getByRole("region", { name: "Reviewers" });
+    await expect(section.getByRole("heading", { level: 2, name: "Reviewers" })).toBeFocused();
+    // The page says who is told by email, before anyone is assigned.
+    await expect(
+      section.getByText(
+        "They are told by email, as often as they have chosen. Nobody is emailed when you remove one.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    const row = section
+      .getByRole("list", { name: "Assign a reviewer" })
+      .getByRole("listitem")
+      .filter({ hasText: REVIEWER });
+    await row.getByRole("button", { name: `Assign ${NAME} to this proposal` }).click();
+    const said = section.getByRole("status").first();
+    await expect(said).toHaveText(`${NAME} is now a reviewer of this proposal.`);
+    // The job makes the email, at once for someone who chose one for each. (The server's own
+    // timer may have made it a moment ago: either way it is in the outbox after this run.)
+    await runJob();
+    const mail = await latest();
+    const conference = (await stored(chair, ROOM)).config.title.en ?? "";
+    expect(mail?.subject).toBe(`${conference}: proposals assigned to you for review`);
+    expect(mail?.text).toBe(
+      [
+        `The chairs of ${conference} have assigned proposals to you for review.`,
+        "",
+        "Newly assigned: 1",
+        "The chairs have not set a day when reviews are due.",
+        "",
+        "Your list is here, with each proposal and its review form:",
+        "",
+        `${origin}/en/reviews`,
+        "",
+        `You are getting this email because you review for ${conference}. To get these emails less often, or not at all, change your choices under "Your account":`,
+        "",
+        `${origin}/en/me#emails`,
+      ].join("\n"),
+    );
+    // It names no proposal and no person: not the talk, its author, or the chair.
+    for (const hidden of [talk.title, "Fictional Author", "Fictional Chair", "chair@example.org"]) {
+      expect(mail?.text).not.toContain(hidden);
+    }
+
+    // Removed again: the talk has the reviewers it had, and no email is made of a removal.
+    const theirs = section
+      .getByRole("list", { name: "Reviewers", exact: true })
+      .getByRole("listitem")
+      .filter({ hasText: REVIEWER });
+    await theirs.getByRole("button", { name: `Remove from this proposal: ${NAME}` }).click();
+    await theirs.getByRole("button", { name: "Yes, remove" }).click();
+    await expect(said).toHaveText(`${NAME} was removed from this proposal. Nobody was emailed.`);
+    await runJob();
+    expect(await latest()).toEqual(mail);
+    expect((await sectionOf(talk.submissionId)).assigned).toEqual(before.assigned);
   });
 
   /*

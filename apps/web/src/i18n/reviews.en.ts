@@ -111,9 +111,9 @@ export const reviewsEn = {
   /* "I cannot review this proposal". */
   cannotTitle: "I cannot review this proposal",
   cannotDoes:
-    "The chairs see that you cannot review it, with your reason and your note, and can give the proposal to someone else. Nobody is emailed. It leaves your list, and you can no longer open it.",
+    "The chairs are told by email that a proposal was given back. On its page they see who gave it back, with your reason and your note, and they can give it to someone else. It leaves your list, and you can no longer open it.",
   cannotDoesChair:
-    "The chairs see that you cannot review it, with your reason and your note, and can give the proposal to someone else. Nobody is emailed. It leaves your list of reviews. You can still open the proposal as a chair, unless your reason is a conflict of interest: then you can no longer open it.",
+    "The chairs are told by email that a proposal was given back. On its page they see who gave it back, with your reason and your note, and they can give it to someone else. It leaves your list of reviews. You can still open the proposal as a chair, unless your reason is a conflict of interest: then you can no longer open it.",
   cannotWhy: "Why?",
   cannotReason_conflict: "I have a conflict of interest, or I know whose work this is",
   cannotReason_expertise: "It is outside what I can judge",
