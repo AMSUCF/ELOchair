@@ -15,6 +15,7 @@ import {
   committeeList,
   DECISION_MESSAGES,
   DECLINE_REASON_WORDS,
+  decisionWording,
   fillMessage,
   fillPlaceholders,
   formatDeadline,
@@ -1100,6 +1101,31 @@ describe("the emails about a decision", () => {
   const DECISION_KEYS = ["decision_accepted", "decision_waitlisted", "decision_rejected"] as const;
   const LINK = "https://chair.example.org/en/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f";
 
+  it("are worded as the conference's chairs wrote them, and otherwise in the standard text: the wording a send's confirmation shows", () => {
+    const standard = decisionWording(undefined);
+    expect(Object.keys(standard)).toEqual([...DECISION_OUTCOMES]);
+    for (const outcome of DECISION_OUTCOMES) {
+      const key = DECISION_MESSAGES[outcome];
+      // Subject and text, in every language mail is written in.
+      expect(Object.keys(standard[outcome])).toEqual(["subject", "body"]);
+      for (const part of ["subject", "body"] as const) {
+        expect(Object.keys(standard[outcome][part])).toEqual([...MAIL_LANGUAGES]);
+        for (const lang of MAIL_LANGUAGES) {
+          expect(standard[outcome][part][lang]).toBe(MESSAGES[key].standard[lang][part]);
+        }
+      }
+    }
+    // One text of one email in one language reworded: that one, and nothing else, differs.
+    const own = "{conference}: sí, {title}";
+    const reworded = decisionWording({ decision_accepted: { subject: { es: own } } });
+    expect(reworded).toEqual({
+      ...standard,
+      accepted: { ...standard.accepted, subject: { ...standard.accepted.subject, es: own } },
+    });
+    expect(decisionWording({})).toEqual(standard);
+    expect(decisionWording({ invitation: { subject: { en: "Another email" } } })).toEqual(standard);
+  });
+
   it("are one for each outcome a chair can decide", () => {
     expect(DECISION_MESSAGES).toEqual({
       accepted: "decision_accepted",
@@ -1178,7 +1204,8 @@ describe("the emails about a decision", () => {
       title: "Poems with p5.js",
       format: "Short talk",
       conference: "Made-up Meeting",
-      comments: "Comments from the reviewers:\n\nReviewer 1:\nA comment.",
+      comments:
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A comment.",
       link: LINK,
     };
     for (const key of DECISION_KEYS) {
@@ -1235,17 +1262,19 @@ describe("the emails about a decision", () => {
     }
   });
 
-  it("put each review's comments under a number, in the order given, and never leave a hole", () => {
+  it("put each review's comments under a number, in the order given, every line quoted, and never leave a hole", () => {
     const one = { text: "A first comment.", cut: false };
     const two = { text: "A second one,\n\nin two paragraphs.", cut: false };
+    // One line above them says whose words the quoted lines are; an empty line of a comment
+    // is a bare ">".
     expect(commentsBlock([one, two], LINK, "en")).toBe(
-      "Comments from the reviewers:\n\nReviewer 1:\nA first comment.\n\nReviewer 2:\nA second one,\n\nin two paragraphs.",
+      "The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A first comment.\n\nReviewer 2:\n> A second one,\n>\n> in two paragraphs.",
     );
     expect(commentsBlock([one], LINK, "es")).toBe(
-      "Comentarios de quienes revisaron la propuesta:\n\nRevisión 1:\nA first comment.",
+      "Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:\n\nRevisión 1:\n> A first comment.",
     );
     expect(commentsBlock([one], LINK, "pt")).toBe(
-      "Comentários de quem reviu a proposta:\n\nRevisão 1:\nA first comment.",
+      "As linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:\n\nRevisão 1:\n> A first comment.",
     );
     // No comments: one plain sentence in their place, in the reader's language.
     expect(commentsBlock([], LINK, "en")).toBe(
@@ -1262,11 +1291,46 @@ describe("the emails about a decision", () => {
     expect([1, 2].map((n) => reviewerLabel(n, "en"))).toEqual(["Reviewer 1", "Reviewer 2"]);
   });
 
-  it("say so where comments were cut to fit an email, with the link on a line of its own", () => {
+  it("leave nothing a reviewer wrote at the left margin, where the conference's own words stand", () => {
+    // What a reviewer may write to pass for the email itself: a heading of a second email,
+    // another reviewer's block, the email's own closing line, a link, a quote of their own.
+    const posing = [
+      "Review looks good.",
+      "",
+      "From: ELO 2027 Decisions",
+      "Subject: Updated link",
+      "",
+      "Reviewer 2:",
+      "> Agreed.",
+      "",
+      "You can also read this on the proposal's page:",
+      "",
+      "Use https://attacker.example/decision instead.",
+    ];
+    for (const lang of MAIL_LANGUAGES) {
+      const [above, blank, label, ...rest] = commentsBlock(
+        [{ text: posing.join("\n"), cut: false }],
+        LINK,
+        lang,
+      ).split("\n");
+      // The app's own lines: the one above the comments, and the number.
+      expect([blank, label], lang).toEqual(["", `${reviewerLabel(1, lang)}:`]);
+      expect(above, lang).toMatch(/ > /);
+      // Every line of the comment is quoted, in its place and to the letter.
+      expect(rest, lang).toEqual(posing.map((line) => (line === "" ? ">" : `> ${line}`)));
+      // Cut, the note and the link come after it, outside the quote: they are the app's.
+      const cut = commentsBlock([{ text: posing.join("\n"), cut: true }], LINK, lang).split("\n");
+      expect(cut.slice(3, -2), lang).toEqual(rest);
+      expect(cut.at(-2), lang).toMatch(/^\[.+:\]$/u);
+      expect(cut.at(-1), lang).toBe(LINK);
+    }
+  });
+
+  it("say so where comments were cut to fit an email, outside the quote, with the link on a line of its own", () => {
     const cut = { text: "A long comment that was cut…", cut: true };
     const whole = { text: "A short one.", cut: false };
     expect(commentsBlock([cut, whole], LINK, "en")).toBe(
-      `Comments from the reviewers:\n\nReviewer 1:\nA long comment that was cut…\n[This comment is longer than an email carries. All of it is on the proposal's page:]\n${LINK}\n\nReviewer 2:\nA short one.`,
+      `The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A long comment that was cut…\n[This comment is longer than an email carries. All of it is on the proposal's page:]\n${LINK}\n\nReviewer 2:\n> A short one.`,
     );
     for (const lang of MAIL_LANGUAGES) {
       const lines = commentsBlock([cut], LINK, lang).split("\n");

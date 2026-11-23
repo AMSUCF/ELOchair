@@ -1,11 +1,5 @@
 import type { ConferenceConfig, ConferencePhase } from "@elochair/schema";
-import {
-  DECISION_MESSAGES,
-  DECISION_OUTCOMES,
-  fillMessage,
-  localize,
-  messageText,
-} from "@elochair/schema/pure";
+import { DECISION_MESSAGES, DECISION_OUTCOMES, fillMessage, localize } from "@elochair/schema/pure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
@@ -319,7 +313,7 @@ function SendDecisions({
           </ul>
           <p>{t("sendCounts")}</p>
           <p>{t("sendFinal")}</p>
-          <EmailPreviews config={config} />
+          <EmailPreviews config={config} emails={asked.emails} />
         </Ask>
       ) : !waiting.canSend ? (
         <>
@@ -354,24 +348,34 @@ function SendDecisions({
  * The email for each outcome as it will be sent: the conference's own wording where its chairs
  * wrote one, otherwise the standard text, filled with a made-up title and made-up comments. In
  * the language the page is read in: each person gets theirs in their own.
+ *
+ * The wording is the confirmation's own (`emails`): it came with the numbers and with the
+ * token, which covers it. So what is previewed here is what a send with that token mails, and
+ * a wording changed since makes the send answer that nothing was sent.
  */
-function EmailPreviews({ config }: { config: ConferenceConfig }) {
+function EmailPreviews({
+  config,
+  emails,
+}: {
+  config: ConferenceConfig;
+  emails: SendConfirmation["emails"];
+}) {
   const { lang, t } = useT();
-  const emails = useMemo(
+  const previews = useMemo(
     () =>
       DECISION_OUTCOMES.map((outcome) => {
         const key = DECISION_MESSAGES[outcome];
         const values = sampleValues(key, lang, config, window.location.origin);
         const filled = (part: "subject" | "body") =>
-          fillMessage(key, part, messageText(config.messages, key, part, lang), values);
+          fillMessage(key, part, emails[outcome][part][lang], values);
         return { outcome, subject: filled("subject"), body: filled("body") };
       }),
-    [lang, config],
+    [lang, config, emails],
   );
   return (
     <>
       <p>{t("sendPreviews", { language: LANG_NAMES[lang] })}</p>
-      {emails.map((email) => (
+      {previews.map((email) => (
         <figure key={email.outcome} className="email-preview">
           <figcaption>{t(`sendPreview_${email.outcome}`)}</figcaption>
           <dl>

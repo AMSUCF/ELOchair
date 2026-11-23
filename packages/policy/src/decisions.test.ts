@@ -655,6 +655,23 @@ describe("what sending the decisions would do", () => {
     // A review whose comments are empty adds nothing, and one of another proposal is not read.
     const blank = [review(2, 80, "sent", { comments: "  \n " }), review(1, 81, "sent")];
     expect(commentsForAuthors({ reviews: blank }, subId(2))).toEqual([]);
+    // What cannot be seen is not handed on: an override that turns the words around, and
+    // zero-width characters, are gone from the text that is stored, shown and mailed.
+    const at = (...points: number[]) => String.fromCodePoint(...points);
+    const hiding = `Good${at(0x202e)} work${at(0x200b)}.\r\n\r\n\r\nA second${at(0x2060)} paragraph.${at(0x202c)}  `;
+    const nothing = ` ${at(0x202e)}${at(0x200b)}\n${at(0x2060)} ${at(0xfeff)}`;
+    expect(
+      commentsForAuthors(
+        {
+          reviews: [
+            review(2, 80, "sent", { comments: nothing }),
+            review(2, 81, "sent", { comments: hiding }),
+          ],
+        },
+        subId(2),
+      ),
+      // And a comment of nothing but such characters is no comment: it gets no number.
+    ).toEqual(["Good work.\n\nA second paragraph."]);
     expect(
       findLeaks(
         sendPlan(rec).send.map((p) => p.comments),

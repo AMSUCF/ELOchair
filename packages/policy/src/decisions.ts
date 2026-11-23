@@ -6,10 +6,10 @@ import {
   decisionsCanBeRecorded,
   decisionsCanBeSent,
   type Person,
+  plainText,
   RECOMMENDATIONS,
   type Recommendation,
   type Review,
-  removeStrayInvisible,
 } from "@elochair/schema";
 import { type SubmissionContext, submissionAccess } from "./access";
 import {
@@ -147,9 +147,13 @@ const recommendationsOf = (reviews: readonly Review[]): RecommendationCounts => 
  * What the authors are sent of a proposal's reviews with its decision: each sent review's
  * comments for the authors, and nothing else of it. The order is that of the reviews' own ids,
  * which are random: it is the same every time, and says nothing about who wrote which, when
- * they were assigned or when they sent it. A review whose comments hold nothing that can be
- * read is left out: empty, or only spaces, line breaks and characters that do not show. That
- * is decided here, once, so that the email and the page number the same comments alike.
+ * they were assigned or when they sent it.
+ *
+ * Each is cleaned here, once (plainText): nothing invisible, one kind of line break. This is
+ * the text that is stored with the decision when it is sent, that the proposal's page shows
+ * and that the email carries, so the three cannot differ. A review whose comments hold nothing
+ * that can be read (empty, or only spaces, line breaks and characters that do not show) is
+ * left out, so the email and the page number the same comments alike.
  */
 export function commentsForAuthors(
   rec: Pick<DecisionsRecord, "reviews">,
@@ -157,13 +161,8 @@ export function commentsForAuthors(
 ): string[] {
   return sentOf(rec, submissionId)
     .sort((a, b) => a.id.localeCompare(b.id, "en"))
-    .map((r) => r.comments)
-    .filter(
-      (text) =>
-        removeStrayInvisible(text)
-          .replace(/\p{Cc}/gu, " ")
-          .trim() !== "",
-    );
+    .map((r) => plainText(r.comments))
+    .filter((text) => text !== "");
 }
 
 /** One proposal on the Decisions page: what it is, what its reviewers said, what is recorded. */

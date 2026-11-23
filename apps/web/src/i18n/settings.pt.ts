@@ -195,7 +195,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmailPlaceholder_reviewsLink: "o link para a lista de quem revê, «As minhas revisões»",
   settingsEmailPlaceholder_assignmentsLink: "o link para a página de atribuições do congresso",
   settingsEmailPlaceholder_comments:
-    "os comentários que quem reviu escreveu para as pessoas autoras, cada um sob «Revisão 1», «Revisão 2», etc., sem nomes nem pontuações; onde não há nenhum, uma frase que o diz. Pode omiti-la: a página da proposta também os mostra.",
+    "os comentários que quem reviu escreveu para as pessoas autoras, cada um sob «Revisão 1», «Revisão 2», etc., com «>» antes de cada linha para assinalar que são palavras suas, e sem nomes nem pontuações; onde não há nenhum, uma frase que o diz. Pode omiti-la: a página da proposta também os mostra.",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "O texto tem de a conter.",
   settingsEmailBodyOnly: "Não pode ficar no assunto.",

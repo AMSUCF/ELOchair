@@ -128,14 +128,14 @@ describe("the made-up values an email is previewed with", () => {
       expect(en.title).toBe("A made-up title");
       // Put together as the server puts the real ones together: one definition for both.
       expect(en.comments).toBe(
-        "Comments from the reviewers:\n\nReviewer 1:\nA made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\nAnother made-up comment, in two paragraphs.\n\nThe second one asks for a word about the method.",
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\n> Another made-up comment, in two paragraphs.\n>\n> The second one asks for a word about the method.",
       );
       // In the language of the email, not of the interface.
       expect(sampleValues(key, "es", config, ORIGIN).comments).toMatch(
-        /^Comentarios de quienes revisaron la propuesta:\n\nRevisión 1:\nUn comentario inventado/,
+        /^Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:\n\nRevisión 1:\n> Un comentario inventado/,
       );
       expect(sampleValues(key, "pt", config, ORIGIN).comments).toMatch(
-        /^Comentários de quem reviu a proposta:\n\nRevisão 1:\nUm comentário inventado/,
+        /^As linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:\n\nRevisão 1:\n> Um comentário inventado/,
       );
       // The standard email, previewed, says the outcome, the comments and the link, in order.
       const body = fillMessage(key, "body", MESSAGES[key].standard.en.body, en);

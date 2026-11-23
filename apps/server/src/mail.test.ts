@@ -373,11 +373,12 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
     expect(mailedText(spaced, 1_000_000).text).toBe(spaced);
   }, 5_000);
 
-  it("a review's comments are numbered for the authors exactly when there is something of them to mail", () => {
-    // The proposal's page shows what the policy keeps (commentsForAuthors), and the email what
-    // is left after cleaning. Were the two to differ, "Reviewer 2" on the page would be
-    // "Reviewer 1" in the email.
-    const kept = (comments: string) =>
+  it("what the authors are given of a review's comments is the text that is mailed: one text, numbered alike", () => {
+    // The policy hands on the comments (commentsForAuthors): they are stored with the decision
+    // and shown on the proposal's page. The email carries them through mailedText. Both clean
+    // with one function, so the page shows what the email does; were they to differ on what
+    // is empty, "Reviewer 2" on the page would be "Reviewer 1" in the email.
+    const given = (comments: string) =>
       commentsForAuthors(
         {
           reviews: [
@@ -391,14 +392,21 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
           ],
         },
         "s1",
-      ).length === 1;
+      );
     for (const text of ["", " ", "\n\n", "\u200B", "\u200B \u2060\n", "\u0001", "\t\u0085\u000B"]) {
-      expect([kept(text), mailedText(text).text], JSON.stringify(text)).toEqual([false, ""]);
+      expect([given(text), mailedText(text).text], JSON.stringify(text)).toEqual([[], ""]);
     }
-    for (const text of ["x", " x ", "\u200Bx", ".", "\u0001é"]) {
-      expect([kept(text), mailedText(text).text !== ""], JSON.stringify(text)).toEqual([
-        true,
-        true,
+    for (const [text, clean] of [
+      ["x", "x"],
+      [" x ", "x"],
+      ["\u200Bx", "x"],
+      [".", "."],
+      ["\u0001é", "é"],
+      ["Good\u202E work\u200B.\r\n\r\n\r\nNext.\u202C  ", "Good work.\n\nNext."],
+    ] as const) {
+      expect([given(text), mailedText(text)], JSON.stringify(text)).toEqual([
+        [clean],
+        { text: clean, cut: false },
       ]);
     }
     const piece = fc.constantFrom(
@@ -424,7 +432,8 @@ describe("review fixes, round 4: titles and names in mail to the people on a pro
     fc.assert(
       fc.property(fc.array(piece, { maxLength: 6 }), (pieces) => {
         const text = pieces.join("");
-        return kept(text) === (mailedText(text).text !== "");
+        const mailed = mailedText(text).text;
+        expect(given(text)).toEqual(mailed === "" ? [] : [mailed]);
       }),
       { numRuns: 20_000 },
     );

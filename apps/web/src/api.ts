@@ -5,6 +5,7 @@ import type {
   ContributionRole,
   ContributionStatus,
   DecisionOutcome,
+  DecisionWording,
   LocalizedText,
   NoticeFrequency,
   Recommendation,
@@ -432,8 +433,14 @@ export type SendSummary = {
   dropped: number;
 };
 
-/** The confirmation: the numbers, and the token a send has to name. */
-export type SendConfirmation = SendSummary & { token: string };
+/**
+ * The confirmation: the numbers, the wording in force for the three emails (subject and text,
+ * in every language), and the token a send has to name, which covers both.
+ */
+export type SendConfirmation = SendSummary & {
+  emails: DecisionWording;
+  token: string;
+};
 
 /** The Decision section of a proposal's page, for a chair who manages it. */
 export type ProposalDecision = {

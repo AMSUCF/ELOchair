@@ -26,8 +26,10 @@ import {
 import {
   DECISION_MESSAGES,
   type DecisionOutcome,
+  type DecisionWording,
   decisionOutcomesFor,
   decisionsCanBeSent,
+  decisionWording,
 } from "@elochair/schema";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { audit } from "../audit";
@@ -301,11 +303,13 @@ export async function takeBackDecision(
 }
 
 /**
- * Names a plan: which decisions it would send, with which outcome and to whom, and which it
- * would not send. Two plans have the same token exactly when sending them would do the same.
- * It is a hash, and holds nothing that can be read back.
+ * Names what a send would do: which decisions it would send, with which outcome, to whom and
+ * with which comments of the reviewers; which it would not send; and the wording in force for
+ * the three emails, subject and text, in every language (`emails`). Two sends have the same
+ * token exactly when they would do the same and mail the same. It is a hash, and holds
+ * nothing that can be read back.
  */
-export const planToken = (plan: SendPlan): string =>
+export const planToken = (plan: SendPlan, emails: DecisionWording): string =>
   createHash("sha256")
     .update(
       JSON.stringify({
@@ -313,15 +317,20 @@ export const planToken = (plan: SendPlan): string =>
           p.decision.id,
           p.decision.outcome,
           p.recipients.map((person) => person.id),
+          p.comments,
         ]),
         dropped: plan.dropped.map((d) => d.id),
+        emails,
       }),
     )
     .digest("hex")
     .slice(0, 32);
 
-/** What the confirmation says, with the token that a send has to name. */
-export type SendConfirmation = SendSummary & { token: string };
+/**
+ * What the confirmation says: the numbers, the wording of the three emails as it is in force
+ * (what the page previews), and the token that a send has to name, which covers both.
+ */
+export type SendConfirmation = SendSummary & { emails: DecisionWording; token: string };
 
 /**
  * What sending the decisions would do now, for a chair of the conference in person: numbers,
@@ -336,7 +345,8 @@ export async function sendConfirmation(
   const rec = await loadDecisionsRecord(db, conference);
   const plan = sendPlan(rec);
   const summary = projectSendSummary(viewer, rec, plan);
-  return summary && { ...summary, token: planToken(plan) };
+  const emails = decisionWording(conference.config.messages);
+  return summary && { ...summary, emails, token: planToken(plan, emails) };
 }
 
 /**
@@ -347,8 +357,9 @@ export async function sendConfirmation(
  * co-author, in that person's language. Returns what was sent, as numbers.
  * - 409 `not_deciding` unless the conference is in `deciding` or a later phase.
  * - 409 `stale`, with the confirmation as it would read now (`summary`), where what would be
- *   sent is not what `token` names. Nothing is sent. Two chairs who send at once send once: the
- *   second finds the decisions sent, which is not what it confirmed.
+ *   sent is not what `token` names: another decision, other people, other comments, or
+ *   another wording of one of the three emails. Nothing is sent. Two chairs who send at once
+ *   send once: the second finds the decisions sent, which is not what it confirmed.
  * - 409 `nothing_to_send` where there is no decision to send.
  * A decision whose proposal no longer awaits one (withdrawn since) is not sent: it is counted in
  * the confirmation and in the answer (`dropped`), and deleted with the decisions that are sent,
@@ -403,12 +414,14 @@ export async function sendDecisions(
     const plan = sendPlan(rec);
     const summary = projectSendSummary(actor, rec, plan);
     if (!summary) throw new Refusal(403, "forbidden");
-    const token = planToken(plan);
+    // The wording of the conference as it is under its row: what the emails below are made of.
+    const emails = decisionWording(conference.config.messages);
+    const token = planToken(plan, emails);
     // A decision recorded for another proposal since the rows were taken is in the plan and
     // not under a lock of ours: it is also not what the token names, so nothing is sent.
     const all = [...plan.send.map((p) => p.decision), ...plan.dropped];
     if (token !== v.token || all.some((d) => !held.has(d.submissionId))) {
-      throw new Refusal(409, "stale", { summary: { ...summary, token } });
+      throw new Refusal(409, "stale", { summary: { ...summary, emails, token } });
     }
     if (plan.send.length === 0) throw new Refusal(409, "nothing_to_send");
 

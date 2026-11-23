@@ -3595,10 +3595,10 @@ test.describe("conference settings", () => {
     await expect(previews.nth(0).locator(".email-body")).toHaveText(
       [
         `The chairs of ${conference} have accepted your proposal "A made-up title" (${format}).`,
-        "Comments from the reviewers:",
-        "Reviewer 1:\nA made-up comment: the argument is clear, and the examples carry it.",
-        "Reviewer 2:\nAnother made-up comment, in two paragraphs.",
-        "The second one asks for a word about the method.",
+        // Every line of a reviewer's comment is quoted, and the line above them says so.
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:",
+        "Reviewer 1:\n> A made-up comment: the argument is clear, and the examples carry it.",
+        "Reviewer 2:\n> Another made-up comment, in two paragraphs.\n>\n> The second one asks for a word about the method.",
         "You can also read this on the proposal's page:",
         `${origin}/en/s/…`,
       ].join("\n\n"),
@@ -3664,7 +3664,7 @@ test.describe("conference settings", () => {
       "the proposal's title",
       "the proposal's format",
       "the conference's title",
-      "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.It cannot go in the subject.",
+      "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, with “>” before every line to mark it as their words, and without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.It cannot go in the subject.",
       "the link to the proposalThe text must contain it, and it cannot go in the subject.",
     ]);
     const english = accepted.getByRole("group", { name: "English" });
@@ -3672,7 +3672,7 @@ test.describe("conference settings", () => {
       "{conference}: your proposal has been accepted",
     );
     await expect(english.locator(".email-body")).toContainText(
-      "Reviewer 1:\nA made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\n",
+      "Reviewer 1:\n> A made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\n> ",
     );
     await expect(english.getByText("This is the standard text.")).toBeVisible();
     // A text without the link, and a subject with the comments, are refused where they are typed.
@@ -3806,7 +3806,7 @@ test.describe("conference settings", () => {
     ]);
     // The email that was reworded meanwhile is previewed as it will be sent.
     await expect(sending.locator("figure.email-preview .email-body").nth(2)).toContainText(
-      `[Reworded by a browser test] A made-up title (${format}) was not accepted.\n\nComments from the reviewers:`,
+      `[Reworded by a browser test] A made-up title (${format}) was not accepted.\n\nThe lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A made-up comment`,
     );
 
     // Another chair changes a decision meanwhile (here, this chair's own session, behind the
@@ -3861,16 +3861,16 @@ test.describe("conference settings", () => {
     const text = acceptedMail?.text ?? "";
     expect(
       text.startsWith(
-        `The chairs of ${conference} have accepted your proposal "${TALKS.two}" (Individual talk).\n\nComments from the reviewers:\n\nReviewer 1:\nMade-up comments for the authors, number `,
+        `The chairs of ${conference} have accepted your proposal "${TALKS.two}" (Individual talk).\n\nThe lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> Made-up comments for the authors, number `,
       ),
     ).toBe(true);
-    // Both reviewers' comments, each under a number, with their line breaks.
+    // Both reviewers' comments, each under a number, every line quoted, with their line breaks.
     for (const said of ["number one.", "number two."]) {
       expect(text).toContain(
-        `Made-up comments for the authors, ${said}\n\nA second paragraph of them, to show that line breaks are kept.`,
+        `> Made-up comments for the authors, ${said}\n>\n> A second paragraph of them, to show that line breaks are kept.`,
       );
     }
-    expect(text).toContain("\n\nReviewer 2:\nMade-up comments for the authors, number ");
+    expect(text).toContain("\n\nReviewer 2:\n> Made-up comments for the authors, number ");
     expect(
       text.endsWith(
         `\n\nYou can also read this on the proposal's page:\n\n${origin}/en/s/${ids.two}`,
@@ -3897,9 +3897,8 @@ test.describe("conference settings", () => {
     expect(rejectedMail?.text).toBe(
       [
         `[Reworded by a browser test] ${TALKS.one} (Individual talk) was not accepted.`,
-        "Comments from the reviewers:",
-        "Reviewer 1:\nMade-up comments for the authors, number three.",
-        "A second paragraph of them, to show that line breaks are kept.",
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:",
+        "Reviewer 1:\n> Made-up comments for the authors, number three.\n>\n> A second paragraph of them, to show that line breaks are kept.",
         `${origin}/en/s/${ids.one}`,
       ].join("\n\n"),
     );

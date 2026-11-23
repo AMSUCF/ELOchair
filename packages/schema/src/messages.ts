@@ -604,28 +604,59 @@ export const DECISION_MESSAGES = {
 } as const satisfies Record<DecisionOutcome, MailMessageKey>;
 
 /**
+ * The wording of the three emails about a decision: for each outcome, the subject and the text
+ * in every language mail is written in.
+ */
+export type DecisionWording = Record<
+  DecisionOutcome,
+  Record<MessagePart, Record<MailLang, string>>
+>;
+
+/**
+ * The wording in force for the three emails about a decision: the conference's own where its
+ * chairs wrote one, otherwise the standard text (messageText). It is what the confirmation
+ * before a send shows, and what its token covers: a send goes out in the wording a chair was
+ * shown, or not at all.
+ */
+export function decisionWording(messages: ConferenceMessages | undefined): DecisionWording {
+  const inForce = (key: MailMessageKey, part: MessagePart) =>
+    Object.fromEntries(
+      MAIL_LANGUAGES.map((lang) => [lang, messageText(messages, key, part, lang)]),
+    ) as Record<MailLang, string>;
+  const of = (outcome: DecisionOutcome) => ({
+    subject: inForce(DECISION_MESSAGES[outcome], "subject"),
+    body: inForce(DECISION_MESSAGES[outcome], "body"),
+  });
+  return { accepted: of("accepted"), waitlisted: of("waitlisted"), rejected: of("rejected") };
+}
+
+/**
  * The app's own words around the reviewers' comments, in each language: the line above them,
- * the number each review's comments stand under, the sentence that stands in their place where
- * there are none, and the note under comments that were cut to fit an email.
+ * which says that the quoted lines are the reviewers' words, the number each review's comments
+ * stand under, the sentence that stands in their place where there are none, and the note
+ * under comments that were cut to fit an email.
  */
 const COMMENTS_WORDS: Record<
   MailLang,
   { heading: string; reviewer: (n: number) => string; none: string; cut: string }
 > = {
   en: {
-    heading: "Comments from the reviewers:",
+    heading:
+      "The lines that begin with > are comments from the reviewers, in the words they wrote:",
     reviewer: (n) => `Reviewer ${n}`,
     none: "No comments from reviewers come with this decision.",
     cut: "[This comment is longer than an email carries. All of it is on the proposal's page:]",
   },
   es: {
-    heading: "Comentarios de quienes revisaron la propuesta:",
+    heading:
+      "Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:",
     reviewer: (n) => `Revisión ${n}`,
     none: "Esta decisión no viene acompañada de comentarios de quienes revisan.",
     cut: "[Este comentario es más largo de lo que cabe en un correo. Está completo en la página de la propuesta:]",
   },
   pt: {
-    heading: "Comentários de quem reviu a proposta:",
+    heading:
+      "As linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:",
     reviewer: (n) => `Revisão ${n}`,
     none: "Esta decisão não é acompanhada de comentários de quem revê.",
     cut: "[Este comentário é mais longo do que cabe num email. Está completo na página da proposta:]",
@@ -652,10 +683,24 @@ export function noCommentsSentence(lang: MailLang): string {
 export type MailedComment = { text: string; cut: boolean };
 
 /**
+ * A reviewer's words as an email carries them: every line quoted, as plain-text mail quotes
+ * ("> " before a line, a bare ">" for an empty one). So nothing a reviewer wrote stands at the
+ * left margin, where the conference's own words stand: not a line that reads like a heading
+ * of the email, a second "Reviewer 2:", or a link given as the conference's.
+ */
+const quoted = (text: string): string =>
+  text
+    .split("\n")
+    .map((line) => (line === "" ? ">" : `> ${line}`))
+    .join("\n");
+
+/**
  * What "{comments}" stands for: the reviewers' comments for the authors, each review's under
- * its number, in the order given; or one sentence that says so where there are none, so that
- * no text is left with a hole. Comments that were cut say so, with the link to the proposal's
- * page on a line of its own, where they can be read whole.
+ * its number, in the order given, every line of them quoted; or one sentence that says so
+ * where there are none, so that no text is left with a hole. Comments that were cut say so
+ * outside the quote, in the app's own words, with the link to the proposal's page on a line
+ * of its own, where they can be read whole. `text` is one review's comments as the server
+ * cleaned them (plainText): its only line breaks are line feeds.
  */
 export function commentsBlock(
   comments: readonly MailedComment[],
@@ -667,7 +712,8 @@ export function commentsBlock(
   return [
     words.heading,
     ...comments.map(
-      (c, i) => `${words.reviewer(i + 1)}:\n${c.text}${c.cut ? `\n${words.cut}\n${link}` : ""}`,
+      (c, i) =>
+        `${words.reviewer(i + 1)}:\n${quoted(c.text)}${c.cut ? `\n${words.cut}\n${link}` : ""}`,
     ),
   ].join("\n\n");
 }

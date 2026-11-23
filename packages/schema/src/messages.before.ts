@@ -35,6 +35,13 @@ import type { MailLang, MailMessageKey } from "./messages";
  * comes with no comments. `comments` holds the comments it was called with, separated by
  * " | ", and is empty where there were none.
  *
+ * Those cases were changed once, on purpose, before any such email was sent (the same pull
+ * request, after review): every line of a reviewer's comment is quoted ("> " before it, a bare
+ * ">" for an empty line), and the line above the comments says that the quoted lines are the
+ * reviewers' words. So nothing a reviewer wrote stands at the left margin as if the conference
+ * had written it. The six cases with comments are the output of decisionMessage as it is
+ * since; the three without comments did not change.
+ *
  * A case changes only when the standard wording is changed on purpose, and then in the same
  * commit as the text in messages.ts. People and conferences are made up.
  */
@@ -1131,7 +1138,7 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
         "A made-up comment: the argument is clear, and the examples carry it. | Another made-up comment, in two paragraphs.\n\nThe second one asks for a word about the method.",
     },
     subject: "Made-up Meeting 2031: your proposal has been accepted",
-    text: 'The chairs of Made-up Meeting 2031 have accepted your proposal "Poems with p5.js" (Short talk).\n\nComments from the reviewers:\n\nReviewer 1:\nA made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\nAnother made-up comment, in two paragraphs.\n\nThe second one asks for a word about the method.\n\nYou can also read this on the proposal\'s page:\n\nhttps://chair.example.org/en/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f',
+    text: 'The chairs of Made-up Meeting 2031 have accepted your proposal "Poems with p5.js" (Short talk).\n\nThe lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A made-up comment: the argument is clear, and the examples carry it.\n\nReviewer 2:\n> Another made-up comment, in two paragraphs.\n>\n> The second one asks for a word about the method.\n\nYou can also read this on the proposal\'s page:\n\nhttps://chair.example.org/en/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f',
   },
   {
     key: "decision_waitlisted",
@@ -1147,10 +1154,10 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
     cleaned: {
       title: "A title in two lines, with a tab here",
       comments:
-        "Comments from the reviewers:\n\nReviewer 1:\nA made-up comment with a tab here,\na second line and spaces at its end\n\nand a last paragraph.",
+        "The lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A made-up comment with a tab here,\n> a second line and spaces at its end\n>\n> and a last paragraph.",
     },
     subject: "Made-up Meeting 2031: your proposal is on the waiting list",
-    text: 'The chairs of Made-up Meeting 2031 have put your proposal "A title in two lines, with a tab here" (Short talk) on the waiting list. It is not accepted so far, and it may still be: you will get another email when they decide.\n\nComments from the reviewers:\n\nReviewer 1:\nA made-up comment with a tab here,\na second line and spaces at its end\n\nand a last paragraph.\n\nYou can also read this on the proposal\'s page:\n\nhttps://chair.example.org/en/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f',
+    text: 'The chairs of Made-up Meeting 2031 have put your proposal "A title in two lines, with a tab here" (Short talk) on the waiting list. It is not accepted so far, and it may still be: you will get another email when they decide.\n\nThe lines that begin with > are comments from the reviewers, in the words they wrote:\n\nReviewer 1:\n> A made-up comment with a tab here,\n> a second line and spaces at its end\n>\n> and a last paragraph.\n\nYou can also read this on the proposal\'s page:\n\nhttps://chair.example.org/en/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f',
   },
   {
     key: "decision_rejected",
@@ -1177,7 +1184,7 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
         "Un comentario inventado: el argumento es claro y los ejemplos lo sostienen. | Otro comentario inventado, en dos párrafos.\n\nEl segundo pide unas palabras sobre el método.",
     },
     subject: "Encuentro Inventado 2031: tu propuesta ha sido aceptada",
-    text: "Quienes presiden Encuentro Inventado 2031 han aceptado tu propuesta «Poems with p5.js» (Charla breve).\n\nComentarios de quienes revisaron la propuesta:\n\nRevisión 1:\nUn comentario inventado: el argumento es claro y los ejemplos lo sostienen.\n\nRevisión 2:\nOtro comentario inventado, en dos párrafos.\n\nEl segundo pide unas palabras sobre el método.\n\nTambién puedes leerlo en la página de la propuesta:\n\nhttps://chair.example.org/es/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
+    text: "Quienes presiden Encuentro Inventado 2031 han aceptado tu propuesta «Poems with p5.js» (Charla breve).\n\nLas líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:\n\nRevisión 1:\n> Un comentario inventado: el argumento es claro y los ejemplos lo sostienen.\n\nRevisión 2:\n> Otro comentario inventado, en dos párrafos.\n>\n> El segundo pide unas palabras sobre el método.\n\nTambién puedes leerlo en la página de la propuesta:\n\nhttps://chair.example.org/es/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
   },
   {
     key: "decision_waitlisted",
@@ -1193,10 +1200,10 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
     cleaned: {
       title: "A title in two lines, with a tab here",
       comments:
-        "Comentarios de quienes revisaron la propuesta:\n\nRevisión 1:\nUn comentario inventado con un tabulador aquí,\nuna segunda línea y espacios al final\n\ny un último párrafo.",
+        "Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:\n\nRevisión 1:\n> Un comentario inventado con un tabulador aquí,\n> una segunda línea y espacios al final\n>\n> y un último párrafo.",
     },
     subject: "Encuentro Inventado 2031: tu propuesta está en lista de espera",
-    text: "Quienes presiden Encuentro Inventado 2031 han puesto tu propuesta «A title in two lines, with a tab here» (Charla breve) en lista de espera. Por ahora no está aceptada, y todavía puede estarlo: recibirás otro correo cuando lo decidan.\n\nComentarios de quienes revisaron la propuesta:\n\nRevisión 1:\nUn comentario inventado con un tabulador aquí,\nuna segunda línea y espacios al final\n\ny un último párrafo.\n\nTambién puedes leerlo en la página de la propuesta:\n\nhttps://chair.example.org/es/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
+    text: "Quienes presiden Encuentro Inventado 2031 han puesto tu propuesta «A title in two lines, with a tab here» (Charla breve) en lista de espera. Por ahora no está aceptada, y todavía puede estarlo: recibirás otro correo cuando lo decidan.\n\nLas líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:\n\nRevisión 1:\n> Un comentario inventado con un tabulador aquí,\n> una segunda línea y espacios al final\n>\n> y un último párrafo.\n\nTambién puedes leerlo en la página de la propuesta:\n\nhttps://chair.example.org/es/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
   },
   {
     key: "decision_rejected",
@@ -1223,7 +1230,7 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
         "Um comentário inventado: o argumento é claro e os exemplos sustentam-no. | Outro comentário inventado, em dois parágrafos.\n\nO segundo pede umas palavras sobre o método.",
     },
     subject: "Encontro Inventado 2031: a sua proposta foi aceite",
-    text: "Quem preside a Encontro Inventado 2031 aceitou a sua proposta «Poems with p5.js» (Comunicação breve).\n\nComentários de quem reviu a proposta:\n\nRevisão 1:\nUm comentário inventado: o argumento é claro e os exemplos sustentam-no.\n\nRevisão 2:\nOutro comentário inventado, em dois parágrafos.\n\nO segundo pede umas palavras sobre o método.\n\nTambém pode ler isto na página da proposta:\n\nhttps://chair.example.org/pt/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
+    text: "Quem preside a Encontro Inventado 2031 aceitou a sua proposta «Poems with p5.js» (Comunicação breve).\n\nAs linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:\n\nRevisão 1:\n> Um comentário inventado: o argumento é claro e os exemplos sustentam-no.\n\nRevisão 2:\n> Outro comentário inventado, em dois parágrafos.\n>\n> O segundo pede umas palavras sobre o método.\n\nTambém pode ler isto na página da proposta:\n\nhttps://chair.example.org/pt/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
   },
   {
     key: "decision_waitlisted",
@@ -1239,10 +1246,10 @@ export const MESSAGES_BEFORE: readonly MessageBefore[] = [
     cleaned: {
       title: "A title in two lines, with a tab here",
       comments:
-        "Comentários de quem reviu a proposta:\n\nRevisão 1:\nUm comentário inventado com um tabulador aqui,\numa segunda linha e espaços no fim\n\ne um último parágrafo.",
+        "As linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:\n\nRevisão 1:\n> Um comentário inventado com um tabulador aqui,\n> uma segunda linha e espaços no fim\n>\n> e um último parágrafo.",
     },
     subject: "Encontro Inventado 2031: a sua proposta está em lista de espera",
-    text: "Quem preside a Encontro Inventado 2031 colocou a sua proposta «A title in two lines, with a tab here» (Comunicação breve) em lista de espera. Por agora não está aceite, e ainda pode vir a estar: receberá outro email quando houver uma decisão.\n\nComentários de quem reviu a proposta:\n\nRevisão 1:\nUm comentário inventado com um tabulador aqui,\numa segunda linha e espaços no fim\n\ne um último parágrafo.\n\nTambém pode ler isto na página da proposta:\n\nhttps://chair.example.org/pt/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
+    text: "Quem preside a Encontro Inventado 2031 colocou a sua proposta «A title in two lines, with a tab here» (Comunicação breve) em lista de espera. Por agora não está aceite, e ainda pode vir a estar: receberá outro email quando houver uma decisão.\n\nAs linhas que começam por > são comentários de quem reviu a proposta, nas palavras que escreveu:\n\nRevisão 1:\n> Um comentário inventado com um tabulador aqui,\n> uma segunda linha e espaços no fim\n>\n> e um último parágrafo.\n\nTambém pode ler isto na página da proposta:\n\nhttps://chair.example.org/pt/s/0d6f1c1e-5a4b-4c3d-9e2f-7a8b9c0d1e2f",
   },
   {
     key: "decision_rejected",

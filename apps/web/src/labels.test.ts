@@ -115,7 +115,7 @@ describe("what the settings screen says of each email", () => {
       }
     }
     expect(en[placeholderKey("decision_accepted", "comments")]).toBe(
-      "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.",
+      "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, with “>” before every line to mark it as their words, and without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.",
     );
     expect(en[emailWhenKey("decision_accepted")]).toMatch(
       /^Sent to the owner and to every confirmed co-author of a proposal when the chairs send the decisions and the proposal is accepted\./,

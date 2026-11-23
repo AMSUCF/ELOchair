@@ -21,6 +21,7 @@ import {
   type MessagePart,
   type MessageValues,
   messageText,
+  plainText,
   ROLE_WORDS,
   reasonList,
   removeStrayInvisible,
@@ -170,10 +171,10 @@ export function oneLine(text: string | null | undefined, fallback: string, max =
  * Text of several lines that a person wrote, for mail to people who are part of the proposal
  * it is about (a review's comments for the authors, sent with the decision): plain text, kept
  * as written, links and all, with its line breaks.
- * - Invisible format characters (bidi overrides, zero-width spaces) are removed, as from a
- *   title (removeStrayInvisible): they could hide or reorder words.
- * - Every kind of line break becomes one line feed. Tabs and other control characters become
- *   spaces, spaces at the end of a line go, and more than one empty line becomes one.
+ * - It is cleaned as plainText cleans it (packages/schema): nothing invisible, one kind of line
+ *   break, no control characters. What is stored with a decision was cleaned by the same
+ *   function (commentsForAuthors), so this changes nothing of it: the email carries the text
+ *   that the proposal's page shows.
  * - Text longer than `max` characters is cut between characters and ends with an ellipsis:
  *   `cut` says so, and whoever puts it in an email says so there, never silently
  *   (commentsBlock adds a line and the link to the page that shows it whole).
@@ -182,16 +183,7 @@ export function mailedText(
   text: string | null | undefined,
   max: number = LIMITS.mailedComment,
 ): MailedComment {
-  const clean = removeStrayInvisible(text ?? "")
-    .replace(/\r\n?|[\p{Zl}\p{Zp}]/gu, "\n")
-    .replace(/[^\S\n]|(?!\n)\p{Cc}/gu, " ")
-    // Line by line: a pattern for "spaces at the end of a line" takes long over a long run of
-    // spaces that ends nowhere, and this runs while a send holds its rows.
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const clean = plainText(text);
   const chars = Array.from(GRAPHEMES.segment(clean), (g) => g.segment);
   if (chars.length <= max) return { text: clean, cut: false };
   // A cut can leave a joiner whose partner was cut off: clean again before the ellipsis.

@@ -1,5 +1,6 @@
+import type { SendPlan } from "@elochair/policy";
 import { findLeaks } from "@elochair/policy/testing";
-import type { ConferenceConfig } from "@elochair/schema";
+import { type ConferenceConfig, decisionWording, hasStrayInvisible } from "@elochair/schema";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { and, eq, inArray, isNull, like } from "drizzle-orm";
@@ -29,6 +30,7 @@ import {
   saveConference,
   shareConference,
 } from "./repo";
+import { planToken } from "./services/decisions";
 import { lockRoles } from "./services/roles";
 import { call, makeTestApp, ORIGIN, personId, signIn, type TestApp } from "./testkit";
 
@@ -279,6 +281,18 @@ async function mailTo(t: TestApp, email: string) {
 }
 const decisionMail = async (t: TestApp, email: string) =>
   (await mailTo(t, email)).filter((m) => m.kind?.startsWith("decision_"));
+
+/** A reviewer's comment as an email carries it: every line quoted. */
+const quoted = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => (line === "" ? ">" : `> ${line}`))
+    .join("\n");
+/** The line the standard English text puts above the reviewers' comments. */
+const ABOVE =
+  "The lines that begin with > are comments from the reviewers, in the words they wrote:";
+/** The three emails as they are worded where a conference's chairs reworded none. */
+const STANDARD = decisionWording(undefined);
 
 /** RFC 4180 rows of a CSV answer, as objects keyed by header. */
 async function csv(t: TestApp, path: string, who: Who, app = t.public) {
@@ -961,7 +975,12 @@ describe("sending the decisions", () => {
   it("is not possible while the conference is in review: the reviews could still change", async () => {
     const asked = await confirmation(w, { cookie: cookies.chair });
     expect(asked.status).toBe(200);
-    expect(asked.json).toEqual({ ...waitingNow, canSend: false, token: asked.json.token });
+    expect(asked.json).toEqual({
+      ...waitingNow,
+      canSend: false,
+      emails: STANDARD,
+      token: asked.json.token,
+    });
     expect(asked.json.token).toMatch(/^[0-9a-f]{32}$/);
     const res = await send(w, { cookie: cookies.chair }, asked.json.token);
     expect([res.status, res.json]).toEqual([409, { error: "not_deciding" }]);
@@ -977,7 +996,12 @@ describe("sending the decisions", () => {
     for (const who of ["chair", "second", "authorChair", "conflictedChair"] as const) {
       const asked = await confirmation(w, { cookie: cookies[who] });
       expect(asked.status, who).toBe(200);
-      expect(asked.json, who).toEqual({ ...waitingNow, canSend: true, token: asked.json.token });
+      expect(asked.json, who).toEqual({
+        ...waitingNow,
+        canSend: true,
+        emails: STANDARD,
+        token: asked.json.token,
+      });
       // Numbers, and a token that holds nothing to read: no proposal, no person, no decision.
       const rows = await t.db
         .select()
@@ -1007,6 +1031,7 @@ describe("sending the decisions", () => {
         canSend: true,
         rejected: 2,
         undecided: 5,
+        emails: STANDARD,
         token: stale.json.summary.token,
       },
     });
@@ -1096,9 +1121,9 @@ describe("sending the decisions", () => {
     expect(toOwner?.text).toBe(
       [
         'The chairs of Test call have accepted your proposal "The main talk" (Individual talk).',
-        "Comments from the reviewers:",
-        `Reviewer 1:\n${sent[0]?.comments}`,
-        `Reviewer 2:\n${sent[1]?.comments}`,
+        ABOVE,
+        `Reviewer 1:\n${quoted(sent[0]?.comments ?? "")}`,
+        `Reviewer 2:\n${quoted(sent[1]?.comments ?? "")}`,
         "You can also read this on the proposal's page:",
         link("en"),
       ].join("\n\n"),
@@ -1110,9 +1135,9 @@ describe("sending the decisions", () => {
     expect(toCoauthor[0]?.text).toBe(
       [
         "Quienes presiden Convocatoria de prueba han aceptado tu propuesta «The main talk» (Ponencia individual).",
-        "Comentarios de quienes revisaron la propuesta:",
-        `Revisión 1:\n${sent[0]?.comments}`,
-        `Revisión 2:\n${sent[1]?.comments}`,
+        "Las líneas que empiezan por > son comentarios de quienes revisaron la propuesta, con las palabras que escribieron:",
+        `Revisión 1:\n${quoted(sent[0]?.comments ?? "")}`,
+        `Revisión 2:\n${quoted(sent[1]?.comments ?? "")}`,
         "También puedes leerlo en la página de la propuesta:",
         link("es"),
       ].join("\n\n"),
@@ -1900,15 +1925,18 @@ describe("the emails about a decision, in a conference's own words", () => {
     expect(accepted?.text).toBe(
       [
         "[worded] A title on two lines | Individual talk | Test call",
-        "Comments from the reviewers:",
-        "Reviewer 1:\nFirst line {link}\nsecond line\nthird line\n\nA last paragraph.",
+        ABOVE,
+        "Reviewer 1:\n> First line {link}\n> second line\n> third line\n>\n> A last paragraph.",
         link,
       ].join("\n\n"),
     );
     expect(rejected?.subject).toBe("Test call: your proposal was not accepted");
     expect(rejected?.text).toBe(`[worded] No, for Another talk.\n\n${ORIGIN}/en/s/${second}`);
-    // What was stored for the authors' page is what the reviewer wrote, whole: also the long one.
-    expect((await authorView(t, { cookie: author }, first)).json.comments).toEqual([typed]);
+    // What is stored for the authors' page is that same text, cleaned once and whole (also
+    // the long one): the page shows what the email carries, and not what cannot be seen.
+    const cleaned = "First line {link}\nsecond line\nthird line\n\nA last paragraph.";
+    expect((await decisionRows(t, first))[0]?.comments).toEqual([cleaned]);
+    expect((await authorView(t, { cookie: author }, first)).json.comments).toEqual([cleaned]);
     expect((await authorView(t, { cookie: author }, second)).json.comments).toEqual([long]);
 
     // Comments longer than an email carries are cut there, and the email says so, with the link.
@@ -1955,6 +1983,185 @@ describe("the emails about a decision, in a conference's own words", () => {
       `long…\n[This comment is longer than an email carries. All of it is on the proposal's page:]\n${ORIGIN}/en/s/${thirdId}\n\nYou can also read this`,
     );
     expect((cut?.text ?? "").length).toBeLessThan(4_700);
+  });
+});
+
+describe("what a send mails is what its confirmation showed", () => {
+  it("names a send by the comments and by the wording too: where either differs, so does the token", () => {
+    const plan = (comments: string[]) =>
+      ({
+        send: [
+          {
+            decision: { id: "decision-1", outcome: "accepted" },
+            recipients: [{ id: "person-1" }],
+            comments,
+          },
+        ],
+        dropped: [],
+        undecided: 0,
+      }) as unknown as SendPlan;
+    const reworded = decisionWording({
+      decision_rejected: { subject: { pt: "{conference}: não" } },
+    });
+    expect(planToken(plan(["old"]), STANDARD)).toBe(planToken(plan(["old"]), STANDARD));
+    // The same decisions for the same people, with other comments: another send.
+    expect(planToken(plan(["new"]), STANDARD)).not.toBe(planToken(plan(["old"]), STANDARD));
+    expect(planToken(plan([]), STANDARD)).not.toBe(planToken(plan([""]), STANDARD));
+    // And with one subject of one email reworded in one language: another send.
+    expect(reworded.rejected.subject).toEqual({
+      ...STANDARD.rejected.subject,
+      pt: "{conference}: não",
+    });
+    expect(planToken(plan(["old"]), reworded)).not.toBe(planToken(plan(["old"]), STANDARD));
+  });
+
+  it("an email reworded, or a comment changed, between the confirmation and the send: nothing is sent, and what cannot be seen in a comment reaches nobody", async () => {
+    const room = await world(t, "decide-shown");
+    const chair = cookies.chair;
+    const other = cookies.second;
+    for (const who of [ids.chair, ids.second]) {
+      await grantRole(t.db, { conferenceId: room.conferenceId, personId: who, role: "chair" });
+    }
+    const author = await room.person(mail("shown-author"), "Sasha Shownauthor");
+    const authorId = await room.id(mail("shown-author"));
+    const reviewerId = await reviewer(room, mail("r1"), [POOL_A]);
+    /** A submitted talk with one sent review, as the tables hold them. */
+    const reviewed = async (title: string, comments: string) => {
+      secrets.push(title);
+      const [row] = await t.db
+        .insert(submissions)
+        .values({
+          conferenceId: room.conferenceId,
+          ownerPersonId: authorId,
+          typeKey: "talk",
+          language: "en",
+          title,
+          abstract: words(260),
+          status: "submitted",
+          submittedAt: NOW,
+        })
+        .returning({ id: submissions.id });
+      const id = row?.id ?? "";
+      await t.db
+        .insert(contributions)
+        .values({ submissionId: id, personId: authorId, role: "lead", position: 0 });
+      await t.db.insert(reviews).values({
+        conferenceId: room.conferenceId,
+        submissionId: id,
+        reviewerId,
+        status: "sent",
+        sentAt: NOW,
+        comments,
+      });
+      return id;
+    };
+    // What a reviewer may type: an override that turns the words around, zero-width
+    // characters between them; and, for the second talk, nothing but such characters.
+    const hidden =
+      "A comment\u202E with what\u200B cannot\u2060 be seen\u202C.\u200B\n\nIts second paragraph.";
+    const seen = "A comment with what cannot be seen.\n\nIts second paragraph.";
+    const first = await reviewed("A talk with a comment that hides something", hidden);
+    const second = await reviewed(
+      "A talk with a comment of nothing",
+      " \u202E\u200B\n\u2060 \uFEFF",
+    );
+    await closeCall(room);
+    expect((await movePhase(room, chair, "reviewing", "cfp_open")).status).toBe(200);
+    expect((await movePhase(room, chair, "deciding", "reviewing")).status).toBe(200);
+    expect((await record(room, { cookie: chair }, first, "accepted")).status).toBe(204);
+    expect((await record(room, { cookie: chair }, second, "accepted")).status).toBe(204);
+
+    /** Nothing was sent, and nothing changed: not a status, not a decision, not an email. */
+    const untouched = async (what: string) => {
+      for (const id of [first, second]) {
+        expect(await statusOf(t, id), what).toBe("submitted");
+        expect(
+          (await decisionRows(t, id)).map((d) => [d.outcome, d.sentAt, d.comments]),
+          what,
+        ).toEqual([["accepted", null, null]]);
+      }
+      expect(await decisionMail(t, mail("shown-author")), what).toEqual([]);
+    };
+
+    // A chair opens the confirmation: the numbers, and the three emails as they are worded.
+    const asked = await confirmation(room, { cookie: chair });
+    expect(asked.json).toMatchObject({ accepted: 2, people: 1, emails: STANDARD });
+    // Another chair rewords the email for "accepted" before the first one presses Send.
+    const got = await call(t.public, "GET", at(room, "/settings"), { cookie: other });
+    const config = structuredClone(got.json.config) as ConferenceConfig;
+    const WORDED = "[worded meanwhile] {title}\n\n{comments}\n\n{link}";
+    config.messages = { ...config.messages, decision_accepted: { body: { en: WORDED } } };
+    const saved = await call(t.public, "PUT", at(room, "/config"), {
+      cookie: other,
+      ifMatch: got.json.token,
+      body: config,
+    });
+    expect(saved.status).toBe(200);
+    // The send would mail a text that no chair was shown: it sends nothing, and answers with
+    // the confirmation as it reads now, the new wording in it.
+    const stale = await send(room, { cookie: chair }, asked.json.token);
+    expect([stale.status, stale.json.error]).toEqual([409, "stale"]);
+    expect(stale.json.summary).toMatchObject({ accepted: 2, people: 1 });
+    expect(stale.json.summary.emails).toEqual({
+      ...STANDARD,
+      accepted: { ...STANDARD.accepted, body: { ...STANDARD.accepted.body, en: WORDED } },
+    });
+    expect(stale.json.summary.token).not.toBe(asked.json.token);
+    await untouched("after the wording changed");
+
+    // The same with a comment: a review that is not what it was when the confirmation was read
+    // (a chair can take a conference back into review; here the row is written).
+    const shown = await confirmation(room, { cookie: chair });
+    expect(shown.json.token).toBe(stale.json.summary.token);
+    await t.db
+      .update(reviews)
+      .set({ comments: `${hidden}\n\nAnd a third one, added since.` })
+      .where(eq(reviews.submissionId, first));
+    const changed = await send(room, { cookie: chair }, shown.json.token);
+    expect([changed.status, changed.json.error]).toEqual([409, "stale"]);
+    expect(changed.json.summary).toMatchObject({ accepted: 2, people: 1 });
+    expect(changed.json.summary.token).not.toBe(shown.json.token);
+    await untouched("after a comment changed");
+    await t.db.update(reviews).set({ comments: hidden }).where(eq(reviews.submissionId, first));
+
+    // Confirmed as it reads now, it goes out: in the wording, and with the comments, that the
+    // confirmation covered.
+    expect((await sendNow(room, chair)).status).toBe(200);
+    const told = await decisionMail(t, mail("shown-author"));
+    expect(told.map((m) => m.kind)).toEqual(["decision_accepted", "decision_accepted"]);
+    const about = (id: string) => told.find((m) => m.text.includes(id));
+    expect(about(first)?.text).toBe(
+      [
+        "[worded meanwhile] A talk with a comment that hides something",
+        ABOVE,
+        `Reviewer 1:\n${quoted(seen)}`,
+        `${ORIGIN}/en/s/${first}`,
+      ].join("\n\n"),
+    );
+    // One text: what is stored with the decision, what the page shows and what the email
+    // carries, without what cannot be seen.
+    expect((await decisionRows(t, first))[0]?.comments).toEqual([seen]);
+    expect((await authorView(t, { cookie: author }, first)).json.comments).toEqual([seen]);
+    // A comment of nothing but such characters is no comment, everywhere: none is stored, the
+    // page has none, and the email says that none comes with the decision.
+    expect((await decisionRows(t, second))[0]?.comments).toEqual([]);
+    expect((await authorView(t, { cookie: author }, second)).json.comments).toEqual([]);
+    expect(about(second)?.text).toBe(
+      [
+        "[worded meanwhile] A talk with a comment of nothing",
+        "No comments from reviewers come with this decision.",
+        `${ORIGIN}/en/s/${second}`,
+      ].join("\n\n"),
+    );
+    for (const id of [first, second]) {
+      const everywhere = JSON.stringify([
+        (await decisionRows(t, id))[0]?.comments,
+        (await authorView(t, { cookie: author }, id)).json,
+        about(id)?.text,
+      ]);
+      expect(hasStrayInvisible(everywhere), id).toBe(false);
+      expect(everywhere, id).not.toMatch(/[\u202E\u202C\u200B\u2060\uFEFF]/);
+    }
   });
 });
 
@@ -2418,6 +2625,75 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
       await settle();
       expect(await statusOf(pg, s.id)).toBe("accepted");
     }, 60_000);
+
+    it("a send while another chair rewords an email: it goes out in the wording that was confirmed, or not at all", async () => {
+      const outcomes = new Set<number>();
+      const reword = async (body: string | null) => {
+        const got = await call(pg.public, "GET", at(p, "/settings"), { cookie: second });
+        const config = structuredClone(got.json.config) as ConferenceConfig;
+        const { decision_accepted: _was, ...rest } = config.messages ?? {};
+        config.messages = body ? { ...rest, decision_accepted: { body: { en: body } } } : rest;
+        if (Object.keys(config.messages).length === 0) delete config.messages;
+        return () =>
+          call(pg.public, "PUT", at(p, "/config"), {
+            cookie: second,
+            ifMatch: got.json.token,
+            body: config,
+          });
+      };
+      try {
+        for (let round = 0; round < 16; round++) {
+          const s = await talk(`A talk sent while an email is reworded ${round}`);
+          expect((await record(p, { cookie: chair }, s.id, "accepted")).status).toBe(204);
+          const asked = await confirmation(p, { cookie: chair });
+          // What the confirmation showed for "accepted", up to its first placeholder; and the
+          // mark of the wording that the other chair saves at the same moment.
+          const confirmed = (asked.json.emails.accepted.body.en as string).split("{")[0] ?? "";
+          const mark = `[worded in round ${round}]`;
+          const save = await reword(`${mark} {title}\n\n{comments}\n\n{link}`);
+          // Each of the two starts a little after the other in half of the rounds.
+          const [sent, saved] = await Promise.all([
+            later(round + 4, () => send(p, { cookie: chair }, asked.json.token)),
+            later(round, save),
+          ]);
+          expect(saved.status, `round ${round}`).toBe(200);
+          outcomes.add(sent.status);
+          const mails = await mailed([s.id]);
+          if (sent.status === 200) {
+            // The send went first: its email is the one the confirmation showed, to the word.
+            expect(
+              mails.map((m) => m.kind),
+              `round ${round}`,
+            ).toEqual(["decision_accepted"]);
+            expect(mails[0]?.bodyText.startsWith(confirmed), `round ${round}`).toBe(true);
+            expect(mails[0]?.bodyText, `round ${round}`).not.toContain(mark);
+            expect(await statusOf(pg, s.id), `round ${round}`).toBe("accepted");
+          } else {
+            // The save went first: the send would mail a wording that no chair was shown. It
+            // sends nothing, and answers with the confirmation as it reads now.
+            expect([sent.status, sent.json.error], `round ${round}`).toEqual([409, "stale"]);
+            expect(sent.json.summary.emails.accepted.body.en, `round ${round}`).toContain(mark);
+            expect(sent.json.summary, `round ${round}`).toMatchObject({ accepted: 1 });
+            expect(mails, `round ${round}`).toEqual([]);
+            expect(await statusOf(pg, s.id), `round ${round}`).toBe("submitted");
+            const [row] = await pg.db
+              .select()
+              .from(decisions)
+              .where(eq(decisions.submissionId, s.id));
+            expect([row?.sentAt, row?.comments], `round ${round}`).toEqual([null, null]);
+            // Confirmed as it reads now, it goes out in the new wording.
+            const again = await send(p, { cookie: chair }, sent.json.summary.token);
+            expect(again.status, `round ${round}`).toBe(200);
+            expect((await mailed([s.id]))[0]?.bodyText, `round ${round}`).toContain(mark);
+          }
+        }
+      } finally {
+        // The standard text again, for the tests after this one.
+        expect((await (await reword(null))()).status).toBe(200);
+      }
+      // Over the rounds, each of the two was the first at least once.
+      expect([...outcomes].sort()).toEqual([200, 409]);
+    }, 240_000);
 
     it("two chairs who record for one proposal at the same moment leave one decision", async () => {
       for (let round = 0; round < 12; round++) {

@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { hasStrayInvisible, removeStrayInvisible } from "./invisible";
+import { hasStrayInvisible, plainText, removeStrayInvisible } from "./invisible";
 
 const cp = (...points: number[]) => String.fromCodePoint(...points);
 const tags = (ascii: string) =>
@@ -146,6 +146,71 @@ describe("invisible characters", () => {
         expect(removeStrayInvisible(once)).toBe(once);
       }),
       { numRuns: 50_000 },
+    );
+  });
+});
+
+describe("text of several lines, as plain text", () => {
+  it("keeps the words and the line breaks, and nothing that cannot be seen", () => {
+    // Every kind of line break becomes one line feed.
+    expect(plainText(`one\r\ntwo\rthree${cp(0x2028)}four${cp(0x2029)}five`)).toBe(
+      "one\ntwo\nthree\nfour\nfive",
+    );
+    // Tabs and other control characters become spaces: a vertical tab, a form feed and a
+    // "next line" among them.
+    expect(plainText(`a\tb${cp(0xb)}c${cp(0xc)}d${cp(0x85)}e${cp(0)}f`)).toBe("a b c d e f");
+    // Spaces at the end of a line go, and more than one empty line becomes one.
+    expect(plainText("  One.  \n\t\n\n\n Two. \n")).toBe("One.\n\n Two.");
+    // An override that turns the words around and zero-width characters go; a joiner inside
+    // a word stays, and so does a link.
+    expect(
+      plainText(`Ana ${cp(0x202e)}moc.live${cp(0x202c)} Pérez${cp(0x200b)}, ${cp(0x2060)}here`),
+    ).toBe("Ana moc.live Pérez, here");
+    const persian = `${cp(0x645, 0x6cc, 0x200c, 0x62e, 0x648, 0x627, 0x647, 0x645)}`;
+    expect(plainText(`${persian}\nhttps://example.org/a?b=1#c.`)).toBe(
+      `${persian}\nhttps://example.org/a?b=1#c.`,
+    );
+    // Nothing to read is the empty string.
+    for (const nothing of [
+      "",
+      "   ",
+      ` ${cp(0x200b)}\n ${cp(1)}\t${cp(0x202e)}`,
+      null,
+      undefined,
+    ]) {
+      expect(plainText(nothing)).toBe("");
+    }
+  });
+
+  it("leaves nothing stray or out of place in any string, and cleaning twice changes nothing", () => {
+    const atoms = [
+      ..."aÄ ن1.",
+      " ",
+      "\n",
+      "\r",
+      "\t",
+      ...[0x0, 0x1, 0xb, 0xc, 0x85, 0xa0, 0x2028, 0x2029].map((c) => cp(c)),
+      ...[0x200b, 0x200c, 0x200d, 0x202c, 0x202e, 0x2060, 0xfeff, 0xfe0f].map((c) => cp(c)),
+      ...[0x1f469, 0x1f3fd, 0x1f3a8, 0xd30, 0xd4d].map((c) => cp(c)),
+    ];
+    const holds = (text: string) => {
+      const once = plainText(text);
+      expect(plainText(once)).toBe(once);
+      expect(hasStrayInvisible(once)).toBe(false);
+      // One kind of line break, no other control character, no other kind of space.
+      expect(once).not.toMatch(/(?!\n)[\p{Cc}\p{Zl}\p{Zp}]|(?! )\p{Zs}/u);
+      // No space at the end of a line, no two empty lines, nothing around it.
+      expect(once).not.toMatch(/ \n| $|\n{3}|^\s|\s$/);
+    };
+    fc.assert(
+      fc.property(fc.array(fc.constantFrom(...atoms), { maxLength: 24 }), (parts) =>
+        holds(parts.join("")),
+      ),
+      { numRuns: 30_000 },
+    );
+    fc.assert(
+      fc.property(fc.string({ unit: "binary", maxLength: 40 }), (text) => holds(text)),
+      { numRuns: 10_000 },
     );
   });
 });

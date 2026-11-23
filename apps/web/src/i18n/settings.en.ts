@@ -190,7 +190,7 @@ export const settingsEn = {
   settingsEmailPlaceholder_reviewsLink: "the link to the reviewer's list, “My reviews”",
   settingsEmailPlaceholder_assignmentsLink: "the link to the conference's Assignments page",
   settingsEmailPlaceholder_comments:
-    "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.",
+    "the reviewers' comments for the authors, each under “Reviewer 1”, “Reviewer 2” and so on, with “>” before every line to mark it as their words, and without names or scores; where there are none, one sentence that says so. You can leave it out: the proposal's page shows them too.",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "The text must contain it.",
   settingsEmailBodyOnly: "It cannot go in the subject.",
