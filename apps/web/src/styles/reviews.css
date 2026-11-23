@@ -1,0 +1,230 @@
+/*
+ * The reviewer's screens: "My reviews", the review form under a proposal, a review that was
+ * sent, and "I cannot review this proposal"; and a sent review as a chair reads it.
+ */
+
+/* "My reviews": one conference to a section. */
+.my-reviews {
+  display: grid;
+  gap: 12px;
+}
+
+.my-reviews section {
+  display: grid;
+  gap: 12px;
+}
+
+.my-reviews h2,
+.my-reviews h3,
+.my-reviews p {
+  margin: 0;
+}
+
+.my-reviews .status-line:empty {
+  min-height: 0;
+}
+
+/* The day reviews are due, and how far along the reviewer is. */
+.my-reviews .due {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.my-reviews .cards {
+  margin: 0;
+}
+
+.my-reviews .card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 16px 14px;
+  overflow-wrap: anywhere;
+}
+
+/* A proposal's title is a link, and looks like one: the whole list is there to be opened. */
+.my-reviews .card h3 > a {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+}
+
+/* The format and the language, then where the review stands. */
+.my-reviews .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+/* The chairs' guidelines, folded: open on the list, one press away above a proposal. */
+.guidelines-box {
+  padding: 0 16px;
+  border-radius: var(--radius);
+  background: var(--sunken);
+}
+
+.guidelines-box .guidelines {
+  margin: 0;
+  padding-bottom: 14px;
+}
+
+/* A reviewer's own review, under the proposal. */
+.review {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.review h2,
+.review h3,
+.review p {
+  margin: 0;
+}
+
+.review .status-line:empty {
+  min-height: 0;
+}
+
+.review-form {
+  gap: 14px;
+}
+
+.review-lead {
+  font-weight: 600;
+}
+
+/* What is written under a field's name: the chairs' words, or the app's standard ones. */
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* One criterion's scale: its scores in a row, each a touch target. It wraps if it must. */
+.scale {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.scale-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 48px;
+  min-height: 52px;
+  font-weight: 400;
+}
+
+.scale-choice input {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+/* "Send review" and "Save draft": one under the other on a phone, each the width of the form. */
+.review-actions {
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 40rem) {
+  .review-actions {
+    display: flex;
+  }
+}
+
+/* "Your review was sent": good news, in the tone of a status that went well. */
+.notice.sent {
+  background: var(--tone-good-bg);
+  color: var(--tone-good-text);
+}
+
+/* The scores of a review that was sent: the criterion, then its score at the end of the line. */
+.review-scores > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-scores dt {
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-scores dd {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* What a reviewer wrote, as they wrote it: line breaks kept, a long address wrapped. */
+.review-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review .prose {
+  overflow-wrap: anywhere;
+}
+
+/* "I cannot review this proposal": apart from the review, under it. */
+p.review-cannot {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* A sent review as a chair reads it, under the reviewer who wrote it. */
+.review-read {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--sunken);
+}
+
+.review-read dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.review-read dt {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.review-read dd {
+  margin: 0;
+}
+
+.review-read .score {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-read .score dt {
+  font-weight: 400;
+}
+
+.review-read .score dd {
+  font-weight: 600;
+  white-space: nowrap;
+}

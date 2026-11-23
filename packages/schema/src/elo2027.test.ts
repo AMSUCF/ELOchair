@@ -120,7 +120,8 @@ describe("the ELO 2027 invitation", () => {
   });
 
   it("states its deadlines as the call does: the closing one anywhere on Earth", () => {
-    const stated = (key: keyof typeof config.deadlines) => {
+    // (The four the call states. The day reviews are due is the chairs' to set, later.)
+    const stated = (key: Exclude<keyof typeof config.deadlines, "reviewsDue">) => {
       const { wallClock, clock } = statedDeadline(config.deadlines[key], config.timezone);
       return `${wallClock.toISOString().slice(0, 16)} ${clock}`;
     };

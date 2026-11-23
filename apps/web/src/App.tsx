@@ -13,12 +13,14 @@ import {
 import { ErrorBoundary } from "./ErrorBoundary";
 import { detectLang, isLang, LANG_NAMES, LANGS, LangContext, translate, useT } from "./i18n";
 import { AssignmentsPage } from "./pages/Assignments";
+import { CannotReviewPage } from "./pages/CannotReview";
 import { ConferencePage } from "./pages/Conference";
 import { HomePage } from "./pages/Home";
 import { InvitationPage } from "./pages/Invitation";
 import { ManagePage } from "./pages/Manage";
 import { MePage } from "./pages/Me";
 import { MyPage } from "./pages/My";
+import { MyReviewsPage } from "./pages/MyReviews";
 import { PeoplePage } from "./pages/People";
 import { RoleInvitationPage } from "./pages/RoleInvitation";
 import { SettingsPage } from "./pages/Settings";
@@ -26,6 +28,7 @@ import { SignInPage } from "./pages/SignIn";
 import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
+import { useReviews } from "./session";
 import { FOOTER_SLOT, FocusPending, PageHeading } from "./ui";
 
 export function App() {
@@ -39,12 +42,14 @@ export function App() {
         <Route path="auth/verify" element={<VerifyPage />} />
         <Route path="me" element={<MePage />} />
         <Route path="my" element={<MyPage />} />
+        <Route path="reviews" element={<MyReviewsPage />} />
         <Route path="c/:slug/submit" element={<StartPage />} />
         <Route path="c/:slug/manage" element={<ManagePage />} />
         <Route path="c/:slug/settings" element={<SettingsPage />} />
         <Route path="c/:slug/people" element={<PeoplePage />} />
         <Route path="c/:slug/assignments" element={<AssignmentsPage />} />
         <Route path="s/:id" element={<SubmissionPage />} />
+        <Route path="s/:id/cannot-review" element={<CannotReviewPage />} />
         <Route path="invitation" element={<InvitationPage />} />
         <Route path="role-invitation" element={<RoleInvitationPage />} />
       </Route>
@@ -151,6 +156,8 @@ function Shell() {
   // slug is only set on /c/:slug routes; dressed is undefined for a plain conference, and on
   // home, which says itself whose identity it wears while it is an invitation (Home.tsx).
   const dressed = slug ? dressedAs(slug) : undefined;
+  // "My reviews" is for people who review somewhere: nobody else is shown the link.
+  const reviews = useReviews();
 
   // A route change (not the first load) asks the next page heading to take focus, so screen
   // reader and keyboard users land on the new content. Set during render, before child effects.
@@ -193,6 +200,7 @@ function Shell() {
             <nav aria-label={t("navMain")} className="site-nav">
               {/* NavLink marks the current page (aria-current="page"). */}
               <NavLink to={`/${lang}/my`}>{t("navMySubmissions")}</NavLink>
+              {reviews && <NavLink to={`/${lang}/reviews`}>{t("navMyReviews")}</NavLink>}
               <NavLink to={`/${lang}/me`}>{t("navAccount")}</NavLink>
             </nav>
             <nav aria-label={t("navLanguage")}>

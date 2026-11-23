@@ -1,10 +1,11 @@
-import type { ConferenceConfig } from "@elochair/schema";
+import type { ConferenceConfig, ReviewPool } from "@elochair/schema";
 import { effectiveBlindMode, localize, reviewersCanRead } from "@elochair/schema/pure";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   type ApiResult,
   api,
+  type ChairReview,
   type ProposalReviewers,
   type ReviewerCandidate,
   type RoleHolder,
@@ -20,6 +21,11 @@ import { useHashTarget } from "../ui";
  * committee that reviews its format. The server decides who is offered and refuses anyone else;
  * this page shows what arrives.
  *
+ * It is also where a chair reads the reviews (spec 03, §1.4): each one in full, under the
+ * reviewer who wrote it, once it is sent. Until then nothing here says whether a reviewer has
+ * begun: a draft is theirs alone. A reviewer whose review is sent stays on the proposal, and
+ * whoever said they could not review it is listed with their reason and their note.
+ *
  * Assigning someone who is offered takes one press. Two things ask first, in place, and say
  * what will happen: removing a reviewer, and assigning one who has reached the number of
  * proposals they said they would take.
@@ -30,6 +36,64 @@ const FIND_FROM = 8;
 
 /** Letters without their accents, in lower case: "Lucía" is found by typing "lucia". */
 const folded = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/**
+ * One review, as it was sent: a score for each of the committee's criteria, the recommendation
+ * where the form has one, the comments for the authors, and the note for the chairs.
+ */
+function SentReview({
+  review,
+  name,
+  pool,
+  config,
+}: {
+  review: ChairReview;
+  name: string;
+  pool: ReviewPool | undefined;
+  config: ConferenceConfig;
+}) {
+  const { lang, t } = useT();
+  const text = (value: Record<string, string>) => localize(value, lang, config.defaultLanguage);
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a group with a name; a fieldset is for form controls
+    <div className="review-read" role="group" aria-label={t("reviewersReviewOf", { name })}>
+      <dl>
+        {(pool?.criteria ?? []).map((c) => (
+          <div key={c.key} className="score">
+            <dt>{text(c.label)}</dt>
+            <dd>
+              {review.scores[c.key] === undefined
+                ? t("reviewersNoScore")
+                : t("reviewersScore", { score: review.scores[c.key] ?? 0, max: c.max })}
+            </dd>
+          </div>
+        ))}
+        {(pool?.form.recommendation.enabled || review.recommendation) && (
+          <div className="score">
+            <dt>{t("reviewersRecommendation")}</dt>
+            <dd>
+              {review.recommendation
+                ? t(`recommendation_${review.recommendation}`)
+                : t("reviewersNoRecommendation")}
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>{t("reviewersComments")}</dt>
+          <dd className="review-text">{review.comments}</dd>
+        </div>
+        {(pool?.form.chairNote.enabled || review.chairNote.trim() !== "") && (
+          <div>
+            <dt>{t("reviewersChairNote")}</dt>
+            <dd className="review-text">
+              {review.chairNote.trim() !== "" ? review.chairNote : t("reviewersChairNoteNone")}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+}
 
 /** What a request did, for the page to say. `open`: a confirmation to open, with `text` in it. */
 type Outcome = { ok: true } | { ok: false; keep: boolean; text: string; open?: Asking };
@@ -123,6 +187,14 @@ export function ProposalReviewersSection({
   const called = (p: RoleHolder) => p.displayName ?? p.email;
   const when = (iso: string) => formatDateTime(iso, lang, viewerTimeZone());
   const how = t(`reviewersHow_${effectiveBlindMode(config, typeKey)}`);
+  /** When a review was sent and, if it was changed since, when. */
+  const sentLine = (review: ChairReview) =>
+    review.changedAt
+      ? t("reviewersReviewChanged", {
+          date: when(review.sentAt),
+          changed: when(review.changedAt),
+        })
+      : t("reviewersReviewSent", { date: when(review.sentAt) });
 
   function ask(key: string, opener: string) {
     if (inFlight.current) return;
@@ -207,6 +279,10 @@ export function ProposalReviewersSection({
       if (res.status === 404) {
         return { ok: false, keep: false, text: t("reviewersRemoveGone", { name: called(r) }) };
       }
+      // They sent their review since this page was loaded: it stays, and so do they.
+      if (res.status === 409 && res.error === "review_sent") {
+        return { ok: false, keep: false, text: t("reviewersRemoveSent", { name: called(r) }) };
+      }
       if (res.status === 403) return { ok: false, keep: false, text: t("reviewersNoAccess") };
       if (res.status === 429) return { ok: false, keep: true, text: t("signInRateLimited") };
       return { ok: false, keep: true, text: t("peopleUnconfirmed") };
@@ -222,8 +298,15 @@ export function ProposalReviewersSection({
       {heading}
       <p>
         {t(reviewersCanRead(phase) ? "reviewersDoes_now" : "reviewersDoes_before", { how })}{" "}
-        {t("reviewersNoMail")}
+        {t(
+          phase === "reviewing"
+            ? "reviewersMail_now"
+            : reviewersCanRead(phase)
+              ? "reviewersMail_after"
+              : "reviewersMail_before",
+        )}
       </p>
+      <p>{t("reviewersReviewsIntro")}</p>
       <p>
         {t("reviewersCount", {
           n: data.assigned.filter((r) => !r.blocked).length,
@@ -249,8 +332,15 @@ export function ProposalReviewersSection({
                 <p className="who">{r.displayName ?? t("peopleNoName")}</p>
                 <p className="meta">{r.email}</p>
                 <p className="meta">{t("reviewersAssignedOn", { date: when(r.assignedAt) })}</p>
-                {r.blocked && <p>{t("reviewersBlocked")}</p>}
-                {asking?.key === key ? (
+                {r.blocked && <p>{t(r.review ? "reviewersBlockedSent" : "reviewersBlocked")}</p>}
+                <p>{r.review ? sentLine(r.review) : t("reviewersReviewNone")}</p>
+                {r.review && (
+                  <SentReview review={r.review} name={name} pool={pool} config={config} />
+                )}
+                {r.review ? (
+                  // A sent review is part of the proposal's record: its reviewer stays on it.
+                  <p className="meta">{t("reviewersKept")}</p>
+                ) : asking?.key === key ? (
                   <Ask
                     level="h3"
                     question={t("reviewersAskRemove", { name })}
@@ -263,7 +353,8 @@ export function ProposalReviewersSection({
                     <p>
                       {t("reviewersRemoveDoes", { name })}
                       {/* True only of a proposal that still takes reviewers. */}
-                      {data.takes !== "not_under_consideration" && ` ${t("reviewersRemoveAgain")}`}
+                      {data.takes !== "not_under_consideration" && ` ${t("reviewersRemoveAgain")}`}{" "}
+                      {t("reviewersRemoveDraft")}
                     </p>
                   </Ask>
                 ) : (
@@ -283,6 +374,46 @@ export function ProposalReviewersSection({
             );
           })}
         </ul>
+      )}
+
+      {data.otherReviews.length > 0 && (
+        <>
+          <h3 id="reviewers-other">{t("reviewersOtherTitle")}</h3>
+          <p className="meta">{t("reviewersOtherIntro")}</p>
+          <ul className="roster" aria-labelledby="reviewers-other">
+            {data.otherReviews.map((r) => (
+              <li key={r.personId}>
+                <p className="who">{r.displayName ?? t("peopleNoName")}</p>
+                <p className="meta">{r.email}</p>
+                <p>{sentLine(r.review)}</p>
+                <SentReview review={r.review} name={called(r)} pool={pool} config={config} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {data.declined.length > 0 && (
+        <>
+          <h3 id="reviewers-declined">{t("reviewersDeclinedTitle")}</h3>
+          <ul className="roster" aria-labelledby="reviewers-declined">
+            {data.declined.map((d) => (
+              <li key={`${d.personId}-${d.at}`}>
+                <p className="who">{d.displayName ?? t("peopleNoName")}</p>
+                <p className="meta">{d.email}</p>
+                <p>
+                  {t(`reviewersDeclined_${d.reason}`)}{" "}
+                  <span className="meta">{t("reviewersDeclinedOn", { date: when(d.at) })}</span>
+                </p>
+                {d.note && (
+                  <p>
+                    {t("reviewersDeclinedNote")} <span className="review-text">{d.note}</span>
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <h3 id="reviewers-assign">{t("reviewersAssignTitle")}</h3>

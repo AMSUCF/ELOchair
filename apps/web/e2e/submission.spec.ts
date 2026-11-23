@@ -71,7 +71,11 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.getByLabel("Email address").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByText("Check your email.")).toBeVisible();
-  const code = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, email)).text);
+  // The sign-in email, by its kind: other email may reach the same address meanwhile.
+  const mail = await request.get(
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+  );
+  const code = /\b(\d{4}) (\d{4})\b/.exec(((await mail.json()) as { text: string }).text);
   await page.getByLabel("Code from the email").fill(`${code?.[1]}${code?.[2]}`);
   await page.getByRole("button", { name: "Sign in with code" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
@@ -1256,17 +1260,20 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await page.unroute(isSearch);
 
   // A chair moves the phase from here, one step at a time, after a confirmation that says what
-  // the phase does. Only the sandbox is moved (other tests depend on the other conferences),
-  // and it is left "In review", as it was seeded.
-  const PHASE = "/api/conferences/sandbox/phase";
+  // the phase does. Only the phase room is moved: an empty conference seeded in review for
+  // this. Other tests depend on the phase of every other conference, the sandbox among them,
+  // whose reviewers write their reviews beside this test (review.spec.ts), which they can only
+  // while it is in review. The room is left "In review", as it was seeded.
+  const ROOM = "phase-room";
+  const PHASE = `/api/conferences/${ROOM}/phase`;
   const phaseNow = async () =>
-    ((await (await page.request.get("/api/conferences/sandbox")).json()) as { phase: string })
+    ((await (await page.request.get(`/api/conferences/${ROOM}`)).json()) as { phase: string })
       .phase;
   const sent: unknown[] = [];
   page.on("request", (r) => {
     if (r.method() === "PUT" && new URL(r.url()).pathname === PHASE) sent.push(r.postDataJSON());
   });
-  await page.goto("/en/c/sandbox/manage");
+  await page.goto(`/en/c/${ROOM}/manage`);
   const phase = page.getByRole("region", { name: "Conference phase" });
   const shows = (name: string) =>
     expect(phase.getByText(`The conference is in the phase “${name}”.`)).toBeVisible();
@@ -1331,7 +1338,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   ).toBeFocused();
   await expect(
     phase.getByText(
-      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them.",
+      "The call is closed whatever the dates say: nobody can start, edit or submit a proposal, or confirm an invitation, but a submitted proposal can still be withdrawn. Reviewers can open the proposals assigned to them, and are emailed about those already assigned, as often as each has chosen.",
     ),
   ).toBeVisible();
   const reason = phase.getByLabel("Reason for going back");
@@ -1391,7 +1398,7 @@ test("a chair finds the submissions, opens one and downloads both CSV files", as
   await expect(said).toBeFocused();
   await shows("Decisions in progress");
   await expectAccessible(page);
-  // And back, to leave the sandbox as it was found.
+  // And back, to leave the room as it was found.
   await phase.getByRole("button", { name: "Go back to “In review”" }).click();
   await reason.fill("Left as it was found");
   await takeBack.click();

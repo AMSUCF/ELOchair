@@ -1,13 +1,16 @@
 import {
   type ConferenceConfig,
   callState,
+  type DeclineReason,
   findType,
   type Person,
+  type Review,
   type ReviewPool,
   type Submission,
 } from "@elochair/schema";
 import { isConflicted, type SubmissionContext, submissionAccess } from "./access";
 import { assignedCount, byName, canManagePeople, type RoleHolder } from "./people";
+import { type ChairReview, chairReview, type ReviewDecline } from "./reviews";
 import type { PersonViewer, Viewer } from "./viewer";
 
 /*
@@ -24,6 +27,10 @@ import type { PersonViewer, Viewer } from "./viewer";
  *   of releases is kept apart, and one thing of it is handed over: who left a proposal because
  *   of a conflict, so that they are never offered for it again.
  * - A reviewer's load is counted as the chair looking may know it (assignedCount).
+ *
+ * The same views carry the reviews (spec 03, §1.4): a sent review is shown, in full and with
+ * its reviewer, to a chair who manages the proposal, and counted for them. A draft is not a
+ * chair's to see or to count: these views are handed sent reviews, and read no others.
  */
 
 /**
@@ -89,7 +96,24 @@ export type ReviewersRecord = {
    * never offered for it again. Nothing else of the record of releases is known here.
    */
   conflictReleased: ReadonlyMap<string, readonly string[]>;
+  /**
+   * The conference's reviews that were sent. A draft is its reviewer's own and is not handed
+   * over; one that is handed over all the same is read nowhere here.
+   */
+  reviews: readonly Review[];
+  /** Who said they could not review which proposal, with the reason and their note. */
+  declines: readonly ReviewDecline[];
 };
+
+/** The sent reviews of one proposal, in the order they were first sent. */
+export function sentReviews(rec: Pick<ReviewersRecord, "reviews">, submissionId: string): Review[] {
+  return rec.reviews
+    .filter((r) => r.submissionId === submissionId && r.status === "sent" && r.sentAt !== null)
+    .sort(
+      (a, b) =>
+        Date.parse(a.sentAt ?? "") - Date.parse(b.sentAt ?? "") || a.id.localeCompare(b.id, "en"),
+    );
+}
 
 /** Whether someone can be assigned to a proposal: offered, there already, or neither. */
 export type ReviewerOffer = "offered" | "assigned" | "not_offered";
@@ -159,6 +183,18 @@ export type AssignedReviewer = RoleHolder & {
    * are shown so that a chair can remove them.
    */
   blocked: boolean;
+  /**
+   * Their review, once it is sent; null until then, whether or not they have begun one. A
+   * reviewer whose review is sent is not removed from the proposal: it is part of its record.
+   */
+  review: ChairReview | null;
+};
+
+/** Someone who said they could not review the proposal: why, and what they wrote for the chairs. */
+export type DeclinedReviewer = RoleHolder & {
+  reason: DeclineReason;
+  note: string | null;
+  at: string;
 };
 
 /** The Reviewers section of a proposal's page, for a chair who manages the proposal. */
@@ -171,6 +207,13 @@ export type ProposalReviewers = {
   needed: number;
   /** Everyone assigned to it, by name: those who can no longer review it are marked `blocked`. */
   assigned: AssignedReviewer[];
+  /**
+   * Sent reviews by people who are not assigned to it (any more). The app leaves none: a sent
+   * review keeps its assignment. One that exists all the same is still the proposal's.
+   */
+  otherReviews: (RoleHolder & { review: ChairReview })[];
+  /** Who said they could not review it, the latest first. */
+  declined: DeclinedReviewer[];
   /** Whether a reviewer can be assigned now, or why not. */
   takes: TakesReviewers;
   /** Who can be assigned, by name, those who have reached their number last. Empty unless `takes` is "yes". */
@@ -231,6 +274,13 @@ export function projectProposalReviewers(
           .map((id) => reviewerCandidate(viewer, rec, ctx, id))
           .filter((c): c is ReviewerCandidate => c !== null)
       : [];
+  const sent = new Map(
+    sentReviews(rec, ctx.submission.id).flatMap((r) => {
+      const shown = chairReview(ctx, r);
+      return shown ? [[r.reviewerId, shown] as const] : [];
+    }),
+  );
+  const assignedIds = new Set(ctx.assignments.map((a) => a.reviewerId));
   return {
     view: "proposal_reviewers",
     submissionId: ctx.submission.id,
@@ -241,8 +291,18 @@ export function projectProposalReviewers(
         ...holder(rec, a.reviewerId),
         assignedAt: a.createdAt,
         blocked: !couldReview(rec, ctx, a.reviewerId),
+        review: sent.get(a.reviewerId) ?? null,
       })),
     ),
+    otherReviews: byName(
+      [...sent]
+        .filter(([reviewerId]) => !assignedIds.has(reviewerId))
+        .map(([reviewerId, review]) => ({ ...holder(rec, reviewerId), review })),
+    ),
+    declined: rec.declines
+      .filter((d) => d.submissionId === ctx.submission.id)
+      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+      .map((d) => ({ ...holder(rec, d.reviewerId), reason: d.reason, note: d.note, at: d.at })),
     takes,
     candidates: [
       ...byName(candidates.filter((c) => !c.full)),
@@ -260,6 +320,8 @@ export type AssignmentsProposal = {
   reviewers: RoleHolder[];
   /** It has fewer such reviewers than its pool asks for. */
   short: boolean;
+  /** How many reviews of it were sent. Drafts are not counted: they are their reviewers' own. */
+  sent: number;
 };
 
 /** One pool on the Assignments page: its totals, and its proposals. */
@@ -270,7 +332,12 @@ export type AssignmentsPool = {
   /** How many proposals are listed, and how many of them are still short of reviewers. */
   proposals: number;
   short: number;
-  /** Those still short first; then as they were created (assignmentsPosition). */
+  /** How many have their reviewers and fewer sent reviews than the pool asks for. */
+  waiting: number;
+  /**
+   * Those still short of reviewers first, then those that have them and still wait for
+   * reviews, then the rest; each as they were created (assignmentsPosition).
+   */
   items: AssignmentsProposal[];
 };
 
@@ -287,16 +354,29 @@ export type AssignmentsView = {
   pools: AssignmentsPool[];
 };
 
+/** 0: still short of reviewers. 1: has them, and waits for reviews. 2: has its reviews. */
+export type AssignmentsRank = 0 | 1 | 2;
+
 /**
- * Where a proposal stands in its pool's list: those still short of reviewers first, then by
- * when it was created, then by id. The server pages the list by this position.
+ * Where a proposal stands in its pool's list: those still short of reviewers first, then those
+ * with fewer sent reviews than the pool asks for, then the rest; within each by when it was
+ * created, then by id. The server pages the list by this position.
  */
-export type AssignmentsPosition = readonly [rank: 0 | 1, createdMs: number, id: string];
+export type AssignmentsPosition = readonly [rank: AssignmentsRank, createdMs: number, id: string];
+
+/** Whether a listed proposal has fewer sent reviews than its pool asks for. */
+export const waitsForReviews = (item: Pick<AssignmentsProposal, "sent">, needed: number) =>
+  item.sent < needed;
+
+export const assignmentsRank = (
+  item: Pick<AssignmentsProposal, "short" | "sent">,
+  needed: number,
+): AssignmentsRank => (item.short ? 0 : waitsForReviews(item, needed) ? 1 : 2);
 
 export const assignmentsPosition = (
-  short: boolean,
+  rank: AssignmentsRank,
   s: Pick<Submission, "createdAt" | "id">,
-): AssignmentsPosition => [short ? 0 : 1, Date.parse(s.createdAt), s.id];
+): AssignmentsPosition => [rank, Date.parse(s.createdAt), s.id];
 
 /** Whether position `a` comes after position `b` in a pool's list. */
 export function assignmentsAfter(a: AssignmentsPosition, b: AssignmentsPosition): boolean {
@@ -332,15 +412,20 @@ export function projectAssignments(
             .map((a) => holder(rec, a.reviewerId)),
         );
         const short = reviewers.length < pool.reviewsPerSubmission;
+        const item: AssignmentsProposal = {
+          id: s.submission.id,
+          title: s.submission.title,
+          typeKey: s.submission.typeKey,
+          reviewers,
+          short,
+          sent: sentReviews(rec, s.submission.id).length,
+        };
         return {
-          position: assignmentsPosition(short, s.submission),
-          item: {
-            id: s.submission.id,
-            title: s.submission.title,
-            typeKey: s.submission.typeKey,
-            reviewers,
-            short,
-          },
+          position: assignmentsPosition(
+            assignmentsRank(item, pool.reviewsPerSubmission),
+            s.submission,
+          ),
+          item,
         };
       })
       .sort((a, b) =>
@@ -355,6 +440,7 @@ export function projectAssignments(
       needed: pool.reviewsPerSubmission,
       proposals: listed.length,
       short: listed.filter((x) => x.item.short).length,
+      waiting: listed.filter((x) => x.position[0] === 1).length,
       items: listed.map((x) => x.item),
     };
   });

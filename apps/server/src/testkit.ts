@@ -97,7 +97,7 @@ export async function signIn(t: TestApp, email: string, lang = "en"): Promise<st
   const mail = await call(
     t.public,
     "GET",
-    `/api/_test/outbox/latest?to=${encodeURIComponent(email)}`,
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
   );
   const token = /#token=([A-Za-z0-9_-]+)/.exec(mail.json.text)?.[1];
   if (!token) throw new Error("no token in email");

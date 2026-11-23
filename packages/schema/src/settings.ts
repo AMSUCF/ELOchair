@@ -76,6 +76,20 @@ const STAGE_ONE = [
   { id: "placeholder", pattern: "placeholder", kind: "bool" },
   { id: "deadlines.submissionsOpen", pattern: "deadlines.submissionsOpen", kind: "datetime" },
   { id: "deadlines.submissionsClose", pattern: "deadlines.submissionsClose", kind: "datetime" },
+  {
+    id: "deadlines.reviewsDue",
+    pattern: "deadlines.reviewsDue",
+    kind: "datetime",
+    optional: true,
+  },
+  // Beside the day reviews are due on the screen, though it is kept among the rules: a number
+  // of days is no deadline, and every reader of `deadlines` takes each of them for an instant.
+  {
+    id: "rules.reviewReminderDays",
+    pattern: "rules.reviewReminderDays",
+    kind: "int",
+    optional: true,
+  },
   { id: "deadlines.notification", pattern: "deadlines.notification", kind: "datetime" },
   { id: "deadlines.finalMaterials", pattern: "deadlines.finalMaterials", kind: "datetime" },
   { id: "rules.presenterCap.max", pattern: "rules.presenterCap.max", kind: "int" },
@@ -147,8 +161,52 @@ const STAGE_ONE = [
     optional: true,
   },
   { id: "criterion.label", pattern: "reviewPools.*.criteria.*.label.@", kind: "text" },
+  {
+    id: "criterion.description",
+    pattern: "reviewPools.*.criteria.*.description.@",
+    kind: "longtext",
+    optional: true,
+  },
   { id: "criterion.min", pattern: "reviewPools.*.criteria.*.min", kind: "int" },
   { id: "criterion.max", pattern: "reviewPools.*.criteria.*.max", kind: "int" },
+  // The fixed part of a pool's review form (ReviewFormConfig): each part is there in every
+  // configuration that has been read, so each of these is offered, written or not.
+  {
+    id: "form.comments.description",
+    pattern: "reviewPools.*.form.comments.description.@",
+    kind: "longtext",
+    optional: true,
+  },
+  {
+    id: "form.comments.minWords",
+    pattern: "reviewPools.*.form.comments.minWords",
+    kind: "int",
+    optional: true,
+  },
+  {
+    id: "form.comments.maxWords",
+    pattern: "reviewPools.*.form.comments.maxWords",
+    kind: "int",
+    optional: true,
+  },
+  { id: "form.chairNote.enabled", pattern: "reviewPools.*.form.chairNote.enabled", kind: "bool" },
+  {
+    id: "form.chairNote.description",
+    pattern: "reviewPools.*.form.chairNote.description.@",
+    kind: "longtext",
+    optional: true,
+  },
+  {
+    id: "form.recommendation.enabled",
+    pattern: "reviewPools.*.form.recommendation.enabled",
+    kind: "bool",
+  },
+  {
+    id: "form.recommendation.description",
+    pattern: "reviewPools.*.form.recommendation.description.@",
+    kind: "longtext",
+    optional: true,
+  },
   { id: "message.subject", pattern: "messages.#.subject.@", kind: "text", optional: true },
   { id: "message.body", pattern: "messages.#.body.@", kind: "longtext", optional: true },
   { id: "agreement.title", pattern: "agreements.*.title.@", kind: "text" },
@@ -200,6 +258,9 @@ const isKeyed = (v: unknown): v is ({ key: string } & Record<string, unknown>)[]
  *   on a field of such a kind, although the schema would take it on any field.
  * - A rule the conference does not have (no presenter cap, no bio rule) has no setting: adding
  *   one is not a change of value.
+ * - The day reviews are due, and every part of a pool's review form, are offered whether or not
+ *   the conference has set them: an optional deadline is a leaf, and the form's parts are in
+ *   every configuration that has been read (ReviewFormConfig).
  * - The subject and the body of every email the app sends are offered, written or not, in all
  *   three languages the app writes mail in, the conference's main language first
  *   (mailLanguagesFor). Mail goes out in each of them whatever the conference's languages are,

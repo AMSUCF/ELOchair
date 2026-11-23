@@ -1,13 +1,15 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, type Issue, type Me, type Profile } from "../api";
+import { api, type EmailChoices, type Issue, type Me, type Profile } from "../api";
 import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { conferenceRoleKey } from "../labels";
+import { sessionChanged } from "../session";
 import { PageHeading } from "../ui";
 import { sortUnsaved, type UnsavedValues } from "../unsaved";
 import { useApi } from "../useApi";
 import { forgetUnsaved, useUnsaved } from "../useUnsaved";
+import { EmailChoicesSection } from "./EmailChoices";
 
 const TEXT_KEYS = [
   "displayName",
@@ -90,11 +92,13 @@ export function MePage() {
   const { lang, t } = useT();
   const navigate = useNavigate();
   const res = useApi<Me>("/api/me");
+  // Asked for with the account, so that the page is drawn once, with everything on it.
+  const choices = useApi<{ conferences: EmailChoices[] }>("/api/me/notifications");
   const [signOutFailed, setSignOutFailed] = useState(false);
   /** The profile as the last save returned it (newer than the page load). */
   const [saved, setSaved] = useState<Profile | null>(null);
 
-  if (!res) return <p role="status">{t("loading")}</p>;
+  if (!res || !choices) return <p role="status">{t("loading")}</p>;
   if (!res.ok || res.data.kind !== "person") {
     return (
       <>
@@ -115,6 +119,7 @@ export function MePage() {
     if (out.ok) {
       // Unsaved text must not wait in this browser for whoever uses it next.
       if (person) forgetUnsaved(person.id);
+      sessionChanged();
       navigate(`/${lang}/`);
     } else setSignOutFailed(true);
   }
@@ -143,6 +148,11 @@ export function MePage() {
             </li>
           ))}
         </ul>
+      )}
+      {choices.ok ? (
+        <EmailChoicesSection conferences={choices.data.conferences} />
+      ) : (
+        <p role="alert">{t("emailsLoadFailed")}</p>
       )}
       <ProfileForm initial={me.person} onSaved={setSaved} />
       <p>

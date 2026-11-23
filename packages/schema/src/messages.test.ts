@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { ConferenceConfig, type ConferenceConfigInput, ContributionRole } from "./config";
+import {
+  ConferenceConfig,
+  type ConferenceConfigInput,
+  ContributionRole,
+  readStoredConfig,
+  withoutUnknownEmails,
+} from "./config";
 import { LIMITS, ROLE_INVITATIONS } from "./limits";
 import {
   ANSWER_WORDS,
   type ConferenceMessages,
   committeeList,
+  DECLINE_REASON_WORDS,
   fillMessage,
   fillPlaceholders,
   formatDeadline,
@@ -22,9 +29,12 @@ import {
   placeholdersIn,
   placeholdersOf,
   ROLE_WORDS,
+  reasonList,
+  reviewsDueSentence,
   UNNAMED_OWNER,
 } from "./messages";
 import { MESSAGES_BEFORE, type MessageBefore } from "./messages.before";
+import { DECLINE_REASONS, type DeclineReason } from "./reviewForm";
 
 /*
  * The emails the app sends (spec 02, §1.9): the standard texts, what a text may name, which text
@@ -53,6 +63,17 @@ function valuesOf(c: MessageBefore): Record<string, string> {
     link: input("link"),
     // The names a reviewer's invitation was called with, " | " between them.
     committees: c.cleaned?.committees ?? committeeList(input("committees").split(" | ")),
+    // The four emails of the review phase: a number, the two links, and what the server makes
+    // of the day reviews are due and of the reasons a proposal was given back for.
+    count: input("count"),
+    choices: input("choices"),
+    due: reviewsDueSentence(c.input.deadline, c.lang),
+    reason: reasonList(
+      input("reasons")
+        .split(" | ")
+        .filter((r): r is DeclineReason => (DECLINE_REASONS as readonly string[]).includes(r))
+        .map((r) => DECLINE_REASON_WORDS[c.lang][r]),
+    ),
   };
 }
 
@@ -115,7 +136,7 @@ describe("the standard texts", () => {
 });
 
 describe("the messages", () => {
-  it("are these eight, by keys that are stored and never renamed", () => {
+  it("are these twelve, by keys that are stored and never renamed", () => {
     expect(MESSAGE_KEYS).toEqual([
       "invitation",
       "submission_received",
@@ -125,6 +146,10 @@ describe("the messages", () => {
       "draft_deleted",
       "reviewer_invitation",
       "chair_invitation",
+      "new_assignments",
+      "review_reminder",
+      "reviewer_declined",
+      "reviews_complete",
     ]);
     for (const key of MESSAGE_KEYS) expect(key).toMatch(/^[a-z]+(_[a-z]+)*$/);
     expect(Object.keys(MESSAGES)).toEqual([...MESSAGE_KEYS]);
@@ -179,6 +204,30 @@ describe("the messages", () => {
         placeholders: ["conference", "link"],
         required: ["link"],
         bodyOnly: ["link"],
+        names: [],
+      },
+      new_assignments: {
+        placeholders: ["count", "conference", "due", "link", "choices"],
+        required: ["link", "choices"],
+        bodyOnly: ["link", "choices"],
+        names: [],
+      },
+      review_reminder: {
+        placeholders: ["count", "conference", "due", "link", "choices"],
+        required: ["link", "choices"],
+        bodyOnly: ["link", "choices"],
+        names: [],
+      },
+      reviewer_declined: {
+        placeholders: ["count", "reason", "conference", "link", "choices"],
+        required: ["link", "choices"],
+        bodyOnly: ["link", "choices"],
+        names: [],
+      },
+      reviews_complete: {
+        placeholders: ["count", "conference", "link", "choices"],
+        required: ["link", "choices"],
+        bodyOnly: ["link", "choices"],
         names: [],
       },
     });
@@ -855,6 +904,158 @@ describe("the invitations to a role", () => {
   });
 });
 
+describe("the emails of the review phase", () => {
+  const REVIEW_KEYS = [
+    "new_assignments",
+    "review_reminder",
+    "reviewer_declined",
+    "reviews_complete",
+  ] as const;
+  const LINK = "https://chair.example.org/en/reviews";
+  const CHOICES = "https://chair.example.org/en/me#emails";
+
+  it("carry nothing a person typed: no title, no author, no reviewer, no word of a review", () => {
+    const typed = [
+      "title",
+      "abstract",
+      "owner",
+      "person",
+      "name",
+      "author",
+      "reviewer",
+      "chair",
+      "email",
+      "note",
+      "comments",
+      "format",
+      "committees",
+    ];
+    for (const key of REVIEW_KEYS) {
+      const { placeholders, names } = MESSAGES[key];
+      for (const name of typed) expect(placeholders, `${key} ${name}`).not.toContain(name);
+      // None of what they carry is a name a person typed.
+      expect([...names], key).toEqual([]);
+      for (const name of typed) {
+        expect(messageProblems(key, "body", `{${name}}\n\n{link}\n\n{choices}`), name).toEqual([
+          { code: "message_unknown_placeholder", values: { names: `{${name}}` } },
+        ]);
+      }
+    }
+    // What they do carry: a number, the conference, a day or a reason, and the two links.
+    expect(
+      [...new Set(REVIEW_KEYS.flatMap((key) => [...MESSAGES[key].placeholders]))].sort(),
+    ).toEqual(["choices", "conference", "count", "due", "link", "reason"]);
+  });
+
+  it("require the link to the work and the link to the reader's choices, each standing apart", () => {
+    for (const key of REVIEW_KEYS) {
+      expect([...MESSAGES[key].required], key).toEqual(["link", "choices"]);
+      expect(messageProblems(key, "body", "{count}\n{link}\n{choices}"), key).toEqual([]);
+      expect(messageProblems(key, "body", "{count} at {conference}:\n{link}"), key).toEqual([
+        { code: "message_missing_placeholder", values: { names: "{choices}" } },
+      ]);
+      expect(messageProblems(key, "body", "Change it here:\n{choices}"), key).toEqual([
+        { code: "message_missing_placeholder", values: { names: "{link}" } },
+      ]);
+      // Whatever touches an address may be taken for part of it: either of the two.
+      expect(messageProblems(key, "body", "{link}\n\nChoices: {choices}."), key).toEqual([
+        { code: "message_link_touched", values: { names: "{choices}" } },
+      ]);
+      expect(messageProblems(key, "body", "({link})\n\n{choices}"), key).toEqual([
+        { code: "message_link_touched", values: { names: "{link}" } },
+      ]);
+      expect(messageProblems(key, "body", "{link}{choices}"), key).toEqual([
+        { code: "message_link_touched", values: { names: "{link}, {choices}" } },
+      ]);
+    }
+  });
+
+  it("keep both links out of a subject, and are never given them there", () => {
+    for (const key of REVIEW_KEYS) {
+      expect([...MESSAGES[key].bodyOnly], key).toEqual(["link", "choices"]);
+      expect(
+        messageProblems(key, "subject", "{conference}: {count} {link} {choices}"),
+        key,
+      ).toEqual([{ code: "message_not_in_subject", values: { names: "{link}, {choices}" } }]);
+      const values = { count: "2", conference: "Made-up Meeting", link: LINK, choices: CHOICES };
+      expect(fillMessage(key, "subject", "{conference} {count} {link} {choices}", values)).toBe(
+        "Made-up Meeting 2 {link} {choices}",
+      );
+      expect(fillMessage(key, "body", "{conference} {count}\n{link}\n{choices}", values)).toBe(
+        `Made-up Meeting 2\n${LINK}\n${CHOICES}`,
+      );
+    }
+  });
+
+  it("say in each language why the person got it, and where to change that", () => {
+    const why: Record<MailLang, RegExp> = {
+      en: /^You are getting this (email|reminder) because you (review for|are a chair of) \{conference\}/m,
+      es: /^Recibes este (correo|recordatorio) porque (revisas para|presides) \{conference\}/m,
+      pt: /^Recebe este (email|lembrete) porque (revê para|preside a) \{conference\}/m,
+    };
+    for (const key of REVIEW_KEYS) {
+      for (const lang of MAIL_LANGUAGES) {
+        const { body } = MESSAGES[key].standard[lang];
+        expect(body, `${key} ${lang}`).toMatch(why[lang]);
+        // The last thing in it is the link to the choices, on a line of its own.
+        expect(body.endsWith("\n\n{choices}"), `${key} ${lang}`).toBe(true);
+      }
+    }
+  });
+
+  it("have a word for each reason a proposal is given back for, in each language", () => {
+    for (const lang of MAIL_LANGUAGES) {
+      expect(Object.keys(DECLINE_REASON_WORDS[lang])).toEqual([...DECLINE_REASONS]);
+      for (const word of Object.values(DECLINE_REASON_WORDS[lang])) {
+        expect(word.trim()).not.toBe("");
+      }
+    }
+    expect(reasonList(["no time"])).toBe("no time");
+    expect(reasonList(["a conflict of interest", "no time"])).toBe(
+      "a conflict of interest; no time",
+    );
+    expect(reasonList([])).toBe("");
+  });
+
+  it("say when reviews are due in a sentence, and say so where no day is set", () => {
+    expect(reviewsDueSentence("March 28, 2031 at 11:59 PM (America/Bogota)", "en")).toBe(
+      "Reviews are due by March 28, 2031 at 11:59 PM (America/Bogota).",
+    );
+    expect(reviewsDueSentence("28 de marzo de 2031", "es")).toBe(
+      "Las revisiones se entregan hasta el 28 de marzo de 2031.",
+    );
+    expect(reviewsDueSentence("28 de março de 2031", "pt")).toBe(
+      "As revisões são entregues até 28 de março de 2031.",
+    );
+    expect(reviewsDueSentence(null, "en")).toBe(
+      "The chairs have not set a day when reviews are due.",
+    );
+    for (const lang of MAIL_LANGUAGES) {
+      for (const none of [null, undefined, ""]) {
+        expect(reviewsDueSentence(none, lang).trim()).not.toBe("");
+        expect(reviewsDueSentence(none, lang)).toBe(reviewsDueSentence(null, lang));
+      }
+    }
+  });
+
+  it("were captured about one thing and about several, with a day and without, for one reason and for all", () => {
+    for (const lang of MAIL_LANGUAGES) {
+      const of = (key: MailMessageKey) =>
+        MESSAGES_BEFORE.filter((c) => c.key === key && c.lang === lang);
+      expect(of("new_assignments").map((c) => [c.input.count, c.input.deadline !== null])).toEqual([
+        ["1", true],
+        ["4", false],
+      ]);
+      expect(of("review_reminder").map((c) => c.input.count)).toEqual(["3"]);
+      expect(of("reviewer_declined").map((c) => [c.input.count, c.input.reasons])).toEqual([
+        ["1", "time"],
+        ["3", DECLINE_REASONS.join(" | ")],
+      ]);
+      expect(of("reviews_complete").map((c) => c.input.count)).toEqual(["2"]);
+    }
+  });
+});
+
 describe("invisible characters in a text", () => {
   it("are refused: a bidi override or a zero-width character can hide or reorder words", () => {
     const invisible = [{ code: "message_invisible" }];
@@ -1216,5 +1417,117 @@ describe("a conference's own wording in its configuration", () => {
       { path: "messages.invitation.body.en", params: { code: "message_invisible" } },
       { path: "messages.draft_deleted" },
     ]);
+  });
+});
+
+/*
+ * Reading a configuration back from where it was stored (readStoredConfig). A later version of
+ * the app may have stored the wording of an email this version does not send: after a
+ * roll-back the conference must still load. Nothing else about reading is any more lenient
+ * than saving, and nothing about saving changes.
+ */
+describe("a stored configuration that holds an email this version does not know", () => {
+  /** An email a later version might add, as that version would have stored its wording. */
+  const LATER = {
+    decision_sent: {
+      subject: { en: "{conference}: a decision on your proposal" },
+      body: { en: "{outcome}\n\n{comments}\n\n{link}" },
+    },
+  };
+  const KNOWN = { draft_deleted: { body: { es: "Olvídalo: {conference}." } } };
+  const stored = (messages: unknown) => ({ ...input, messages });
+  const refusedOnRead = (candidate: unknown) => {
+    try {
+      readStoredConfig(candidate);
+      return [];
+    } catch (err) {
+      return (err as { issues: { path: (string | number)[] }[] }).issues.map((issue) =>
+        issue.path.join("."),
+      );
+    }
+  };
+
+  it("loads without it, and with everything else the configuration holds", () => {
+    const read = readStoredConfig(stored({ ...KNOWN, ...LATER }));
+    expect(read.messages).toEqual(KNOWN);
+    // Everything else is what reading the configuration without that email gives.
+    expect(read).toEqual(ConferenceConfig.parse(stored(KNOWN)));
+    // Whatever the unknown email holds: it is not this version's to judge.
+    for (const anything of [{}, null, "text", 5, { footer: { fr: "\u202E" } }]) {
+      expect(readStoredConfig(stored({ ...KNOWN, made_up: anything })).messages).toEqual(KNOWN);
+    }
+  });
+
+  it("holds no messages at all where that email was the only wording stored", () => {
+    const read = readStoredConfig(stored(LATER));
+    expect(read).not.toHaveProperty("messages");
+    expect(read).toEqual(ConferenceConfig.parse(input));
+    // Stored with nothing in it to begin with is still refused: only what was left out counts.
+    expect(refusedOnRead(stored({}))).toEqual(["messages"]);
+  });
+
+  it("is still refused when it comes in: only reading leaves it out", () => {
+    for (const messages of [LATER, { ...KNOWN, ...LATER }]) {
+      const parsed = ConferenceConfig.safeParse(stored(messages));
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues.map((issue) => issue.path.join("."))).toEqual(["messages"]);
+    }
+  });
+
+  it("leaves out nothing else, and changes nothing where every email is known", () => {
+    const plain = stored(KNOWN);
+    // The very same object where there is nothing to leave out.
+    expect(withoutUnknownEmails(plain)).toBe(plain);
+    expect(withoutUnknownEmails(input)).toBe(input);
+    for (const odd of [null, undefined, "text", 5, [], { messages: [] }, { messages: "x" }]) {
+      expect(withoutUnknownEmails(odd)).toBe(odd);
+    }
+    // Only keys of `messages` itself are looked at, and what is handed in is not changed.
+    const both = stored({ ...KNOWN, ...LATER });
+    const before = JSON.stringify(both);
+    expect(withoutUnknownEmails(both)).toEqual(plain);
+    expect(JSON.stringify(both)).toBe(before);
+    // Every email this version sends is known to it.
+    const every = Object.fromEntries(MESSAGE_KEYS.map((key) => [key, {}]));
+    expect(withoutUnknownEmails({ messages: every })).toEqual({ messages: every });
+  });
+
+  it("refuses on reading whatever is refused on saving, everywhere else", () => {
+    const cases: [string, unknown, string[]][] = [
+      [
+        "an unknown part of an email it sends",
+        { invitation: { footer: { en: "Bye." } } },
+        ["messages.invitation"],
+      ],
+      [
+        "a language the app does not write mail in",
+        { draft_deleted: { body: { fr: "Oubliez." } } },
+        ["messages.draft_deleted.body"],
+      ],
+      [
+        "a text without a placeholder it must hold",
+        { invitation: { body: { en: "You are invited." } } },
+        ["messages.invitation.body.en"],
+      ],
+      [
+        "a placeholder the email does not have",
+        { draft_deleted: { body: { en: "Gone: {title}" } } },
+        ["messages.draft_deleted.body.en"],
+      ],
+      ["an email with nothing written", { draft_deleted: {} }, ["messages.draft_deleted"]],
+    ];
+    for (const [what, messages, paths] of cases) {
+      // On its own, and beside an email this version does not know: leaving that one out
+      // excuses nothing else.
+      for (const candidate of [stored(messages), stored({ ...(messages as object), ...LATER })]) {
+        expect(refusedOnRead(candidate), what).toEqual(paths);
+        expect(ConferenceConfig.safeParse(stored(messages)).success, what).toBe(false);
+      }
+    }
+    // And outside the emails: a configuration that is not one is not read.
+    expect(refusedOnRead({ ...input, messages: LATER, timezone: "Nowhere/At_All" })).toEqual([
+      "timezone",
+    ]);
+    expect(refusedOnRead({ ...input, messages: LATER, reviewPools: [] })).toContain("reviewPools");
   });
 });

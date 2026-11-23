@@ -55,6 +55,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsLabel_placeholder: "Indicar na página do congresso que é provisória",
   settingsLabel_rules_presenterCap_max: "Máximo de papéis principais e de apresentação por pessoa",
   settingsLabel_rules_bio_maxWords: "Máximo de palavras de uma biografia",
+  settingsLabel_rules_reviewReminderDays:
+    "Lembrete a quem revê: dias antes da entrega das revisões",
+  settingsReminderDaysHint:
+    "Opcional. Se ficar vazio, são {days} dias. Esses dias antes do dia de entrega das revisões, a partir das {hour} no fuso horário do congresso, cada pessoa que revê e ainda tem revisões por enviar recebe um email, salvo se o tiver desativado. Não é enviado nenhum lembrete enquanto não houver um dia fixado. Se alterar o dia depois, essas pessoas voltam a ser lembradas antes do novo, salvo se o lembrete desse dia já tiver sido enviado.",
   settingsLabel_type_name: "Nome",
   settingsLabel_type_description: "Descrição",
   settingsLabel_type_abstract_label: "Como se chama o resumo",
@@ -75,6 +79,29 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsLabel_pool_reviewsPerSubmission: "Revisões por proposta",
   settingsLabel_pool_guidelines: "Orientações para quem revê",
   settingsLabel_criterion_label: "Etiqueta",
+  settingsLabel_criterion_description: "Descrição",
+  settingsCriterionDescriptionHint:
+    "Opcional. O que este critério pergunta, ou o que significam a sua pontuação mais baixa e a mais alta. Quem revê lê isto por baixo do nome do critério no formulário de revisão.",
+  settingsFormTitle: "O formulário de revisão",
+  settingsFormIntro:
+    "Por baixo das pontuações, o formulário de revisão desta comissão tem comentários para as pessoas autoras, uma nota apenas para a presidência e uma recomendação geral. Os seus nomes são os da aplicação. O que se escreve por baixo de cada um, os limites dos comentários, e se o formulário tem a nota e a recomendação, é a presidência que decide.",
+  settingsLabel_form_comments_description:
+    "Comentários para as pessoas autoras: o que se escreve por baixo do campo",
+  settingsLabel_form_comments_minWords: "Comentários para as pessoas autoras: mínimo de palavras",
+  settingsLabel_form_comments_maxWords: "Comentários para as pessoas autoras: máximo de palavras",
+  settingsLabel_form_chairNote_enabled: "O formulário tem uma nota apenas para a presidência",
+  settingsLabel_form_chairNote_description:
+    "Nota apenas para a presidência: o que se escreve por baixo do campo",
+  settingsLabel_form_recommendation_enabled:
+    "O formulário pede uma recomendação geral: aceitar, com dúvidas ou rejeitar",
+  settingsLabel_form_recommendation_description:
+    "Recomendação: o que se escreve por baixo do seu nome",
+  settingsFormDescriptionHint:
+    "Opcional. Se ficar vazio, quem revê lê a frase padrão: «{standard}»",
+  settingsFormDescriptionHintNone: "Opcional. Se ficar vazio, nada é escrito aí.",
+  settingsReviewsDueHint:
+    "Opcional. Quem revê vê este dia na sua lista. Não bloqueia nada: as revisões podem ser enviadas e alteradas enquanto o congresso estiver em revisão. Para não fixar nenhum dia, deixe a data vazia.",
+  settingsDeadlineNone: "Não há nenhum dia fixado.",
   settingsLabel_criterion_min: "Pontuação mais baixa",
   settingsLabel_criterion_max: "Pontuação mais alta",
   settingsBlind_double:
@@ -86,7 +113,7 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsGuidelinesHint:
     "Opcional. Quem revê neste grupo vê este texto por cima de cada proposta que lhe é atribuída, no seu idioma se o tiver escrito nesse idioma e, se não, no idioma principal do congresso. As quebras de linha são mantidas.",
   settingsEmailsIntro:
-    "A aplicação envia estes emails às pessoas de uma proposta, e às pessoas que a presidência convida para rever ou para presidir. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
+    "A aplicação envia estes emails às pessoas de uma proposta, às pessoas que a presidência convida para rever ou para presidir, e a quem revê e a quem preside enquanto as propostas são revistas. Pode alterar a sua redação em inglês, espanhol e português. Cada caixa mostra o texto que é enviado: o texto padrão, até o alterar.",
   settingsEmailsNote:
     "Estão cá os três idiomas, sejam quais forem os do congresso, porque cada pessoa recebe o email no seu idioma: alguém pode ser convidado em português para um congresso que decorre em inglês e espanhol. Um idioma que não tenha alterado mantém o texto padrão. Estes textos não são privados: tal como o resto desta configuração, podem ser lidos por qualquer pessoa que possa ver o congresso. O email para entrar é igual para toda a gente e não pode ser alterado aqui.",
   settingsEmail_invitation: "Convite para uma proposta",
@@ -97,6 +124,10 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmail_draft_deleted: "Aviso a quem tinha um convite para um rascunho eliminado",
   settingsEmail_reviewer_invitation: "Convite para rever",
   settingsEmail_chair_invitation: "Convite para presidir",
+  settingsEmail_new_assignments: "Novas atribuições, para quem revê",
+  settingsEmail_review_reminder: "Lembrete antes da entrega das revisões, para quem revê",
+  settingsEmail_reviewer_declined: "Alguém não pode rever uma proposta, para a presidência",
+  settingsEmail_reviews_complete: "Uma proposta tem todas as revisões, para a presidência",
   settingsEmailWhen_invitation:
     "É enviado a uma pessoa quando quem criou uma proposta a inclui nela, e outra vez se lhe voltar a enviar o convite. Essa pessoa ainda não aceitou nada.",
   settingsEmailWhen_submission_received:
@@ -113,6 +144,14 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
     "É enviado a uma pessoa quando alguém da presidência a convida, na página Pessoas, para rever, e outra vez se o convite lhe for enviado de novo. Essa pessoa ainda não aceitou nada, por isso o email não nomeia ninguém: nem quem convida, nem o nome que essa pessoa escreveu para ela.",
   settingsEmailWhen_chair_invitation:
     "É enviado a uma pessoa quando alguém da presidência a convida, na página Pessoas, para presidir, e outra vez se o convite lhe for enviado de novo. Essa pessoa ainda não aceitou nada, por isso o email não nomeia ninguém: nem quem convida, nem o nome que essa pessoa escreveu para ela.",
+  settingsEmailWhen_new_assignments:
+    "É enviado a quem revê quando alguém da presidência lhe atribui propostas enquanto o congresso está em revisão, e pelas propostas atribuídas antes, quando estiver: um email por cada uma, um resumo por dia (a partir das {hour} no fuso horário do congresso) ou nenhum, conforme essa pessoa tiver escolhido em «A sua conta». Diz quantas propostas e nunca quais: não nomeia nenhuma proposta nem nenhuma pessoa autora.",
+  settingsEmailWhen_review_reminder:
+    "É enviado a cada pessoa que revê e tem revisões por enviar, a partir das {hour} no fuso horário do congresso, alguns dias antes do dia de entrega das revisões: {days} dias, salvo se fixar outro número entre os prazos. É enviado uma vez pelo dia que fixar. Não é enviado enquanto não houver um dia fixado, nem a quem tiver desativado os lembretes em «A sua conta».",
+  settingsEmailWhen_reviewer_declined:
+    "É enviado a quem preside ao congresso quando alguém diz que não pode rever uma proposta e a devolve: um email por cada uma, um resumo por dia (a partir das {hour} no fuso horário do congresso) ou nenhum, conforme cada pessoa da presidência tiver escolhido em «A sua conta». Não nomeia nenhuma proposta nem quem revê: quem a devolveu está na página da proposta. Ninguém da presidência recebe um sobre a sua própria proposta nem sobre uma com a qual tem um conflito.",
+  settingsEmailWhen_reviews_complete:
+    "É enviado a quem preside ao congresso quando uma proposta tem tantas revisões enviadas quantas a sua comissão pede: um email por cada uma, um resumo por dia (a partir das {hour} no fuso horário do congresso) ou nenhum, conforme cada pessoa da presidência tiver escolhido em «A sua conta». Não nomeia nenhuma proposta. Ninguém da presidência recebe um sobre a sua própria proposta nem sobre uma com a qual tem um conflito.",
   settingsEmailPlaceholders:
     "Pode pôr estas palavras, com as suas chavetas, no assunto e no texto. Cada uma é substituída quando o email é enviado:",
   settingsEmailPlaceholder_conference: "o título do congresso",
@@ -132,6 +171,20 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   settingsEmailPlaceholder_person:
     "a pessoa que respondeu: o seu nome, ou o seu endereço, como o escreveu quem criou a proposta",
   settingsEmailPlaceholder_answer: "o que essa pessoa fez",
+  settingsEmailPlaceholder_count: "de quantas trata o email",
+  settingsEmailPlaceholder_count_new_assignments:
+    "quantas propostas acabam de ser atribuídas a quem revê",
+  settingsEmailPlaceholder_count_review_reminder: "quantas revisões quem revê ainda não enviou",
+  settingsEmailPlaceholder_count_reviewer_declined: "quantas propostas foram devolvidas",
+  settingsEmailPlaceholder_count_reviews_complete: "quantas propostas já têm todas as revisões",
+  settingsEmailPlaceholder_due:
+    "uma frase que diz quando são entregues as revisões, ou que a presidência não fixou um dia",
+  settingsEmailPlaceholder_reason:
+    "porque é que essa pessoa não a pode rever; num resumo, cada motivo que foi dado",
+  settingsEmailPlaceholder_choices:
+    "o link para as escolhas da pessoa sobre estes emails, em «A sua conta»",
+  settingsEmailPlaceholder_reviewsLink: "o link para a lista de quem revê, «As minhas revisões»",
+  settingsEmailPlaceholder_assignmentsLink: "o link para a página de atribuições do congresso",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "O texto tem de a conter.",
   settingsEmailBodyOnly: "Não pode ficar no assunto.",
@@ -234,6 +287,26 @@ export const settingsPt: Record<keyof typeof settingsEn, string> = {
   issue_settings_no_whole_number:
     "Não há nenhum número inteiro entre este valor e o máximo ao lado, por isso ninguém poderia responder.",
   issue_settings_deadline_order: "Não pode ser anterior ao prazo acima.",
+  issue_settings_reviews_due_order:
+    "As revisões são entregues depois do encerramento das submissões e antes do envio das decisões.",
+  issue_settings_reviews_below_scale:
+    "Revisões já enviadas com uma pontuação mais baixa do que esta: {n}. Uma revisão enviada continua válida, por isso a pontuação mais baixa não pode ficar acima de uma já dada.",
+  issue_settings_reviews_above_scale:
+    "Revisões já enviadas com uma pontuação mais alta do que esta: {n}. Uma revisão enviada continua válida, por isso a pontuação mais alta não pode ficar abaixo de uma já dada.",
+  issue_settings_reviews_have_scores:
+    "Revisões já enviadas que pontuam um critério que isto retiraria: {n}. Uma revisão enviada continua válida.",
+  issue_settings_reviews_too_short:
+    "Revisões já enviadas cujos comentários têm menos palavras do que estas: {n}. Uma revisão enviada continua válida.",
+  issue_settings_reviews_too_long:
+    "Revisões já enviadas cujos comentários têm mais palavras do que estas: {n}. Uma revisão enviada continua válida.",
+  issue_settings_reviews_have_note:
+    "Revisões já enviadas que têm uma nota para a presidência: {n}. A nota não pode ser retirada do formulário enquanto uma revisão enviada tiver uma.",
+  issue_settings_reviews_have_recommendation:
+    "Revisões já enviadas que dão uma recomendação: {n}. Não pode ser retirada do formulário enquanto uma revisão enviada tiver uma.",
+  issue_settings_reviews_sent:
+    "Já foram enviadas revisões de propostas neste formato: {n}. Responderam ao formulário da comissão que o revê agora.",
+  issue_settings_reviews_hidden:
+    "Foi submetida a esta comissão uma proposta sua, ou uma com que tem um conflito, e o congresso já esteve em revisão. Se essa proposta tem revisões, e o que dizem, não lhe cabe saber, por isso também não lhe cabe restringir o formulário em que são escritas. Pode fazer esta alteração uma pessoa da presidência que não tenha uma proposta sua perante esta comissão nem um conflito com alguma. Se não houver nenhuma, convide uma na página Pessoas.",
   issue_settings_dates_order: "O último dia não pode ser anterior ao primeiro.",
   issue_settings_final_before_conference:
     "Os materiais finais têm de ser entregues antes de o congresso começar.",

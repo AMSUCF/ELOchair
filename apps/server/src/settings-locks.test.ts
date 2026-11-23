@@ -2,7 +2,13 @@ import type { ConferenceConfig } from "@elochair/schema";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "./db/client";
-import { assignmentReleases, contributions, reviewerProfiles, submissions } from "./db/schema";
+import {
+  assignmentReleases,
+  contributions,
+  reviewerProfiles,
+  reviews,
+  submissions,
+} from "./db/schema";
 import { fixtureCall, seedTestCall } from "./fixtures";
 import { RateLimiter } from "./ratelimit";
 import { grantRole, lockConference, shareConference } from "./repo";
@@ -19,6 +25,9 @@ import { call, makeTestApp, personId, signIn, type TestApp } from "./testkit";
  * order is written in services/roles.ts and in spec 02, §1.9, and checked here route by route.
  * Assigning a reviewer and releasing one (spec 03, §1.3) are a chair's changes to one proposal:
  * they take the proposal's row first, like a write to it, and then go on like any chair's.
+ * A reviewer's own writes (spec 03, §1.4: a review saved or sent, and "I cannot review this")
+ * take the same three in the same order, and read the reviewer again where a chair's change
+ * reads the chair.
  *
  * The in-memory database runs one transaction at a time, so nothing can be made to wait there.
  * The first part checks what can be seen without waiting: what a save decides after a write has
@@ -713,6 +722,227 @@ describe("what is done as a chair, and the locks it takes", () => {
         .from(assignmentReleases)
         .where(eq(assignmentReleases.reviewerId, reviewerId));
       expect(records.map((r) => r.reason)).toEqual(["chair", "role_removed"]);
+    } finally {
+      // The call is open again, for the tests that write to a proposal.
+      expect(
+        (
+          await asChair("PUT", at(w.slug, "phase"), {
+            phase: "cfp_open",
+            from: "reviewing",
+            force: true,
+            reason: "Back as it was",
+          })
+        ).status,
+      ).toBe(200);
+    }
+  });
+
+  it("a review saved, sent, changed and given back: the proposal's row, the roles lock and the reviewer read again, then the conference's row", async () => {
+    const owner = await w.person("locks-review-author@example.org", "Ava Authorperson");
+    const first2 = await submit(w, owner, await talk(w, owner, "A talk that gets a review"));
+    const second = await submit(w, owner, await talk(w, owner, "A talk that is given back"));
+    const third = await submit(
+      w,
+      owner,
+      await talk(w, owner, "A talk whose draft goes with a role"),
+    );
+    const email = "locks-review-reviewer@example.org";
+    const reviewerCookie = await w.person(email, "Rhea Reviewerperson");
+    const reviewerId = await personId(w.t, email);
+    await grantRole(w.t.db, {
+      conferenceId: w.conferenceId,
+      personId: reviewerId,
+      role: "reviewer",
+      scope: [pool],
+    });
+    await w.t.db
+      .insert(reviewerProfiles)
+      .values({
+        conferenceId: w.conferenceId,
+        personId: reviewerId,
+        pools: [pool],
+        languages: ["en"],
+      })
+      .onConflictDoNothing();
+    // Reviews are written while the conference is in review; reviewers are assigned in it too.
+    expect(
+      (await asChair("PUT", at(w.slug, "phase"), { phase: "reviewing", from: "cfp_open" })).status,
+    ).toBe(200);
+    try {
+      for (const s of [first2, second, third]) {
+        const assigned = await asChair(
+          "POST",
+          at(w.slug, `assignments/submissions/${s.id}/reviewers`),
+          { reviewerId },
+        );
+        expect(assigned.status).toBe(204);
+      }
+      const criteria = fixtureCall.reviewPools[0]?.criteria.map((c) => c.key) ?? [];
+      const content = {
+        scores: Object.fromEntries(criteria.map((key) => [key, 3])),
+        comments: "Clear, and well made.",
+        chairNote: "",
+        recommendation: "accept",
+      };
+      const asReviewer = (method: string, path: string, body: unknown) =>
+        call(w.t.public, method, path, { cookie: reviewerCookie, body });
+      const review = (id: string) => `/api/submissions/${id}/review`;
+      /** Each write in turn: what it is, how it is asked for, its answer, and what it writes first. */
+      const steps: [string, () => Promise<{ status: number }>, number, RegExp | null][] = [
+        [
+          "save a draft",
+          () => asReviewer("PUT", review(first2.id), { version: 0, send: false, ...content }),
+          200,
+          /^insert into "reviews"/,
+        ],
+        [
+          "send it",
+          () => asReviewer("PUT", review(first2.id), { version: 1, send: true, ...content }),
+          200,
+          /^update "reviews"/,
+        ],
+        [
+          "change it",
+          () => asReviewer("PUT", review(first2.id), { version: 2, send: true, ...content }),
+          200,
+          /^update "reviews"/,
+        ],
+        // Refused under the same locks: what is refused was read as it is when others commit.
+        [
+          "save on an old version",
+          () => asReviewer("PUT", review(first2.id), { version: 1, send: true, ...content }),
+          409,
+          null,
+        ],
+        [
+          "say they cannot review another",
+          () => asReviewer("POST", `${review(second.id)}/decline`, { reason: "conflict" }),
+          204,
+          /^delete from "assignments"/,
+        ],
+      ];
+      const WRITES_AS_REVIEWER =
+        /^(insert into|update|delete from) "(reviews|assignments|assignment_releases|conflicts|audit_log)"/;
+      for (const [what, run, status, writes] of steps) {
+        let answered = { status: 0 };
+        const all = await w.t.statements(async () => {
+          answered = await run();
+        });
+        expect(answered.status, what).toBe(status);
+        // Before any lock the request only reads: who asks, and whether they are the
+        // proposal's reviewer at all (someone who is not takes no lock). What decides is read
+        // again under the locks, so what follows looks at the statements from the first lock on.
+        const begins = first(all, LOCKS_PROPOSAL);
+        expect(begins, `${what}: the proposal's row`).toBeGreaterThanOrEqual(0);
+        expect(
+          all.slice(0, begins).filter((q) => !/^select /.test(q) || / for \w/.test(q)),
+          `${what}: only reads before its locks`,
+        ).toEqual([]);
+        const sent = all.slice(begins);
+        const proposal = first(sent, LOCKS_PROPOSAL);
+        // Never "for update": a removal's record of a release must be able to point to it.
+        expect(first(sent, LOCKS_SUBMISSION), what).toBe(-1);
+        const role = first(sent, SHARES_ROLES);
+        const conference = first(sent, SHARES_CONFERENCE);
+        expect(proposal, `${what}: the proposal's row`).toBeGreaterThanOrEqual(0);
+        expect(role, `${what}: the roles lock`).toBeGreaterThan(proposal);
+        // The reviewer's roles are read again after the lock, and before the conference's row.
+        const reread = sent.findIndex((q, i) => i > role && READS_ROLES.test(q));
+        expect(reread, `${what}: reads the reviewer again`).toBeGreaterThan(role);
+        expect(conference, `${what}: the conference's row`).toBeGreaterThan(reread);
+        // Nothing but that one proposal and the conference is locked, and the roles lock is
+        // taken once, shared: a review changes nobody's role.
+        expect(
+          sent.filter((q) => / for (no key update|update|share)$/.test(q)),
+          what,
+        ).toHaveLength(2);
+        expect(
+          sent.filter((q) => /pg_advisory/.test(q)),
+          what,
+        ).toHaveLength(1);
+        expect(
+          sent.filter((q) => LOCKS_ROLES.test(q)),
+          what,
+        ).toEqual([]);
+        // Who is assigned, and the review as it stands, are read only under all three; and
+        // nothing is written before them.
+        expect(first(sent, /from "assignments"/), what).toBeGreaterThan(conference);
+        expect(first(sent, /from "reviews"/), what).toBeGreaterThan(conference);
+        const write = first(sent, WRITES_AS_REVIEWER);
+        if (writes) {
+          expect(write, `${what}: writes after its locks`).toBeGreaterThan(conference);
+          expect(sent[write], what).toMatch(writes);
+        } else {
+          expect(write, `${what}: writes nothing`).toBe(-1);
+        }
+      }
+      // Someone who is not the proposal's reviewer is answered before any lock is taken: they
+      // hold no row and no lock that a reviewer or a chair would wait for, and write nothing.
+      const stranger = await w.person("locks-review-stranger@example.org", "Sam Strangerperson");
+      const asStranger = (method: string, path: string, body: unknown) =>
+        call(w.t.public, method, path, { cookie: stranger, body });
+      const refusals: [string, () => Promise<{ status: number }>][] = [
+        [
+          "a stranger saves",
+          () => asStranger("PUT", review(third.id), { version: 0, send: false, ...content }),
+        ],
+        [
+          "a stranger gives it back",
+          () => asStranger("POST", `${review(third.id)}/decline`, { reason: "time" }),
+        ],
+      ];
+      for (const [what, run] of refusals) {
+        let answered = { status: 0 };
+        const sent = await w.t.statements(async () => {
+          answered = await run();
+        });
+        expect(answered.status, what).toBe(404);
+        expect(
+          sent.filter((q) => / for (no key update|update|share)$/.test(q) || /pg_advisory/.test(q)),
+          `${what}: takes no lock`,
+        ).toEqual([]);
+        expect(first(sent, WRITES_AS_REVIEWER), `${what}: writes nothing`).toBe(-1);
+      }
+
+      // Given back because of a conflict: the release, its record, and then the conflict.
+      const [record] = await w.t.db
+        .select()
+        .from(assignmentReleases)
+        .where(eq(assignmentReleases.submissionId, second.id));
+      expect(record).toMatchObject({
+        reviewerId,
+        reason: "conflict",
+        releasedByPersonId: reviewerId,
+      });
+
+      // Removing the reviewer's role takes the roles lock, exclusive, and no row: under it the
+      // sent review keeps its assignment, and the draft goes with the one that is released.
+      expect(
+        (await asReviewer("PUT", review(third.id), { version: 0, send: false, ...content })).status,
+      ).toBe(200);
+      let removed = { status: 0 };
+      const sent = await w.t.statements(async () => {
+        removed = await asChair("DELETE", PEOPLE(`/${reviewerId}/roles/reviewer`), {
+          assignments: 2,
+          reviews: 1,
+        });
+      });
+      expect(removed.status).toBe(204);
+      const order = expectOrder("remove a reviewer who has reviews", sent, LOCKS_ROLES);
+      expect(sent.filter((q) => / for (no key update|update|share)$/.test(q))).toEqual([]);
+      // Which reviews were sent is read under the lock, before anything is released.
+      const reads = sent.findIndex((q, i) => i > order.role && /from "reviews"/.test(q));
+      expect(reads).toBeGreaterThan(order.role);
+      expect(first(sent, /^delete from "assignments"/)).toBeGreaterThan(reads);
+      expect(first(sent, /^delete from "reviews"/)).toBeGreaterThan(
+        first(sent, /^delete from "assignments"/),
+      );
+      expect(
+        (await w.t.db.select().from(reviews).where(eq(reviews.reviewerId, reviewerId))).map((r) => [
+          r.submissionId,
+          r.status,
+        ]),
+      ).toEqual([[first2.id, "sent"]]);
     } finally {
       // The call is open again, for the tests that write to a proposal.
       expect(

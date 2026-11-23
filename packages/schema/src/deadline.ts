@@ -39,7 +39,7 @@ function minutesOf(offset: string): number {
 }
 
 /** The minutes east of UTC of a time zone at an instant, or null for a zone that is not one. */
-function zoneMinutes(timeZone: string, instant: number): number | null {
+export function zoneMinutes(timeZone: string, instant: number): number | null {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone,

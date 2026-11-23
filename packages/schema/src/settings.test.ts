@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import * as conferences from "./conferences";
 import { ConferenceConfig, type ConferenceConfigInput } from "./config";
+import { REVIEW_EMAILS } from "./limits";
 import { MAIL_LANGUAGES, MESSAGE_KEYS, MESSAGES } from "./messages";
+import { reviewReminderDays, reviewReminderWindow } from "./notifications";
 import {
   configChanges,
   keyedPath,
@@ -52,7 +54,20 @@ const input: ConferenceConfigInput = {
       blindMode: "single",
       reviewsPerSubmission: 1,
       guidelines: { en: "Read it twice.\n\nThen score it.", es: "Léelo dos veces." },
-      criteria: [{ key: "merit", label: { en: "Merit" }, min: 0, max: 10 }],
+      criteria: [
+        {
+          key: "merit",
+          label: { en: "Merit" },
+          description: { en: "0 is no merit at all." },
+          min: 0,
+          max: 10,
+        },
+      ],
+      // The jury's form: comments within limits, worded by its chairs, and no recommendation.
+      form: {
+        comments: { description: { en: "Write to the artist." }, minWords: 20, maxWords: 400 },
+        recommendation: { enabled: false },
+      },
     },
   ],
   tracks: [{ key: "main", name: { en: "Main track" } }],
@@ -328,8 +343,11 @@ describe("the settings of a configuration", () => {
   });
 
   it("has no setting for a rule the conference does not have", () => {
-    expect(paths(settings).filter((p) => p.startsWith("rules."))).toEqual([]);
-    expect(paths(stageOneSettings(fuller)).filter((p) => p.startsWith("rules."))).toEqual([
+    // The days before the reminder are no such rule: an optional number, offered set or not.
+    const rules = (list: Setting[]) =>
+      paths(list).filter((p) => p.startsWith("rules.") && p !== "rules.reviewReminderDays");
+    expect(rules(settings)).toEqual([]);
+    expect(rules(stageOneSettings(fuller))).toEqual([
       "rules.presenterCap.max",
       "rules.bio.maxWords",
     ]);
@@ -477,34 +495,188 @@ describe("the review settings", () => {
     ]);
   });
 
-  it("lists every criterion's label and the two ends of its scale", () => {
+  it("lists every criterion's label, its description and the two ends of its scale", () => {
     const criterion = (pool: string, key: string) =>
       under(`reviewPools.${pool}.criteria.${key}.`).map((s) => [s.id, s.kind, s.path, s.value]);
-    // A scale that the configuration left out is the default one, 1 to 5.
+    const at = "reviewPools.committee.criteria.fit";
+    // A scale that the configuration left out is the default one, 1 to 5. A description is
+    // offered in each language although none is written: it is the chairs' to write.
     expect(criterion("committee", "fit")).toEqual([
-      ["criterion.label", "text", "reviewPools.committee.criteria.fit.label.en", "Fit"],
-      ["criterion.label", "text", "reviewPools.committee.criteria.fit.label.es", undefined],
-      ["criterion.min", "int", "reviewPools.committee.criteria.fit.min", 1],
-      ["criterion.max", "int", "reviewPools.committee.criteria.fit.max", 5],
+      ["criterion.label", "text", `${at}.label.en`, "Fit"],
+      ["criterion.label", "text", `${at}.label.es`, undefined],
+      ["criterion.description", "longtext", `${at}.description.en`, undefined],
+      ["criterion.description", "longtext", `${at}.description.es`, undefined],
+      ["criterion.min", "int", `${at}.min`, 1],
+      ["criterion.max", "int", `${at}.max`, 5],
     ]);
     expect(criterion("committee", "clarity").map(([, , path]) => path)).toEqual([
       "reviewPools.committee.criteria.clarity.label.en",
       "reviewPools.committee.criteria.clarity.label.es",
+      "reviewPools.committee.criteria.clarity.description.en",
+      "reviewPools.committee.criteria.clarity.description.es",
       "reviewPools.committee.criteria.clarity.min",
       "reviewPools.committee.criteria.clarity.max",
     ]);
     expect(criterion("jury", "merit")).toEqual([
       ["criterion.label", "text", "reviewPools.jury.criteria.merit.label.en", "Merit"],
       ["criterion.label", "text", "reviewPools.jury.criteria.merit.label.es", undefined],
+      [
+        "criterion.description",
+        "longtext",
+        "reviewPools.jury.criteria.merit.description.en",
+        "0 is no merit at all.",
+      ],
+      [
+        "criterion.description",
+        "longtext",
+        "reviewPools.jury.criteria.merit.description.es",
+        undefined,
+      ],
       ["criterion.min", "int", "reviewPools.jury.criteria.merit.min", 0],
       ["criterion.max", "int", "reviewPools.jury.criteria.merit.max", 10],
     ]);
-    // That is all there is under a pool: nothing adds, removes or reorders pools or criteria.
-    expect(under("reviewPools.").length).toBe(6 + 4 + 4 + 6 + 4);
+    expect(under("reviewPools.").filter((s) => s.id === "criterion.description")[0]).toMatchObject({
+      optional: true,
+    });
+    // That is all there is under a pool: its own six, six for each criterion, and ten for the
+    // fixed part of its form. Nothing adds, removes or reorders pools or criteria.
+    expect(under("reviewPools.").length).toBe(6 + 6 + 6 + 10 + 6 + 6 + 10);
     // A pool or a criterion the conference does not have has no settings.
     expect(
       paths(settings).filter((p) => /^reviewPools\.(nope|committee\.criteria\.nope)\./.test(p)),
     ).toEqual([]);
+  });
+
+  it("offers the fixed part of each pool's review form, whether or not anything is set", () => {
+    const form = (pool: string) =>
+      under(`reviewPools.${pool}.form.`).map((s) => [
+        s.id,
+        s.kind,
+        s.optional,
+        s.path.slice(`reviewPools.${pool}.form.`.length),
+        s.value,
+      ]);
+    // Nothing set: every limit and description is offered empty, and the form has a note and
+    // a recommendation.
+    expect(form("committee")).toEqual([
+      ["form.comments.description", "longtext", true, "comments.description.en", undefined],
+      ["form.comments.description", "longtext", true, "comments.description.es", undefined],
+      ["form.comments.minWords", "int", true, "comments.minWords", undefined],
+      ["form.comments.maxWords", "int", true, "comments.maxWords", undefined],
+      ["form.chairNote.enabled", "bool", false, "chairNote.enabled", true],
+      ["form.chairNote.description", "longtext", true, "chairNote.description.en", undefined],
+      ["form.chairNote.description", "longtext", true, "chairNote.description.es", undefined],
+      ["form.recommendation.enabled", "bool", false, "recommendation.enabled", true],
+      [
+        "form.recommendation.description",
+        "longtext",
+        true,
+        "recommendation.description.en",
+        undefined,
+      ],
+      [
+        "form.recommendation.description",
+        "longtext",
+        true,
+        "recommendation.description.es",
+        undefined,
+      ],
+    ]);
+    expect(form("jury").map(([, , , path, value]) => [path, value])).toEqual([
+      ["comments.description.en", "Write to the artist."],
+      ["comments.description.es", undefined],
+      ["comments.minWords", 20],
+      ["comments.maxWords", 400],
+      ["chairNote.enabled", true],
+      ["chairNote.description.en", undefined],
+      ["chairNote.description.es", undefined],
+      ["recommendation.enabled", false],
+      ["recommendation.description.en", undefined],
+      ["recommendation.description.es", undefined],
+    ]);
+  });
+
+  it("sets and clears a limit and a description of the form by path, and takes the note off", () => {
+    const at = "reviewPools.committee.form";
+    const limited = withSetting(config, `${at}.comments.maxWords`, 300);
+    expect(configChanges(config, limited)).toEqual([
+      { path: `${at}.comments.maxWords`, after: 300 },
+    ]);
+    expect(ConferenceConfig.parse(limited).reviewPools[0]?.form.comments).toEqual({
+      maxWords: 300,
+    });
+    // Cleared, the limit is gone; what is sent has no empty part, and reads back as it was.
+    const cleared = withSetting(limited, `${at}.comments.maxWords`, undefined);
+    expect(configChanges(config, cleared)).toEqual([]);
+    expect(ConferenceConfig.parse(cleared)).toEqual(config);
+
+    const worded = withSetting(
+      config,
+      `${at}.chairNote.description.es`,
+      "Solo para la presidencia.",
+    );
+    // A text needs the conference's main language, here as everywhere.
+    expect(ConferenceConfig.safeParse(worded).success).toBe(false);
+    expect(
+      ConferenceConfig.safeParse(
+        withSetting(worded, `${at}.chairNote.description.en`, "For the chairs' eyes."),
+      ).success,
+    ).toBe(true);
+
+    const without = withSetting(config, `${at}.chairNote.enabled`, false);
+    expect(configChanges(config, without)).toEqual([
+      { path: `${at}.chairNote.enabled`, before: true, after: false },
+    ]);
+    expect(ConferenceConfig.parse(without).reviewPools[0]?.form.chairNote).toEqual({
+      enabled: false,
+    });
+  });
+
+  it("offers the day reviews are due among the deadlines, set or not, and takes it away again", () => {
+    const due = settings.find((s) => s.path === "deadlines.reviewsDue");
+    expect(due).toEqual({
+      path: "deadlines.reviewsDue",
+      id: "deadlines.reviewsDue",
+      kind: "datetime",
+      optional: true,
+      value: undefined,
+    });
+    // After the day the call closes, before the day decisions are sent: where it is listed.
+    expect(settings.filter((s) => s.path.startsWith("deadlines.")).map((s) => s.path)).toEqual([
+      "deadlines.submissionsOpen",
+      "deadlines.submissionsClose",
+      "deadlines.reviewsDue",
+      "deadlines.notification",
+      "deadlines.finalMaterials",
+    ]);
+    const set = withSetting(config, "deadlines.reviewsDue", "2031-03-15T23:59:00-05:00");
+    expect(configChanges(config, set)).toEqual([
+      { path: "deadlines.reviewsDue", after: "2031-03-15T23:59:00-05:00" },
+    ]);
+    expect(ConferenceConfig.parse(set).deadlines.reviewsDue).toBe("2031-03-15T23:59:00-05:00");
+    expect(configChanges(config, withSetting(set, "deadlines.reviewsDue", undefined))).toEqual([]);
+  });
+
+  it("offers the days before the reminder right after the day reviews are due, set or not", () => {
+    const days = settings.find((s) => s.path === "rules.reviewReminderDays");
+    expect(days).toEqual({
+      path: "rules.reviewReminderDays",
+      id: "rules.reviewReminderDays",
+      kind: "int",
+      optional: true,
+      value: undefined,
+    });
+    // It is kept among the rules, and offered beside the day it counts back from.
+    const order = paths(settings);
+    expect(order.indexOf("rules.reviewReminderDays")).toBe(
+      order.indexOf("deadlines.reviewsDue") + 1,
+    );
+    const set = withSetting(config, "rules.reviewReminderDays", 5);
+    expect(configChanges(config, set)).toEqual([{ path: "rules.reviewReminderDays", after: 5 }]);
+    expect(ConferenceConfig.parse(set).rules.reviewReminderDays).toBe(5);
+    expect(configChanges(config, withSetting(set, "rules.reviewReminderDays", undefined))).toEqual(
+      [],
+    );
   });
 
   it("does not offer a format's own blind mode, or the pool that reviews it", () => {
@@ -1112,6 +1284,62 @@ describe("a review pool's guidelines and scales in the schema", () => {
     expect(scale(0, 1)).toEqual([]);
   });
 
+  it("takes a criterion's description like any other text, in the main language at least", () => {
+    const described = (description: unknown) =>
+      refusals(withPool({ criteria: [{ key: "fit", label: { en: "Fit" }, description }] }));
+    expect(described({ en: "1 is off the theme, 5 is at its heart." })).toEqual([]);
+    expect(described({ es: "Solo en español." })).toEqual([
+      {
+        path: "reviewPools.0.criteria.0.description",
+        params: { code: "default_language_required", leaf: "en" },
+      },
+    ]);
+    expect(described({ en: "" })).toEqual([{ path: "reviewPools.0.criteria.0.description.en" }]);
+  });
+
+  it("gives every pool the whole form: nothing set, a note and a recommendation", () => {
+    // What a stored configuration from before the form reads as.
+    expect(config.reviewPools[0]?.form).toEqual({
+      comments: {},
+      chairNote: { enabled: true },
+      recommendation: { enabled: true },
+    });
+    expect(config.reviewPools[1]?.form).toEqual({
+      comments: { description: { en: "Write to the artist." }, minWords: 20, maxWords: 400 },
+      chairNote: { enabled: true },
+      recommendation: { enabled: false },
+    });
+  });
+
+  it("holds the form's limits and texts to the rules of every limit and text", () => {
+    const form = (change: Record<string, unknown>) => refusals(withPool({ form: change }));
+    expect(form({ comments: { minWords: 50, maxWords: 50 } })).toEqual([]);
+    // The fewest words above the most: said beside the fewest.
+    expect(form({ comments: { minWords: 51, maxWords: 50 } })).toEqual([
+      { path: "reviewPools.0.form.comments", params: { code: "min_over_max", leaf: "minWords" } },
+    ]);
+    // A limit is a whole number of words, one at least.
+    for (const bad of [0, -3, 2.5, "ten"]) {
+      expect(form({ comments: { maxWords: bad } }), `${bad}`).toEqual([
+        { path: "reviewPools.0.form.comments.maxWords" },
+      ]);
+      expect(form({ comments: { minWords: bad } }), `${bad}`).toEqual([
+        { path: "reviewPools.0.form.comments.minWords" },
+      ]);
+    }
+    for (const part of ["comments", "chairNote", "recommendation"]) {
+      expect(form({ [part]: { description: { es: "Solo en español." } } }), part).toEqual([
+        {
+          path: `reviewPools.0.form.${part}.description`,
+          params: { code: "default_language_required", leaf: "en" },
+        },
+      ]);
+    }
+    expect(form({ chairNote: { enabled: "no" } })).toEqual([
+      { path: "reviewPools.0.form.chairNote.enabled" },
+    ]);
+  });
+
   it("takes the three blind modes, and no other", () => {
     for (const mode of ["double", "single", "open"]) {
       expect(refusals(withPool({ blindMode: mode })), mode).toEqual([]);
@@ -1119,6 +1347,81 @@ describe("a review pool's guidelines and scales in the schema", () => {
     expect(refusals(withPool({ blindMode: "triple" }))).toEqual([
       { path: "reviewPools.0.blindMode" },
     ]);
+  });
+});
+
+describe("the day reviews are due in the schema", () => {
+  const due = (reviewsDue: unknown) => {
+    const parsed = ConferenceConfig.safeParse({
+      ...input,
+      deadlines: { ...input.deadlines, reviewsDue },
+    });
+    return parsed.success
+      ? []
+      : parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          ...(issue.code === "custom" && issue.params ? { params: issue.params } : {}),
+        }));
+  };
+  const order = [{ path: "deadlines.reviewsDue", params: { code: "reviews_due_order" } }];
+
+  it("is optional: a call that sets none is as valid as before", () => {
+    expect(config.deadlines).not.toHaveProperty("reviewsDue");
+    expect(due(undefined)).toEqual([]);
+  });
+
+  it("is after the day the call closes and before the day decisions are sent", () => {
+    // The call closes 2031-02-14T23:59-12:00 and decisions are sent 2031-04-30T23:59-05:00.
+    expect(due("2031-03-15T23:59:00-05:00")).toEqual([]);
+    // A minute after the one, a minute before the other, on any clock.
+    expect(due("2031-02-15T12:00:00Z")).toEqual([]);
+    expect(due("2031-05-01T04:58:00Z")).toEqual([]);
+    for (const bad of [
+      // The very instants the call closes and decisions are sent.
+      "2031-02-14T23:59:00-12:00",
+      "2031-02-15T11:59:00Z",
+      "2031-04-30T23:59:00-05:00",
+      "2031-01-20T12:00:00-05:00",
+      "2031-06-01T12:00:00-05:00",
+    ]) {
+      expect(due(bad), bad).toEqual(order);
+    }
+  });
+
+  it("is a date and a time with an offset, like every deadline", () => {
+    for (const bad of ["2031-03-15", "2031-03-15T23:59:00", "soon", 5, null]) {
+      expect(due(bad), `${bad}`).toEqual([{ path: "deadlines.reviewsDue" }]);
+    }
+  });
+});
+
+describe("the days before the reminder in the schema", () => {
+  const days = (reviewReminderDays: unknown) =>
+    ConferenceConfig.safeParse({ ...input, rules: { ...input.rules, reviewReminderDays } });
+
+  it("is optional, and three where the chairs set none", () => {
+    expect(config.rules).not.toHaveProperty("reviewReminderDays");
+    expect(REVIEW_EMAILS.reminderDays).toBe(3);
+    expect(reviewReminderDays(config)).toBe(3);
+    const set = days(7);
+    expect(set.success && reviewReminderDays(set.data)).toBe(7);
+  });
+
+  it("is a whole number of days from 1 to 30", () => {
+    for (const good of [1, 3, 30]) expect(days(good).success, `${good}`).toBe(true);
+    for (const bad of [0, -1, 31, 2.5, "3", null]) {
+      const parsed = days(bad);
+      expect(parsed.success, `${bad}`).toBe(false);
+      expect(parsed.error?.issues.map((i) => i.path.join("."))).toEqual([
+        "rules.reviewReminderDays",
+      ]);
+    }
+  });
+
+  it("needs no day reviews are due: without one it means nothing, and is kept", () => {
+    const parsed = days(5);
+    expect(parsed.success && parsed.data.deadlines.reviewsDue).toBeUndefined();
+    expect(parsed.success && reviewReminderWindow(parsed.data)).toBeNull();
   });
 });
 

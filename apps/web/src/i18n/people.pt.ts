@@ -51,6 +51,8 @@ export const peoplePt: Record<keyof typeof peopleEn, string> = {
   peopleAssignedNone: "Nenhuma proposta atribuída",
   peopleAssignedOne: "1 proposta atribuída",
   peopleAssignedMany: "{n} propostas atribuídas",
+  peopleSentOne: "1 revisão enviada",
+  peopleSentMany: "{n} revisões enviadas",
   peopleOffers: "Aceita até {max}. Revê em: {languages}.",
   peopleTrackChairsTitle: "Coordenação de eixo",
   peopleTrackChairsIntro:
@@ -111,12 +113,22 @@ export const peoplePt: Record<keyof typeof peopleEn, string> = {
     "Está-lhe atribuída 1 proposta das que gere, que perderá esta pessoa como revisora.",
   peopleRemoveAssignedMany:
     "Estão-lhe atribuídas {n} propostas das que gere, que perderão esta pessoa como revisora.",
+  peopleRemoveKeepOne:
+    "1 proposta das que gere tem uma revisão sua já enviada: essa revisão continua a fazer parte do processo da proposta, e esta pessoa continua a aparecer nela.",
+  peopleRemoveKeepMany:
+    "{n} propostas das que gere têm uma revisão sua já enviada: essas revisões continuam a fazer parte do processo de cada proposta, e esta pessoa continua a aparecer nelas.",
+  peopleRemoveLoseNone: "Não lhe está atribuída mais nenhuma proposta das que gere.",
+  peopleRemoveLoseOne:
+    "Está-lhe atribuída mais 1 proposta das que gere, que perderá esta pessoa como revisora.",
+  peopleRemoveLoseMany:
+    "Estão-lhe atribuídas mais {n} propostas das que gere, que perderão esta pessoa como revisora.",
+  peopleRemoveDrafts: "As revisões que começou e não enviou são descartadas.",
   peopleDoRemove: "Sim, retirar",
   peopleRemoved_chair: "{name} já não preside a este congresso.",
   peopleRemoved_reviewer: "{name} já não revê neste congresso.",
   peopleRemoved_track_chair: "{name} já não coordena nenhum eixo deste congresso.",
   peopleRemoveStale:
-    "Nada foi retirado: o número de propostas atribuídas a esta pessoa mudou. Leia o novo número e confirme de novo.",
+    "Nada foi retirado: o número de propostas atribuídas a esta pessoa, ou o de revisões que enviou, mudou. Leia os novos números e confirme de novo.",
   peopleRemoveGone:
     "Nada foi retirado: esta pessoa já não tem esse papel. A lista foi carregada de novo.",
   peopleUnconfirmed: "O servidor não confirmou. Tente novamente.",

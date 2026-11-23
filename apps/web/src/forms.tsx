@@ -112,10 +112,13 @@ export const describedBy = (path: string, issues: Issue[], ...more: string[]) =>
  */
 export function RestoredNotice({
   shown,
+  text,
   disabled = false,
   onDiscard,
 }: {
   shown: boolean;
+  /** What to say where the standard sentence is not the whole of it. */
+  text?: string;
   disabled?: boolean;
   onDiscard: () => void;
 }) {
@@ -124,7 +127,7 @@ export function RestoredNotice({
     <div className="restored" aria-live="polite">
       {shown && (
         <div className="notice stack wide">
-          <p>{t("unsavedRestored")}</p>
+          <p>{text ?? t("unsavedRestored")}</p>
           <button type="button" className="secondary" disabled={disabled} onClick={onDiscard}>
             {t("unsavedDiscard")}
           </button>

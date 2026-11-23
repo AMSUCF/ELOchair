@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Me } from "../api";
 import { useT } from "../i18n";
+import { sessionChanged } from "../session";
 import { PageHeading } from "../ui";
 
 type State =
@@ -61,8 +62,10 @@ export function VerifyPage() {
   async function signIn(email: string) {
     setState({ step: "signing-in", email });
     const res = await api("/api/auth/verify", { method: "POST", body: { token } });
-    if (res.ok) navigate(`/${lang}/me`, { replace: true });
-    else if (res.status === 400) setState({ step: "expired" });
+    if (res.ok) {
+      sessionChanged();
+      navigate(`/${lang}/me`, { replace: true });
+    } else if (res.status === 400) setState({ step: "expired" });
     else setState({ step: "network", email });
   }
 

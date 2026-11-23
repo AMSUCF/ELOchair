@@ -5,6 +5,7 @@ import {
   type AssignmentsView,
   assignmentsAfter,
   assignmentsPosition,
+  assignmentsRank,
   canManageReviewers,
   type PersonViewer,
   projectAssignments,
@@ -14,8 +15,12 @@ import {
   takesReviewers,
   type Viewer,
 } from "@elochair/policy";
-import type { AssignmentReleaseReason } from "@elochair/schema";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import {
+  type AssignmentReleaseReason,
+  DECLINE_REASONS,
+  type DeclineReason,
+} from "@elochair/schema";
+import { and, eq, inArray, isNotNull, notInArray } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Deps } from "../context";
 import type { CursorCodec } from "../cursor";
@@ -26,10 +31,18 @@ import {
   conferenceRoles,
   people,
   reviewerProfiles,
+  reviews,
   submissions,
 } from "../db/schema";
-import { type ConferenceRow, loadSubmissionRecords, shareConference, toPerson } from "../repo";
+import {
+  type ConferenceRow,
+  loadSentReviews,
+  loadSubmissionRecords,
+  shareConference,
+  toPerson,
+} from "../repo";
 import { Refusal } from "../routes/common";
+import { recordNotifications } from "./notifications";
 import { stillChair } from "./roles";
 import { cursorContext } from "./submissions";
 
@@ -47,12 +60,19 @@ import { cursorContext } from "./submissions";
  * transaction (releaseAssignments, the only code that releases). Assigning the same reviewer
  * again makes a new assignment.
  *
- * The record of releases gives nobody anything, and nothing outside this module reads it. Three
- * things are read of it, and all three are IDs:
+ * The record of releases gives nobody anything, and nothing outside this module reads it. Four
+ * things are read of it. Three are IDs:
  * - who was released from which proposal because of a conflict, so that they are never offered
  *   for it again (loadReviewersRecord);
  * - which proposals have ever had a reviewer, for the guard on anonymity (everAssigned);
  * - whether one proposal has, for the rule that it then keeps its format (everHadReviewer).
+ * The fourth is for the chairs who manage a proposal, on its page: who said they could not
+ * review it, with their reason and the note they wrote (loadReviewersRecord; spec 03, §1.4).
+ *
+ * Reviews (spec 03, §1.4) hang on this: a review belongs to a proposal and a reviewer, and
+ * releaseAssignments is what keeps the two tables in step. A release takes the reviewer's draft
+ * with it, and an assignment whose review was sent is never released: a sent review is part of
+ * the proposal's record, and keeps its assignment.
  *
  * Both writes are a chair's. They take their locks in the one order of services/roles.ts: the
  * proposal's row, then the conference's roles lock (shared, with the chair read again under it:
@@ -83,38 +103,60 @@ export async function loadReviewersRecord(
     .select()
     .from(reviewerProfiles)
     .where(eq(reviewerProfiles.conferenceId, conference.id));
-  // Whoever is shown by name: the reviewers, and anyone else who still has an assignment.
-  const named = [
-    ...new Set([
-      ...reviewers.map((r) => r.personId),
-      ...records.flatMap((r) => r.assignments.map((a) => a.reviewerId)),
-    ]),
-  ];
-  const rows = named.length ? await db.select().from(people).where(inArray(people.id, named)) : [];
-  // The one thing read of the record of releases for the policy: who left a proposal because
-  // of a conflict. Not when, not by whom, and nothing of any other release.
-  const conflicts = await db
+  // Sent reviews only: a draft is its reviewer's own, and is not read for a chair.
+  const sent = await loadSentReviews(db, conference.id);
+  // What is read of the record of releases for the policy: who said they could not review
+  // which proposal, with their reason and their note. Nothing of a release a chair made.
+  const said = await db
     .select({
       submissionId: assignmentReleases.submissionId,
       reviewerId: assignmentReleases.reviewerId,
+      reason: assignmentReleases.reason,
+      note: assignmentReleases.note,
+      releasedAt: assignmentReleases.releasedAt,
     })
     .from(assignmentReleases)
     .where(
       and(
         eq(assignmentReleases.conferenceId, conference.id),
-        eq(assignmentReleases.reason, "conflict" satisfies AssignmentReleaseReason),
-        // A person whose record was deleted is nobody to keep off a proposal.
+        inArray(assignmentReleases.reason, [...DECLINE_REASONS]),
+        // A person whose record was deleted is nobody to name, or to keep off a proposal.
         isNotNull(assignmentReleases.reviewerId),
       ),
     );
+  const declines = said.flatMap((d) =>
+    d.reviewerId
+      ? [
+          {
+            submissionId: d.submissionId,
+            reviewerId: d.reviewerId,
+            reason: d.reason as DeclineReason,
+            note: d.note,
+            at: d.releasedAt.toISOString(),
+          },
+        ]
+      : [],
+  );
+  // Who left a proposal because of a conflict: never offered for it again.
   const conflictReleased = new Map<string, string[]>();
-  for (const c of conflicts) {
-    if (!c.reviewerId) continue;
-    conflictReleased.set(c.submissionId, [
-      ...(conflictReleased.get(c.submissionId) ?? []),
-      c.reviewerId,
+  for (const d of declines) {
+    if (d.reason !== ("conflict" satisfies AssignmentReleaseReason)) continue;
+    conflictReleased.set(d.submissionId, [
+      ...(conflictReleased.get(d.submissionId) ?? []),
+      d.reviewerId,
     ]);
   }
+  // Whoever is shown by name: the reviewers, anyone else who still has an assignment, whoever
+  // sent a review, and whoever said they could not review a proposal.
+  const named = [
+    ...new Set([
+      ...reviewers.map((r) => r.personId),
+      ...records.flatMap((r) => r.assignments.map((a) => a.reviewerId)),
+      ...sent.map((r) => r.reviewerId),
+      ...declines.map((d) => d.reviewerId),
+    ]),
+  ];
+  const rows = named.length ? await db.select().from(people).where(inArray(people.id, named)) : [];
   return {
     conferenceId: conference.id,
     config: conference.config,
@@ -128,6 +170,8 @@ export async function loadReviewersRecord(
     people: new Map(rows.map((p) => [p.id, toPerson(p)])),
     submissions: records,
     conflictReleased,
+    reviews: sent,
+    declines,
   };
 }
 
@@ -181,11 +225,15 @@ export class AssignmentsCursorRefused extends Error {}
 /**
  * A position in a pool's list, as the client holds it. The codec seals (created, id) for one
  * list: `list` names the conference, the person looking and the pool. Whether the position is
- * among the proposals still short of reviewers is the letter in front, and it is sealed too, as
- * part of the list's name: with the letter changed, the cursor does not open.
+ * among the proposals still short of reviewers, among those that wait for reviews, or after
+ * them, is the letter in front, and it is sealed too, as part of the list's name: with the
+ * letter changed, the cursor does not open.
  */
+/** The letter of each part of a pool's list: short of reviewers, waiting for reviews, the rest. */
+const RANK_LETTERS = ["s", "w", "f"] as const;
+
 function sealPosition(cursors: CursorCodec, [rank, ms, id]: AssignmentsPosition, list: string) {
-  return `${rank === 0 ? "s" : "f"}${cursors.seal([ms, id], `${list}:${rank}`)}`;
+  return `${RANK_LETTERS[rank]}${cursors.seal([ms, id], `${list}:${rank}`)}`;
 }
 
 function openPosition(
@@ -193,8 +241,8 @@ function openPosition(
   cursor: string,
   list: string,
 ): AssignmentsPosition | null {
-  const rank = cursor.startsWith("s") ? 0 : cursor.startsWith("f") ? 1 : null;
-  if (rank === null) return null;
+  const rank = RANK_LETTERS.findIndex((letter) => cursor.startsWith(letter));
+  if (rank !== 0 && rank !== 1 && rank !== 2) return null;
   const at = cursors.open(cursor.slice(1), `${list}:${rank}`);
   return at ? [rank, at[0], at[1]] : null;
 }
@@ -224,11 +272,14 @@ export async function assignmentsPage(
   const view = projectAssignments(viewer, rec, v.now);
   if (!view) return null;
   const created = new Map(rec.submissions.map((s) => [s.submission.id, s.submission.createdAt]));
-  const positionOf = (item: AssignmentsProposal) =>
-    assignmentsPosition(item.short, { id: item.id, createdAt: created.get(item.id) ?? "" });
   const pools = view.pools
     .filter((pool) => !v.only || pool.key === v.only.pool)
     .map((pool): AssignmentsPoolPage => {
+      const positionOf = (item: AssignmentsProposal) =>
+        assignmentsPosition(assignmentsRank(item, pool.needed), {
+          id: item.id,
+          createdAt: created.get(item.id) ?? "",
+        });
       const list = `${cursorContext(viewer, conference.id)}:assignments:${pool.key}`;
       const after = v.only?.cursor ? openPosition(v.cursors, v.only.cursor, list) : null;
       if (v.only?.cursor && !after) throw new AssignmentsCursorRefused("cursor");
@@ -285,6 +336,9 @@ async function lockProposal(tx: Db, conference: ConferenceRow, submissionId: str
  *
  * A reviewer who was released from the proposal (and not because of a conflict) can be
  * assigned to it again: that is a new assignment, made now, by this chair.
+ *
+ * The reviewer is told by email, as often as they have chosen (spec 03, §1.7): what is written
+ * here is that they are to be told, in this transaction; the email is made afterwards.
  */
 export async function assignReviewer(
   deps: Deps,
@@ -341,6 +395,17 @@ export async function assignReviewer(
       .onConflictDoNothing({ target: [assignments.reviewerId, assignments.submissionId] })
       .returning({ id: assignments.id });
     if (made.length === 0) throw new Refusal(409, "already_assigned");
+    // The reviewer is to be told, as often as they have chosen: decided afterwards, by the job
+    // of services/notifications.ts. Nothing is mailed here, and a chair who assigns a proposal
+    // to themself is told nothing.
+    await recordNotifications(tx, {
+      conferenceId: conference.id,
+      submissionId: v.submissionId,
+      kind: "assigned",
+      personIds: [v.reviewerId],
+      by: actor.personId,
+      now,
+    });
     await audit(tx, viewer, {
       action: "assignment.made",
       conferenceId: conference.id,
@@ -354,8 +419,17 @@ export async function assignReviewer(
 /**
  * Release a conference's assignments that match: each row is deleted from `assignments` and its
  * record written to `assignment_releases`, with one audit row per release (the proposal, the
- * reviewer, the reason). This is the only code that releases. Returns how many were released.
- * Run it inside the transaction of what causes the release, under the locks that needs.
+ * reviewer, the reason). This is the only code that releases.
+ *
+ * It is also what keeps reviews in step with assignments (spec 03, §1.4):
+ * - an assignment whose review was sent is not released, whoever asks: the review is part of
+ *   the proposal's record, and keeps its assignment. Those are counted as `kept`;
+ * - the reviewer's draft for a proposal they are released from goes with the assignment: a
+ *   draft was never anyone's but theirs.
+ *
+ * Returns how many were released and how many were kept. Run it inside the transaction of what
+ * causes the release, under the locks that needs: a review is sent under its proposal's row and
+ * the roles lock (services/reviews.ts), so one of the two is held here by every caller.
  */
 export async function releaseAssignments(
   tx: Db,
@@ -366,20 +440,42 @@ export async function releaseAssignments(
     /** One proposal's; without it, every assignment the reviewer has at the conference. */
     submissionId?: string;
     reason: AssignmentReleaseReason;
+    /** What the reviewer wrote for the chairs, where the release is their own. */
+    note?: string | null;
     now: Date;
   },
-): Promise<number> {
+): Promise<{ released: number; kept: number }> {
+  const matching = and(
+    eq(assignments.conferenceId, v.conferenceId),
+    eq(assignments.reviewerId, v.reviewerId),
+    v.submissionId ? eq(assignments.submissionId, v.submissionId) : undefined,
+  );
+  // The proposals this reviewer has sent a review of: their assignments stay.
+  const sent = (
+    await tx
+      .select({ submissionId: reviews.submissionId })
+      .from(reviews)
+      .where(
+        and(
+          eq(reviews.conferenceId, v.conferenceId),
+          eq(reviews.reviewerId, v.reviewerId),
+          eq(reviews.status, "sent"),
+        ),
+      )
+  ).map((r) => r.submissionId);
+  const kept = sent.length
+    ? (
+        await tx
+          .select({ id: assignments.id })
+          .from(assignments)
+          .where(and(matching, inArray(assignments.submissionId, sent)))
+      ).length
+    : 0;
   const released = await tx
     .delete(assignments)
-    .where(
-      and(
-        eq(assignments.conferenceId, v.conferenceId),
-        eq(assignments.reviewerId, v.reviewerId),
-        v.submissionId ? eq(assignments.submissionId, v.submissionId) : undefined,
-      ),
-    )
+    .where(and(matching, sent.length ? notInArray(assignments.submissionId, sent) : undefined))
     .returning();
-  if (released.length === 0) return 0;
+  if (released.length === 0) return { released: 0, kept };
   await tx.insert(assignmentReleases).values(
     released.map((a) => ({
       conferenceId: a.conferenceId,
@@ -388,11 +484,32 @@ export async function releaseAssignments(
       assignmentId: a.id,
       assignedByPersonId: a.assignedByPersonId,
       assignedAt: a.createdAt,
-      // The person whose act this is: a chair, here. Nobody, for one the system makes.
+      // The person whose act this is: a chair, or the reviewer themself. Nobody, for one the
+      // system makes.
       releasedByPersonId: actor.kind === "person" ? actor.personId : null,
       releasedAt: v.now,
       reason: v.reason,
+      note: v.note ?? null,
     })),
+  );
+  // Their drafts for those proposals go with the assignments. (None of them is a sent review:
+  // those kept their assignments, above.)
+  const discarded = new Set(
+    (
+      await tx
+        .delete(reviews)
+        .where(
+          and(
+            eq(reviews.reviewerId, v.reviewerId),
+            eq(reviews.status, "draft"),
+            inArray(
+              reviews.submissionId,
+              released.map((a) => a.submissionId),
+            ),
+          ),
+        )
+        .returning({ submissionId: reviews.submissionId })
+    ).map((r) => r.submissionId),
   );
   for (const row of released) {
     await audit(tx, actor, {
@@ -400,17 +517,25 @@ export async function releaseAssignments(
       conferenceId: v.conferenceId,
       targetType: "submission",
       targetId: row.submissionId,
-      details: { reviewerId: v.reviewerId, reason: v.reason },
+      details: {
+        reviewerId: v.reviewerId,
+        reason: v.reason,
+        draftDiscarded: discarded.has(row.submissionId),
+      },
     });
   }
-  return released.length;
+  return { released: released.length, kept };
 }
 
 /**
- * A chair removes a reviewer from a proposal: the assignment is released (releaseAssignments).
- * From then on it counts nowhere, and the reviewer no longer sees the proposal. 404 `not_found`
- * for a proposal the chair does not manage as a chair, and for someone who is not reviewing it
- * (any more). A proposal that takes no new reviewers can still lose one.
+ * A chair removes a reviewer from a proposal: the assignment is released (releaseAssignments),
+ * and the reviewer's draft, if they had begun one, goes with it. From then on it counts
+ * nowhere, and the reviewer no longer sees the proposal. 404 `not_found` for a proposal the
+ * chair does not manage as a chair, and for someone who is not reviewing it (any more). A
+ * proposal that takes no new reviewers can still lose one.
+ *
+ * 409 `review_sent` once that reviewer's review was sent: a sent review is part of the
+ * proposal's record, and its reviewer stays on it.
  */
 export async function releaseReviewer(
   deps: Deps,
@@ -427,13 +552,14 @@ export async function releaseReviewer(
     if (!conference) throw new Refusal(404, "not_found");
     const [rec] = await loadSubmissionRecords(tx, conference, { submissionId: v.submissionId });
     if (!rec || !canManageReviewers(actor, rec)) throw new Refusal(404, "not_found");
-    const released = await releaseAssignments(tx, viewer, {
+    const { released, kept } = await releaseAssignments(tx, viewer, {
       conferenceId: conference.id,
       reviewerId: v.reviewerId,
       submissionId: v.submissionId,
       reason: "chair",
       now,
     });
+    if (kept > 0) throw new Refusal(409, "review_sent");
     if (released === 0) throw new Refusal(404, "not_found");
   });
 }

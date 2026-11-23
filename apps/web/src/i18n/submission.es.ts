@@ -254,7 +254,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   phaseDoes_cfp_open:
     "El congreso es público, y se pueden iniciar, editar y enviar propuestas entre las fechas de apertura y de cierre que figuran en la configuración. En esta fase, quienes revisan no pueden abrir las propuestas que tienen asignadas.",
   phaseDoes_reviewing:
-    "La convocatoria está cerrada digan lo que digan las fechas: nadie puede iniciar, editar ni enviar una propuesta, ni confirmar una invitación, pero una propuesta enviada todavía se puede retirar. Quienes revisan pueden abrir las propuestas que tienen asignadas.",
+    "La convocatoria está cerrada digan lo que digan las fechas: nadie puede iniciar, editar ni enviar una propuesta, ni confirmar una invitación, pero una propuesta enviada todavía se puede retirar. Quienes revisan pueden abrir las propuestas que tienen asignadas, y se les avisa por correo de las que ya lo estaban, con la frecuencia que cada cual haya elegido.",
   phaseDoes_deciding:
     "Lo que cada persona puede hacer es lo mismo que en «{reviewing}»: la convocatoria está cerrada y una propuesta enviada todavía se puede retirar; la lista de congresos muestra la nueva fase.",
   phaseDoes_confirming:

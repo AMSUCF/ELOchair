@@ -1,6 +1,8 @@
 import { assignmentsEs } from "./assignments.es";
+import { emailsEs } from "./emails.es";
 import type { Messages } from "./en";
 import { peopleEs } from "./people.es";
+import { reviewsEs } from "./reviews.es";
 import { settingsEs } from "./settings.es";
 import { submissionEs } from "./submission.es";
 
@@ -10,6 +12,8 @@ export const es: Messages = {
   ...settingsEs,
   ...peopleEs,
   ...assignmentsEs,
+  ...reviewsEs,
+  ...emailsEs,
   appName: "ELOchair",
   tagline: "Envíos y revisión por pares para el congreso de la Electronic Literature Organization.",
   skipToContent: "Saltar al contenido",
@@ -39,6 +43,7 @@ export const es: Messages = {
   confDeadlines: "Plazos",
   deadline_submissionsOpen: "Apertura de envíos",
   deadline_submissionsClose: "Cierre de envíos",
+  deadline_reviewsDue: "Entrega de las revisiones",
   deadline_notification: "Envío de decisiones",
   deadline_finalMaterials: "Entrega de materiales finales",
   confConferenceTime: "Hora del congreso ({tz})",

@@ -16,6 +16,13 @@ export const LIMITS = {
   /** A conference's own wording of an email (messages.ts), before placeholders are filled. */
   messageSubject: 200,
   messageBody: 5_000,
+  /**
+   * A review's comments for the authors, and its note for the chairs: the most characters
+   * either may have, drafts included. The limits in words are the chairs' (the review form).
+   */
+  reviewText: 20_000,
+  /** The note a reviewer may add when they say they cannot review a proposal. */
+  declineNote: 2_000,
 } as const;
 
 /**
@@ -36,4 +43,21 @@ export const ROLE_INVITATIONS = {
   minLoad: 1,
   maxLoad: 30,
   defaultLoad: 8,
+} as const;
+
+/**
+ * The emails of the review phase (spec 03, §1.7): when a summary goes out, and how long before
+ * the day reviews are due the reminder does. Zod-free, so that the pages can say the same
+ * numbers the server goes by.
+ */
+export const REVIEW_EMAILS = {
+  /**
+   * The hour of the conference's own clock at which "one summary a day" is sent, and at which
+   * the reminder goes out on its day.
+   */
+  dailyHour: 8,
+  /** Days before the day reviews are due that the reminder goes out, unless the chairs say. */
+  reminderDays: 3,
+  /** The most days the chairs may set. */
+  maxReminderDays: 30,
 } as const;

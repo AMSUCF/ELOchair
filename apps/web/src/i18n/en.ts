@@ -1,5 +1,7 @@
 import { assignmentsEn } from "./assignments.en";
+import { emailsEn } from "./emails.en";
 import { peopleEn } from "./people.en";
+import { reviewsEn } from "./reviews.en";
 import { settingsEn } from "./settings.en";
 import { submissionEn } from "./submission.en";
 
@@ -9,6 +11,8 @@ export const en = {
   ...settingsEn,
   ...peopleEn,
   ...assignmentsEn,
+  ...reviewsEn,
+  ...emailsEn,
   appName: "ELOchair",
   tagline: "Submissions and peer review for the Electronic Literature Organization conference.",
   skipToContent: "Skip to content",
@@ -38,6 +42,7 @@ export const en = {
   confDeadlines: "Deadlines",
   deadline_submissionsOpen: "Submissions open",
   deadline_submissionsClose: "Submissions close",
+  deadline_reviewsDue: "Reviews due",
   deadline_notification: "Decisions sent",
   deadline_finalMaterials: "Final materials due",
   confConferenceTime: "Conference time ({tz})",

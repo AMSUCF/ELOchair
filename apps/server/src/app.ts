@@ -20,6 +20,7 @@ import { conferenceRoutes } from "./routes/conferences";
 import { invitationRoutes } from "./routes/invitations";
 import { meRoutes } from "./routes/me";
 import { peopleRoutes, roleInvitationRoutes } from "./routes/people";
+import { reviewRoutes } from "./routes/reviews";
 import { submissionRoutes } from "./routes/submissions";
 import { testRoutes } from "./routes/testing";
 
@@ -173,6 +174,7 @@ export function createApp(deps: Deps, exposure: Exposure) {
   app.route("/api/conferences/:slug/people", peopleRoutes);
   app.route("/api/conferences/:slug/assignments", assignmentRoutes);
   app.route("/api/submissions", submissionRoutes);
+  app.route("/api/submissions", reviewRoutes);
   app.route("/api/invitations", invitationRoutes);
   app.route("/api/role-invitations", roleInvitationRoutes);
   app.all("/api/mcp", mcpHandler);

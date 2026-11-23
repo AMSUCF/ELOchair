@@ -10,7 +10,9 @@ export const assignmentsEn = {
   reviewersTitle: "Reviewers",
   /*
    * What assigning does, in one sentence: {how} is one of the three reviewersHow_ phrases, by
-   * how the proposal's format is reviewed. The second sentence is reviewersNoMail.
+   * how the proposal's format is reviewed. The second sentence is one of the three
+   * reviewersMail_ sentences: who is told by email, by where the conference stands (a new
+   * assignment is announced while the conference is in review, and never after it).
    */
   reviewersDoes_before:
     "A reviewer you assign here will be able to read this proposal once the conference is in review, {how}.",
@@ -18,7 +20,13 @@ export const assignmentsEn = {
   reviewersHow_double: "anonymized: without the authors' names",
   reviewersHow_single: "with the authors' names and affiliations",
   reviewersHow_open: "with the authors' names, affiliations and bios",
-  reviewersNoMail: "Nobody is emailed when you assign or remove a reviewer.",
+  reviewersMail_before:
+    "They are told by email once it is, as often as they have chosen. Nobody is emailed when you remove one.",
+  reviewersMail_now:
+    "They are told by email, as often as they have chosen. Nobody is emailed when you remove one.",
+  reviewersMail_after: "Nobody is emailed: the conference is no longer in review.",
+  reviewersReviewsIntro:
+    "A review appears here once its reviewer has sent it, with who wrote it. The authors are never told who reviewed.",
   reviewersCount: "Reviewers assigned: {n} of {needed}.",
   reviewersAsksOne: "Committee: {committee}. It asks for 1 reviewer for each proposal.",
   reviewersAsksMany: "Committee: {committee}. It asks for {needed} reviewers for each proposal.",
@@ -30,6 +38,34 @@ export const assignmentsEn = {
   reviewersRemoveDoes:
     "{name} will no longer be able to read this proposal, and it will no longer count as one of theirs. They are not told by email.",
   reviewersRemoveAgain: "You can assign them again later.",
+  reviewersRemoveDraft: "If they have begun a review and not sent it, that draft is discarded.",
+  reviewersReviewNone: "No review sent yet.",
+  reviewersReviewSent: "Review sent {date}.",
+  reviewersReviewChanged: "Review sent {date}, last changed {changed}.",
+  reviewersKept:
+    "Cannot be removed from this proposal: their review was sent, and a sent review is part of the proposal's record.",
+  reviewersBlockedSent:
+    "No longer reviews this proposal, and is not counted among its reviewers: they are now one of its people, have a conflict of interest with it, or no longer review for this committee. Their review was sent before that, and stays part of the proposal's record.",
+  reviewersRemoveSent:
+    "Not removed: {name} has sent their review meanwhile, and a sent review stays with the proposal. The list was loaded again.",
+  reviewersReviewOf: "Review by {name}",
+  reviewersScore: "{score} of {max}",
+  reviewersNoScore: "No score",
+  reviewersRecommendation: "Recommendation",
+  reviewersNoRecommendation: "None given",
+  reviewersComments: "Comments for the authors",
+  reviewersChairNote: "Note for the chairs only",
+  reviewersChairNoteNone: "None.",
+  reviewersOtherTitle: "Reviews by people no longer assigned",
+  reviewersOtherIntro:
+    "These reviews were sent by people who are no longer assigned to this proposal. They stay part of its record.",
+  reviewersDeclinedTitle: "Said they could not review it",
+  reviewersDeclinedOn: "Said so {date}.",
+  reviewersDeclined_conflict:
+    "A conflict of interest, or they know whose work it is. They will not be offered this proposal again.",
+  reviewersDeclined_expertise: "It is outside what they can judge.",
+  reviewersDeclined_time: "They do not have the time.",
+  reviewersDeclinedNote: "Their note for the chairs:",
   reviewersBlocked:
     "Can no longer review this proposal, and is not counted among its reviewers: they are now one of its people, have a conflict of interest with it, or no longer review for this committee. Remove them from it.",
   reviewersRemoved: "{name} was removed from this proposal. Nobody was emailed.",
@@ -56,7 +92,7 @@ export const assignmentsEn = {
   reviewersFullDoes:
     "{name} said they would take at most {max} proposals, and has {n}. That number is what they offered, not a limit: you can still assign them.",
   reviewersDoAssign: "Yes, assign",
-  reviewersAssigned: "{name} is now a reviewer of this proposal. Nobody was emailed.",
+  reviewersAssigned: "{name} is now a reviewer of this proposal.",
   reviewersNowFull:
     "Not assigned yet: {name} has reached the number of proposals they said they would take. Read the numbers, then confirm.",
   reviewersNotOffered:
@@ -73,7 +109,7 @@ export const assignmentsEn = {
   assignmentsTitle: "Assignments",
   assignmentsNoAccess: "Only the chairs of this conference can see who reviews its proposals.",
   assignmentsIntro:
-    "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first. To assign or remove a reviewer, open the proposal. Nothing is assigned automatically, and nobody is emailed.",
+    "Every proposal that can be given reviewers, under the committee that reviews it. Those that still need reviewers come first, then those still waiting for reviews. To assign or remove a reviewer, or to read the reviews that were sent, open the proposal. Nothing is assigned automatically.",
   assignmentsCallOpen:
     "The call has not closed yet, so no reviewer can be assigned. The proposals submitted so far are listed.",
   assignmentsExcludedOne:
@@ -90,6 +126,11 @@ export const assignmentsEn = {
   assignmentsAsksOne: "This committee asks for 1 reviewer for each proposal.",
   assignmentsAsksMany: "This committee asks for {needed} reviewers for each proposal.",
   assignmentsReviewers: "Reviewers: {n} of {needed}",
+  assignmentsSent: "Reviews sent: {n}",
+  assignmentsWaitingOne:
+    "1 has its reviewers and fewer reviews sent than the committee asks for. It is listed next.",
+  assignmentsWaitingMany:
+    "{n} have their reviewers and fewer reviews sent than the committee asks for. They are listed next.",
   assignmentsNeedsOne: "Needs 1 more",
   assignmentsNeedsMany: "Needs {n} more",
   assignmentsComplete: "Has its reviewers",

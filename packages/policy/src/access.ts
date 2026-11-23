@@ -74,6 +74,25 @@ export function isConflicted(personId: string, ctx: SubmissionContext): boolean 
   );
 }
 
+/**
+ * Whether a person reviews a proposal as things stand: they hold the reviewer's role for the
+ * pool that reviews its format, an assignment of theirs stands, the proposal is in a status its
+ * reviewers still read, and the conference is in review or past it. It says nothing of whether
+ * they are one of the proposal's people or have a conflict with it: personAccess asks those
+ * first, and whoever fails them is given nothing here either.
+ */
+export function isAssignedReviewer(p: PersonViewer, ctx: SubmissionContext): boolean {
+  const { submission: s } = ctx;
+  const reviewer = hasRole(p, s.conferenceId, ["reviewer"]);
+  const pool = findType(ctx.config, s.typeKey)?.reviewPool;
+  if (!reviewer || !pool) return false;
+  if (reviewer.scope.length > 0 && !reviewer.scope.includes(pool)) return false;
+  const assigned = ctx.assignments.some(
+    (a) => a.reviewerId === p.personId && a.submissionId === s.id,
+  );
+  return assigned && isReviewable(s) && reviewersCanRead(ctx.phase);
+}
+
 function personAccess(p: PersonViewer, ctx: SubmissionContext, baseline: Access): Access {
   const { submission: s } = ctx;
   // Contributor rule: your own work, always as a submitter, whatever else you are. An invitee
@@ -102,15 +121,7 @@ function personAccess(p: PersonViewer, ctx: SubmissionContext, baseline: Access)
   // Reviewer rule: only assigned reviewers, only in pools they serve, only once submitted, and
   // only once the conference is in review. Before that an assigned reviewer gets what a
   // stranger gets, and so does a reviewer whose assignment was released: it is no longer there.
-  const reviewer = hasRole(p, s.conferenceId, ["reviewer"]);
-  const pool = findType(ctx.config, s.typeKey)?.reviewPool;
-  const inPool = reviewer && pool && (reviewer.scope.length === 0 || reviewer.scope.includes(pool));
-  const assigned = ctx.assignments.some(
-    (a) => a.reviewerId === p.personId && a.submissionId === s.id,
-  );
-  if (inPool && assigned && isReviewable(s) && reviewersCanRead(ctx.phase)) {
-    return `reviewer_${effectiveBlindMode(ctx.config, s.typeKey)}`;
-  }
+  if (isAssignedReviewer(p, ctx)) return `reviewer_${effectiveBlindMode(ctx.config, s.typeKey)}`;
   return baseline;
 }
 

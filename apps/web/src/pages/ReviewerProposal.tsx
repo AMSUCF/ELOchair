@@ -1,30 +1,37 @@
 import type { ConferenceConfig } from "@elochair/schema";
-import { localize } from "@elochair/schema/pure";
+import { localize, reviewPoolFor } from "@elochair/schema/pure";
 import { answerOf } from "../answers";
 import type { ReviewerSubmission } from "../api";
 import { LANG_NAMES, useT } from "../i18n";
 import { roleKey } from "../labels";
 import { Localized, PageHeading } from "../ui";
+import { ReviewSection } from "./ReviewForm";
 
 /**
  * A proposal as its reviewer is given it (the reviewer projection in packages/policy): the text
- * and the answers, with nothing to change. This page shows what arrives and decides nothing: in
- * anonymized review the server leaves out the authors and the answers that could name them.
+ * and the answers, with nothing of it to change. This page shows what arrives and decides
+ * nothing: in anonymized review the server leaves out the authors and the answers that could
+ * name them.
  *
- * Above the proposal are the guidelines the chairs wrote for the pool that reviews its format,
- * where they wrote any (conference settings, spec 02 §1.9).
+ * Above the proposal are the guidelines the chairs wrote for the committee that reviews its
+ * format, where they wrote any (conference settings, spec 02 §1.9). Under it is the reviewer's
+ * own review: one form, a draft and then sent (spec 03, §1.4; ReviewForm.tsx).
  */
 export function ReviewerProposal({
   sub,
   config,
+  personId,
 }: {
   sub: ReviewerSubmission;
   config: ConferenceConfig;
+  /** The person signed in: their unsaved review text is kept in this browser under their id. */
+  personId: string | null;
 }) {
   const { lang, t } = useT();
   const fallback = config.defaultLanguage;
   const type = config.submissionTypes.find((x) => x.key === sub.typeKey);
-  const guidelines = config.reviewPools.find((x) => x.key === type?.reviewPool)?.guidelines;
+  const pool = reviewPoolFor(config, sub.typeKey);
+  const guidelines = pool?.guidelines;
   const track = config.tracks.find((x) => x.key === sub.trackKey);
   const topics = config.topics.filter((x) => sub.topicKeys.includes(x.key));
   const words = { lang, fallback, yes: t("editYes"), no: t("editNo") };
@@ -48,17 +55,18 @@ export function ReviewerProposal({
         )}
       </p>
       <p className="notice">
-        {t("reviewIntro")}
-        {sub.blindMode === "double" && ` ${t("reviewNamesHidden")}`}
+        {t("reviewIntro")}{" "}
+        {t(sub.blindMode === "double" ? "reviewNamesHidden" : "reviewNamesShown")}
       </p>
       {guidelines && (
-        <section aria-labelledby="review-guidelines">
-          <h2 id="review-guidelines">{t("reviewGuidelines")}</h2>
+        // Read on the list already ("My reviews"): here they are one press away, closed.
+        <details className="guidelines-box">
+          <summary>{t("reviewGuidelines")}</summary>
           {/* As the chairs wrote them: their line breaks are kept (.guidelines). */}
           <p className="guidelines">
             <Localized text={guidelines} fallback={fallback} />
           </p>
-        </section>
+        </details>
       )}
       <dl className="details">
         {track && (
@@ -121,6 +129,16 @@ export function ReviewerProposal({
             ))}
           </ul>
         </>
+      )}
+      {pool && (
+        <ReviewSection
+          key={sub.id}
+          submissionId={sub.id}
+          language={sub.language}
+          pool={pool}
+          config={config}
+          personId={personId}
+        />
       )}
     </article>
   );

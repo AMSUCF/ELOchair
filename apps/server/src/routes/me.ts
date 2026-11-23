@@ -1,11 +1,18 @@
 import { projectSelf, projectSubmission } from "@elochair/policy";
-import { AnswerInvitationInput, isCallOpen, ProfileInput } from "@elochair/schema";
+import {
+  AnswerInvitationInput,
+  isCallOpen,
+  NotificationChoicesInput,
+  ProfileInput,
+} from "@elochair/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { audit } from "../audit";
 import type { AppEnv } from "../context";
 import { contributions, people, submissions } from "../db/schema";
 import { type ConferenceRow, getPerson, listConferences, loadSubmissionRecords } from "../repo";
+import { readEmailChoices, saveEmailChoices } from "../services/notifications";
+import { myReviews } from "../services/reviews";
 import { ownCapCount } from "../services/submissions";
 import { person, writer } from "./common";
 import { answerInvitation } from "./invitations";
@@ -83,8 +90,32 @@ export const meRoutes = new Hono<AppEnv>()
       })),
     });
   })
+  // What the page's frame asks about whoever is looking, signed in or not: whether the main
+  // menu offers "My reviews". A yes or a no, and nothing else; an agent reviews nowhere.
+  .get("/menu", (c) => {
+    const viewer = c.get("viewer");
+    return c.json({
+      reviews: viewer.kind === "person" && viewer.grants.some((g) => g.role === "reviewer"),
+    });
+  })
   .get("/submissions", async (c) => c.json({ items: await mine(c, ["invited", "confirmed"]) }))
   .get("/invitations", async (c) => c.json({ items: await mine(c, ["invited"]) }))
+  // "My reviews" (spec 03, §1.4): the person's own assignments, at each conference where they
+  // review and reviewers can read. In person: an agent has no reviews, and reads nobody's.
+  .get("/reviews", async (c) =>
+    c.json({ conferences: await myReviews(c.get("deps").db, person(c)) }),
+  )
+  // The person's own choices about the emails of the review phase (spec 03, §1.7), at each
+  // conference where they review or chair. In person: an agent gets no email and has no choice
+  // to see (401, as for the public) or to make (403 `agents_read_only`).
+  .get("/notifications", async (c) =>
+    c.json({ conferences: await readEmailChoices(c.get("deps").db, person(c)) }),
+  )
+  .put("/notifications/:slug", async (c) => {
+    const viewer = writer(c);
+    const input = NotificationChoicesInput.parse(await c.req.json());
+    return c.json(await saveEmailChoices(c.get("deps"), viewer, c.req.param("slug"), input));
+  })
   .post("/invitations/:submissionId/answer", async (c) => {
     const viewer = writer(c);
     const input = AnswerInvitationInput.parse(await c.req.json());

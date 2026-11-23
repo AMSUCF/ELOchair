@@ -52,6 +52,9 @@ export const settingsEn = {
   settingsLabel_placeholder: "Say on the conference page that it is provisional",
   settingsLabel_rules_presenterCap_max: "Most lead and presenting roles per person",
   settingsLabel_rules_bio_maxWords: "Most words in a bio",
+  settingsLabel_rules_reviewReminderDays: "Reminder to reviewers: days before reviews are due",
+  settingsReminderDaysHint:
+    "Optional. Left empty, it is {days} days. That many days before the day reviews are due, from {hour} in the conference's time zone, each reviewer who still has reviews to send gets one email, unless they turned it off. No reminder is sent while no day is set. If you move the day afterwards, reviewers are reminded again before the new one, unless the reminder for that day has already gone out.",
   settingsLabel_type_name: "Name",
   settingsLabel_type_description: "Description",
   settingsLabel_type_abstract_label: "What the abstract is called",
@@ -72,6 +75,28 @@ export const settingsEn = {
   settingsLabel_pool_reviewsPerSubmission: "Reviews per proposal",
   settingsLabel_pool_guidelines: "Guidelines for reviewers",
   settingsLabel_criterion_label: "Label",
+  settingsLabel_criterion_description: "Description",
+  settingsCriterionDescriptionHint:
+    "Optional. What this criterion asks, or what its lowest and highest scores mean. Reviewers read it under the criterion's name on the review form.",
+  settingsFormTitle: "The review form",
+  settingsFormIntro:
+    "Under the scores, this committee's review form has comments for the authors, a note for the chairs only, and an overall recommendation. Their names are the app's own. What is written under each, the limits on the comments, and whether the form has the note and the recommendation, are yours to set.",
+  settingsLabel_form_comments_description:
+    "Comments for the authors: what is written under the field",
+  settingsLabel_form_comments_minWords: "Comments for the authors: fewest words",
+  settingsLabel_form_comments_maxWords: "Comments for the authors: most words",
+  settingsLabel_form_chairNote_enabled: "The form has a note for the chairs only",
+  settingsLabel_form_chairNote_description:
+    "Note for the chairs only: what is written under the field",
+  settingsLabel_form_recommendation_enabled:
+    "The form asks for an overall recommendation: accept, unsure or reject",
+  settingsLabel_form_recommendation_description: "Recommendation: what is written under its name",
+  settingsFormDescriptionHint:
+    "Optional. Left empty, reviewers read the standard sentence: “{standard}”",
+  settingsFormDescriptionHintNone: "Optional. Left empty, nothing is written there.",
+  settingsReviewsDueHint:
+    "Optional. Reviewers are shown this day on their list. It locks nothing: reviews can be sent and changed for as long as the conference is in review. For no day, leave the date empty.",
+  settingsDeadlineNone: "No day is set.",
   settingsLabel_criterion_min: "Smallest score",
   settingsLabel_criterion_max: "Largest score",
   settingsBlind_double:
@@ -83,7 +108,7 @@ export const settingsEn = {
   settingsGuidelinesHint:
     "Optional. This pool's reviewers see this text above every proposal assigned to them, in their own language where you have written it and otherwise in the conference's main language. Line breaks are kept.",
   settingsEmailsIntro:
-    "The app sends these emails to the people on a proposal, and to the people a chair invites as reviewers or chairs. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
+    "The app sends these emails to the people on a proposal, to the people a chair invites as reviewers or chairs, and to reviewers and chairs while proposals are reviewed. You can change their wording in English, Spanish and Portuguese. Each box shows the text that is sent: the standard text, until you change it.",
   settingsEmailsNote:
     "All three languages are here, whichever of them the conference has, because each person gets the email in their own language: someone can be invited in Portuguese to a conference held in English and Spanish. A language you have not changed keeps the standard text. These texts are not private: like the rest of these settings, anyone who can see the conference can read them. The sign-in email is the same for everyone and cannot be changed here.",
   settingsEmail_invitation: "Invitation to a proposal",
@@ -94,6 +119,10 @@ export const settingsEn = {
   settingsEmail_draft_deleted: "Notice to people invited to a deleted draft",
   settingsEmail_reviewer_invitation: "Invitation to be a reviewer",
   settingsEmail_chair_invitation: "Invitation to be a chair",
+  settingsEmail_new_assignments: "New assignments, to a reviewer",
+  settingsEmail_review_reminder: "Reminder before reviews are due, to a reviewer",
+  settingsEmail_reviewer_declined: "A reviewer cannot review a proposal, to the chairs",
+  settingsEmail_reviews_complete: "A proposal has all its reviews, to the chairs",
   settingsEmailWhen_invitation:
     "Sent to a person when the owner of a proposal adds them to it, and again if the owner sends the invitation again. That person has not agreed to anything yet.",
   settingsEmailWhen_submission_received:
@@ -110,6 +139,14 @@ export const settingsEn = {
     "Sent to a person when a chair invites them, on the People page, to be a reviewer, and again if a chair sends the invitation again. That person has not agreed to anything yet, so the email names no person: neither the chair who invites, nor the name that chair typed for them.",
   settingsEmailWhen_chair_invitation:
     "Sent to a person when a chair invites them, on the People page, to be a chair, and again if a chair sends the invitation again. That person has not agreed to anything yet, so the email names no person: neither the chair who invites, nor the name that chair typed for them.",
+  settingsEmailWhen_new_assignments:
+    "Sent to a reviewer when a chair assigns proposals to them while the conference is in review, and for proposals assigned earlier once it is: an email for each one, one summary a day (from {hour} in the conference's time zone), or none, as that reviewer chose under “Your account”. It says how many proposals and never which: it names no proposal and no author.",
+  settingsEmailWhen_review_reminder:
+    "Sent to each reviewer who has reviews that are not sent, from {hour} in the conference's time zone, some days before the day reviews are due: {days} days, unless you set another number among the deadlines. Sent once for the day you set. Not sent while no day is set, and not to a reviewer who turned reminders off under “Your account”.",
+  settingsEmailWhen_reviewer_declined:
+    "Sent to the conference's chairs when a reviewer says they cannot review a proposal and gives it back: an email for each one, one summary a day (from {hour} in the conference's time zone), or none, as each chair chose under “Your account”. It names no proposal and no reviewer: who gave it back is on the proposal's page. A chair gets none about their own proposal or one they have a conflict with.",
+  settingsEmailWhen_reviews_complete:
+    "Sent to the conference's chairs when a proposal has as many sent reviews as its committee asks for: an email for each one, one summary a day (from {hour} in the conference's time zone), or none, as each chair chose under “Your account”. It names no proposal. A chair gets none about their own proposal or one they have a conflict with.",
   settingsEmailPlaceholders:
     "You can put these words, with their braces, in the subject and in the text. Each is replaced when the email is sent:",
   settingsEmailPlaceholder_conference: "the conference's title",
@@ -129,6 +166,20 @@ export const settingsEn = {
   settingsEmailPlaceholder_person:
     "the person who answered: their name, or their address, as the owner wrote it",
   settingsEmailPlaceholder_answer: "what that person did",
+  settingsEmailPlaceholder_count: "how many the email is about",
+  settingsEmailPlaceholder_count_new_assignments:
+    "how many proposals were newly assigned to the reviewer",
+  settingsEmailPlaceholder_count_review_reminder: "how many reviews the reviewer has not sent yet",
+  settingsEmailPlaceholder_count_reviewer_declined: "how many proposals were given back",
+  settingsEmailPlaceholder_count_reviews_complete: "how many proposals now have all their reviews",
+  settingsEmailPlaceholder_due:
+    "a sentence that says when reviews are due, or that the chairs have set no day",
+  settingsEmailPlaceholder_reason:
+    "why the reviewer cannot review it; in a summary, each reason that was given",
+  settingsEmailPlaceholder_choices:
+    "the link to the person's own choices about these emails, under “Your account”",
+  settingsEmailPlaceholder_reviewsLink: "the link to the reviewer's list, “My reviews”",
+  settingsEmailPlaceholder_assignmentsLink: "the link to the conference's Assignments page",
   settingsEmailWords: "{language}: {words}",
   settingsEmailRequired: "The text must contain it.",
   settingsEmailBodyOnly: "It cannot go in the subject.",
@@ -231,6 +282,26 @@ export const settingsEn = {
   issue_settings_no_whole_number:
     "There is no whole number between this and the largest value beside it, so nobody could answer.",
   issue_settings_deadline_order: "This must not be before the deadline above it.",
+  issue_settings_reviews_due_order:
+    "Reviews are due after submissions close and before decisions are sent.",
+  issue_settings_reviews_below_scale:
+    "Reviews already sent that give a lower score than this: {n}. A review that was sent stays valid, so the smallest score cannot go above a score already given.",
+  issue_settings_reviews_above_scale:
+    "Reviews already sent that give a higher score than this: {n}. A review that was sent stays valid, so the largest score cannot go below a score already given.",
+  issue_settings_reviews_have_scores:
+    "Reviews already sent that score a criterion this would remove: {n}. A review that was sent stays valid.",
+  issue_settings_reviews_too_short:
+    "Reviews already sent whose comments have fewer words than this: {n}. A review that was sent stays valid.",
+  issue_settings_reviews_too_long:
+    "Reviews already sent whose comments have more words than this: {n}. A review that was sent stays valid.",
+  issue_settings_reviews_have_note:
+    "Reviews already sent that have a note for the chairs: {n}. The note cannot be taken off the form while a sent review has one.",
+  issue_settings_reviews_have_recommendation:
+    "Reviews already sent that give a recommendation: {n}. It cannot be taken off the form while a sent review has one.",
+  issue_settings_reviews_sent:
+    "Reviews were already sent for proposals in this format: {n}. They answered the form of the committee that reviews it now.",
+  issue_settings_reviews_hidden:
+    "A proposal of your own, or one you have a conflict with, was submitted for this committee, and the conference has been in review. Whether that proposal has reviews, and what they hold, is not yours to know, so narrowing the form they are written on is not yours to do. A chair who has no proposal of their own before this committee, and no conflict with one, can make this change. If there is no such chair, invite one on the People page.",
   issue_settings_dates_order: "The last day must not be before the first day.",
   issue_settings_final_before_conference:
     "Final materials must be due before the conference starts.",

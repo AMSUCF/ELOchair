@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { api } from "../api";
 import { useT } from "../i18n";
+import { sessionChanged } from "../session";
 import { PageHeading } from "../ui";
 
 type State = "idle" | "sending" | "sent" | "invalid" | "rate_limited" | "error";
@@ -42,8 +43,10 @@ export function SignInPage() {
     e.preventDefault();
     setCodeState("checking");
     const res = await api("/api/auth/verify-code", { method: "POST", body: { email, code } });
-    if (res.ok) navigate(`/${lang}/me`, { replace: true });
-    else if (res.status === 429) setCodeState("rate_limited");
+    if (res.ok) {
+      sessionChanged();
+      navigate(`/${lang}/me`, { replace: true });
+    } else if (res.status === 429) setCodeState("rate_limited");
     else if (res.status === 400) setCodeState("invalid");
     else setCodeState("error");
   }
