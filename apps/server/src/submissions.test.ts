@@ -155,6 +155,32 @@ describe("creating and editing", () => {
       ).status,
     ).toBe(404);
   });
+
+  it("someone who is not signed in is answered alike about a proposal that exists, one that does not and what is no id (spec 02, §1.11)", async () => {
+    const owner = await person("owner4@example.org", "Rae Owner");
+    const s = await draft(owner);
+    // What a proposal's page asks, whatever its address names.
+    for (const part of ["", "/conference"]) {
+      const answers = [];
+      for (const id of [s.id, "3f2b8c1e-5d47-4a90-8b6e-0c9d1e2f3a4b", "not-an-id"]) {
+        const res = await call(t.public, "GET", `/api/submissions/${id}${part}`);
+        answers.push([res.status, res.json]);
+      }
+      expect(answers, part).toEqual([
+        [404, { error: "not_found" }],
+        [404, { error: "not_found" }],
+        [404, { error: "not_found" }],
+      ]);
+    }
+    // Its owner is answered, also when the id is written in capitals.
+    for (const id of [s.id, s.id.toUpperCase()]) {
+      const mine = await call(t.public, "GET", `/api/submissions/${id}`, { cookie: owner });
+      expect([mine.status, mine.json.id]).toEqual([200, s.id]);
+    }
+    expect(
+      (await call(t.public, "GET", "/api/submissions/not-an-id", { cookie: owner })).status,
+    ).toBe(404);
+  });
 });
 
 describe("submitting", () => {

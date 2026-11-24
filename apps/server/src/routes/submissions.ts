@@ -52,7 +52,7 @@ import {
   receivedMessage,
   withdrawnMessage,
 } from "../templates";
-import { person, RateLimited, Refusal, writer } from "./common";
+import { idParam, person, RateLimited, Refusal, writer } from "./common";
 
 const DAY = 24 * 60 * 60 * 1000;
 const INVITES_PER_OWNER_PER_DAY = 20;
@@ -126,7 +126,9 @@ async function projected(c: Context<AppEnv>, id: string) {
 
 export const submissionRoutes = new Hono<AppEnv>()
   .get("/:id", async (c) => {
-    const loaded = await loadSubmission(c.get("deps").db, c.req.param("id"));
+    // A proposal's page asks this for whatever its address names, signed in or not (spec 02,
+    // §1.11): what is no id names nothing, and is answered as an id nobody has.
+    const loaded = await loadSubmission(c.get("deps").db, idParam(c.req.param("id")));
     const out = loaded && projectSubmission(c.get("viewer"), loaded.rec);
     return out ? c.json(out) : c.json({ error: "not_found" }, 404);
   })
@@ -134,7 +136,7 @@ export const submissionRoutes = new Hono<AppEnv>()
   .get("/:id/conference", async (c) => {
     // The conference a visible submission belongs to (its configuration is public material).
     const deps = c.get("deps");
-    const loaded = await loadSubmission(deps.db, c.req.param("id"));
+    const loaded = await loadSubmission(deps.db, idParam(c.req.param("id")));
     if (!loaded || !projectSubmission(c.get("viewer"), loaded.rec))
       throw new Refusal(404, "not_found");
     const k = loaded.conference;

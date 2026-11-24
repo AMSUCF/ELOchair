@@ -7,6 +7,7 @@ export const submissionEn = {
   startTitle: "Start a proposal",
   startIntro: "Choose a format. You can save a draft and come back until the deadline.",
   startSignInFirst: "Sign in to start a proposal.",
+  startFormatChosen: "Selected format:",
   startLanguage: "Language of your abstract",
   startMode: "How do you plan to take part?",
   startOwnRole: "Your role in this proposal",
@@ -38,6 +39,9 @@ export const submissionEn = {
 
   editUntitled: "Untitled proposal",
   editNotFound: "We could not find that proposal, or you cannot see it.",
+  editSignedOutTitle: "Proposal",
+  editNeedSignIn:
+    "Sign in to read this proposal. Proposals are shown only to the people on them, to their reviewers and to the chairs of their conference.",
   editTitleLabel: "Title",
   editWords: "{count} words (between {min} and {max})",
   editWordsUnder: "{count} words: at least {min} needed",
@@ -161,6 +165,7 @@ export const submissionEn = {
 
   myTitle: "My submissions",
   myEmpty: "You have no proposals yet.",
+  myNeedSignIn: "Please sign in to see your proposals.",
   myInvitations: "Invitations waiting for your answer",
   myOpen: "Open",
 

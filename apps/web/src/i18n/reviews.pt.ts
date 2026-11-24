@@ -5,7 +5,7 @@ export const reviewsPt: Record<keyof typeof reviewsEn, string> = {
   navMyReviews: "As minhas revisões",
 
   myReviewsTitle: "As minhas revisões",
-  myReviewsNeedSignIn: "Inicie sessão para ver as suas revisões.",
+  myReviewsNeedSignIn: "Entre para ver as suas revisões.",
   myReviewsNone:
     "De momento não tem nada para rever. As propostas aparecem aqui quando um congresso para o qual revê está em revisão e a presidência lhe atribuiu alguma.",
   myReviewsCommittees: "Revê para: {committees}",
@@ -121,4 +121,5 @@ export const reviewsPt: Record<keyof typeof reviewsEn, string> = {
   cannotNotOffered:
     "Isto já não é possível: a sua revisão desta proposta foi enviada, ou o congresso já não está em revisão.",
   cannotGone: "Esta proposta não lhe está atribuída.",
+  cannotNeedSignIn: "Entre para avisar a presidência de que não pode rever esta proposta.",
 };

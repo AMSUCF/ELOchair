@@ -1,11 +1,11 @@
 import type { Agreement, LocalizedText } from "@elochair/schema";
 import { LIMITS, localize } from "@elochair/schema/pure";
 import { type RefObject, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 import { api, type Role } from "../api";
 import { cleanName, nameRefusal } from "../forms";
 import { type MessageKey, useT } from "../i18n";
 import { roleKey } from "../labels";
+import { SignInForm } from "../signIn";
 import { FocusPending, Localized, PageHeading } from "../ui";
 
 type Info = {
@@ -67,9 +67,14 @@ const failure = (status: number): State =>
       ? { step: "network" }
       : { step: "invalid" };
 
-/** The page an invitation email links to. Declining needs no account; confirming needs consent. */
+/**
+ * The page an invitation email links to. Declining needs no account; confirming needs consent.
+ * Once confirmed, the page has the sign-in form on it. The code signs the person in here; the
+ * emailed link leads to "Your account", never back to this page, which is nothing without its
+ * token (the form is given no address to come back to).
+ */
 export function InvitationPage() {
-  const { lang, t } = useT();
+  const { t } = useT();
   const [token] = useState(takeToken);
   const [state, setState] = useState<State>({ step: "loading" });
   const [name, setName] = useState("");
@@ -216,13 +221,7 @@ export function InvitationPage() {
           </button>
         </p>
       )}
-      {state.step === "done" && state.answer === "confirmed" && (
-        <p>
-          <Link className="button" to={`/${lang}/sign-in`}>
-            {t("navSignIn")}
-          </Link>
-        </p>
-      )}
+      {state.step === "done" && state.answer === "confirmed" && <SignInForm />}
     </>
   );
 }

@@ -167,5 +167,4 @@ export const peopleEn = {
   roleInvDeclined: "You declined. No role was given, and the chairs will see your answer.",
   roleInvInvalid:
     "This invitation link no longer works: it has expired, was already answered, or was cancelled. If you were sent a newer email, use the link in that one. Otherwise, ask the conference's chairs to invite you again.",
-  roleInvSignIn: "Sign in as {email}",
 };

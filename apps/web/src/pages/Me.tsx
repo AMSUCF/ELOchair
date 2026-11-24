@@ -5,6 +5,7 @@ import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "
 import { LANG_NAMES, useT } from "../i18n";
 import { conferenceRoleKey } from "../labels";
 import { sessionChanged } from "../session";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { PageHeading } from "../ui";
 import { sortUnsaved, type UnsavedValues } from "../unsaved";
 import { useApi } from "../useApi";
@@ -99,16 +100,13 @@ export function MePage() {
   const [saved, setSaved] = useState<Profile | null>(null);
 
   if (!res || !choices) return <p role="status">{t("loading")}</p>;
+  if (nobodySignedIn(res)) return <SignInHere title={t("meTitle")} why={t("meNeedSignIn")} />;
   if (!res.ok || res.data.kind !== "person") {
     return (
       <>
         <PageHeading>{t("meTitle")}</PageHeading>
-        <p>{t("meNeedSignIn")}</p>
-        <p>
-          <Link className="button" to={`/${lang}/sign-in`}>
-            {t("navSignIn")}
-          </Link>
-        </p>
+        {/* The account did not arrive: that does not say that nobody is signed in. */}
+        <p role="alert">{t(!res.ok && res.status === 0 ? "verifyNetwork" : "errorGeneric")}</p>
       </>
     );
   }

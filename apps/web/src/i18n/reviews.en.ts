@@ -129,4 +129,5 @@ export const reviewsEn = {
   cannotNotOffered:
     "This is no longer possible: your review of this proposal was sent, or the conference is no longer in review.",
   cannotGone: "This proposal is not assigned to you.",
+  cannotNeedSignIn: "Sign in to tell the chairs that you cannot review this proposal.",
 };

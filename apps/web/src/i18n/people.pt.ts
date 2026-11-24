@@ -166,5 +166,4 @@ export const peoplePt: Record<keyof typeof peopleEn, string> = {
   roleInvDeclined: "Recusou. Não foi atribuído nenhum papel, e a presidência verá a sua resposta.",
   roleInvInvalid:
     "Este link de convite já não funciona: expirou, já foi respondido ou foi cancelado. Se recebeu um email mais recente, use o link desse email. Caso contrário, peça a quem preside ao congresso que o/a convide de novo.",
-  roleInvSignIn: "Entrar como {email}",
 };

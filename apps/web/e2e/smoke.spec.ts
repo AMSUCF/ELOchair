@@ -195,6 +195,8 @@ test("sign in with a magic link after confirming, then sign out", async ({ page,
 
   const link = /https?:\/\/\S+#token=\S+/.exec((await latestMail(request, email)).text)?.[0];
   expect(link).toBeTruthy();
+  // Asked for on the sign-in page, the link names no page to go to: only its token.
+  expect(link).toMatch(/\/en\/auth\/verify#token=[A-Za-z0-9_-]+$/);
 
   // Opening the link alone signs nobody in: it says who, and waits for a tap.
   await page.goto(link as string);
@@ -218,9 +220,13 @@ test("sign in with a magic link after confirming, then sign out", async ({ page,
   await expect(page).toHaveURL(/\/en\/$/);
   await page.goto("/en/me");
   await expect(page.getByText("Please sign in to see your account.")).toBeVisible();
+  // Changed with spec 02, §1.11: the page used to link to the sign-in page. It now has the
+  // sign-in form on it.
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
 });
 
-test("sign in by typing the code (for the installed app)", async ({ page, request }) => {
+test("sign in by typing the code (for the installed app)", async ({ page, request, browser }) => {
   const email = "reviewer-1@example.org";
   await requestLink(page, email);
   const m = /\b(\d{4}) (\d{4})\b/.exec((await latestMail(request, email)).text);
@@ -260,6 +266,77 @@ test("sign in by typing the code (for the installed app)", async ({ page, reques
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Guidelines for reviewers" })).toHaveCount(0);
   await expect(page.locator(".guidelines")).toHaveCount(0);
+
+  // Checked here because this test has someone signed in (spec 02, §1.11). The sign-in form is
+  // for when the server says that nobody is signed in. A request that fails for another reason
+  // is said as such, and never asks someone who is signed in to sign in.
+  await page.route("**/api/me/submissions", (route) => route.abort());
+  await page.goto("/en/my");
+  await expect(page.getByRole("heading", { level: 1, name: "My submissions" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(
+    "We could not reach the server. Check your connection and try again.",
+  );
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
+  await page.unroute("**/api/me/submissions");
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ status: 500, json: { error: "internal" } }),
+  );
+  for (const [path, heading] of [
+    ["/en/me", "Your account"],
+    [`/en/c/${CALL}/submit`, "Start a proposal"],
+  ]) {
+    await page.goto(path as string);
+    await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveText("Something went wrong. Please try again.");
+    await expect(page.getByLabel("Email address")).toHaveCount(0);
+    await expect(page.getByRole("radio")).toHaveCount(0);
+  }
+  await page.unroute("**/api/me");
+
+  // Checked here because this test knows a proposal that exists. To someone who is not signed
+  // in, its page reads exactly as the page of a proposal that does not exist: it asks them to
+  // sign in, and says nothing of either. The reviewer's own page of it has no such form.
+  await page.goto(`/en/s/${assigned.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: assigned.title })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
+  const context = await browser.newContext({
+    baseURL: test.info().project.use.baseURL,
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    locale: "en-US",
+  });
+  const visitor = await context.newPage();
+  const shown = async (path: string) => {
+    await visitor.goto(path);
+    await expect(visitor.getByLabel("Email address")).toBeVisible();
+    await visitor.waitForLoadState("networkidle");
+    return { title: await visitor.title(), page: await visitor.locator("main").innerHTML() };
+  };
+  const real = await shown(`/en/s/${assigned.id}`);
+  expect(real.title).toBe("Proposal – ELOchair");
+  expect(real.page).toContain("Sign in to read this proposal.");
+  expect(real.page).not.toContain(assigned.title);
+  expect(real.page).not.toMatch(/could not find|not assigned/);
+  expect(await shown(`/en/s/${NO_PROPOSAL}`)).toEqual(real);
+  expect(await shown("/en/s/not-an-id")).toEqual(real);
+  const cannot = await shown(`/en/s/${assigned.id}/cannot-review`);
+  expect(cannot.page).toContain("Sign in to tell the chairs that you cannot review this proposal.");
+  expect(cannot.page).not.toMatch(/could not find|not assigned/);
+  expect(await shown(`/en/s/${NO_PROPOSAL}/cannot-review`)).toEqual(cannot);
+  // What the server answers the two pages has the same status and body for both proposals as
+  // well; and what is no id at all is answered as an id nobody has.
+  const answer = async (id: string, part: string) => {
+    const res = await visitor.request.get(`/api/submissions/${id}${part}`);
+    return [res.status(), await res.text()];
+  };
+  for (const part of ["", "/conference", "/review"]) {
+    const real = await answer(assigned.id, part);
+    expect(Number(real[0]), part).toBeGreaterThanOrEqual(400);
+    expect(await answer(NO_PROPOSAL, part), part).toEqual(real);
+    if (part !== "/review") expect(await answer("not-an-id", part), part).toEqual(real);
+  }
+  await context.close();
 });
 
 test("a link for another account warns before switching", async ({ page, request }) => {
@@ -345,6 +422,341 @@ test("a page that fails to render says so in the interface language, and the res
   // it. Focus must land on the error's heading, not on the page body.
   await page.getByRole("link", { name: "ELOchair", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Algo salió mal" })).toBeFocused();
+});
+
+/*
+ * Signing in where you are (spec 02, §1.11). A page that needs someone signed in has the
+ * sign-in form on it, and signing in brings the person to that page. These tests ask the server
+ * for no sign-in email (it rations them, and the suite is close to the limit): the request is
+ * answered in the page, as the server answers it. The whole way, by the emailed link and by
+ * the typed code, is walked once each where a test signed in anyway (submission.spec.ts,
+ * review.spec.ts, settings.spec.ts).
+ */
+/** A proposal's address that names no proposal. */
+const NO_PROPOSAL = "3f2b8c1e-5d47-4a90-8b6e-0c9d1e2f3a4b";
+
+test("a page that needs someone signed in has the sign-in form on it, and asks for a link that leads back to it", async ({
+  page,
+}) => {
+  test.slow();
+  const { config } = await conference(page, CALL);
+  const format = held(config.submissionTypes[1]?.key, "second format");
+  const chairs = "Sign in to open this page. It is for the chairs of this conference.";
+  const pages: { path: string; heading: string; why: string }[] = [
+    {
+      path: `/en/c/${CALL}/submit?format=${format}`,
+      heading: "Start a proposal",
+      why: "Sign in to start a proposal.",
+    },
+    {
+      path: "/en/my",
+      heading: "My submissions",
+      why: "Please sign in to see your proposals.",
+    },
+    { path: "/en/reviews", heading: "My reviews", why: "Please sign in to see your reviews." },
+    { path: "/en/me", heading: "Your account", why: "Please sign in to see your account." },
+    {
+      path: `/en/s/${NO_PROPOSAL}`,
+      heading: "Proposal",
+      why: "Sign in to read this proposal. Proposals are shown only to the people on them, to their reviewers and to the chairs of their conference.",
+    },
+    {
+      path: `/en/s/${NO_PROPOSAL}/cannot-review`,
+      heading: "I cannot review this proposal",
+      why: "Sign in to tell the chairs that you cannot review this proposal.",
+    },
+    { path: "/en/c/sandbox/manage", heading: "Manage submissions", why: chairs },
+    { path: "/en/c/sandbox/settings", heading: "Conference settings", why: chairs },
+    { path: "/en/c/sandbox/people", heading: "People", why: chairs },
+    { path: "/en/c/sandbox/assignments", heading: "Assignments", why: chairs },
+    { path: "/en/c/sandbox/decisions", heading: "Decisions", why: chairs },
+    // A conference that does not exist reads as one that does: nobody is told which it is.
+    { path: "/en/c/no-such-conference/settings", heading: "Conference settings", why: chairs },
+  ];
+
+  // Every request for a sign-in email is answered here, as the server answers: none reaches it.
+  const asked: unknown[] = [];
+  await page.route("**/api/auth/request-link", (route) => {
+    asked.push(route.request().postDataJSON());
+    return route.fulfill({ status: 202, json: { ok: true } });
+  });
+  const email = "visitor@example.org";
+  const send = page.getByRole("button", { name: "Email me a link" });
+  const comesBack = page.getByText("The link in the email brings you back to this page.");
+
+  for (const { path, heading, why } of pages) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("heading", { level: 1, name: heading, exact: true }),
+      path,
+    ).toBeVisible();
+    await expect(page.getByText(why, { exact: true }), path).toBeVisible();
+    await expect(comesBack).toBeVisible();
+    // The form is on the page: there is no link to another page to sign in on, and nothing
+    // that reads as an error or as "not found".
+    await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.locator("main")).not.toContainText(/could not find|do not chair|Only the/);
+    await expectAccessible(page);
+    await page.getByLabel("Email address").fill(email);
+    await send.click();
+    await expect(page.getByText("Check your email.")).toBeVisible();
+    // What it asked for: a link that leads to this very page, query and all.
+    expect(asked.pop(), path).toEqual({ email, lang: "en", next: path });
+    await expect(page.getByLabel("Code from the email")).toBeVisible();
+  }
+
+  // On a phone: nothing scrolls sideways, what is tapped is tall enough, and both themes pass.
+  await expectTouchTarget(send);
+  await expectTouchTarget(page.getByRole("button", { name: "Sign in with code" }));
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expectNoHorizontalScroll(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // In another language the page's own address is in that language, and so is the email.
+  await page.goto("/es/my");
+  await expect(page.getByText("Entra para ver tus propuestas.")).toBeVisible();
+  await expect(page.getByText("Con el enlace del correo vuelves a esta página.")).toBeVisible();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByRole("button", { name: "Enviarme un enlace" }).click();
+  await expect(page.getByText("Revisa tu correo.")).toBeVisible();
+  expect(asked.pop()).toEqual({ email, lang: "es", next: "/es/my" });
+  await expectAccessible(page);
+  await page.goto("/pt/reviews");
+  await expect(page.getByText("Entre para ver as suas revisões.")).toBeVisible();
+  await expect(page.getByText("Com o link do email volta a esta página.")).toBeVisible();
+  await page.getByLabel("Endereço de email").fill(email);
+  await page.getByRole("button", { name: "Enviar-me um link" }).click();
+  await expect(page.getByText("Verifique o seu email.")).toBeVisible();
+  expect(asked.pop()).toEqual({ email, lang: "pt", next: "/pt/reviews" });
+  await expectAccessible(page);
+
+  // A fragment is never part of it: only the page and its query are named.
+  await page.goto("/en/my#token=abcdefghijklmnopqrstuvwxyz");
+  await page.getByLabel("Email address").fill(email);
+  await send.click();
+  await expect(page.getByText("Check your email.")).toBeVisible();
+  expect(asked.pop()).toEqual({ email, lang: "en", next: "/en/my" });
+  // An address written as the app never writes one is not sent, and nothing is promised.
+  await page.goto("/en/my?from=a%20newsletter");
+  await expect(page.getByText("Please sign in to see your proposals.")).toBeVisible();
+  await expect(comesBack).toHaveCount(0);
+  await page.getByLabel("Email address").fill(email);
+  await send.click();
+  await expect(page.getByText("Check your email.")).toBeVisible();
+  expect(asked.pop()).toEqual({ email, lang: "en" });
+
+  // The sign-in page is for someone going nowhere in particular: it names no page, and its
+  // link leads to "Your account", as it always did.
+  await page.goto("/en/sign-in");
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+  await expect(comesBack).toHaveCount(0);
+  await page.getByLabel("Email address").fill(email);
+  await send.click();
+  await expect(page.getByText("Check your email.")).toBeVisible();
+  expect(asked.pop()).toEqual({ email, lang: "en" });
+  expect(asked).toEqual([]);
+});
+
+test("whatever a sign-in link says about where to go, signing in leaves nobody outside the app", async ({
+  page,
+  baseURL,
+}) => {
+  test.slow();
+  const origin = new URL(baseURL as string).origin;
+  // What the page a sign-in link opens asks the server is answered here, as for a link that
+  // works: nothing reaches the server, and no sign-in email is asked for.
+  await page.route("**/api/auth/link-info", (route) =>
+    route.fulfill({ json: { email: "visitor@example.org" } }),
+  );
+  await page.route("**/api/auth/verify", (route) => route.fulfill({ json: { person: null } }));
+  // Nothing may be asked of another site, and nothing may run.
+  const elsewhere: string[] = [];
+  await page.route(
+    (url) => url.protocol.startsWith("http") && url.origin !== origin,
+    (route) => {
+      elsewhere.push(route.request().url());
+      return route.abort();
+    },
+  );
+  const dialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message());
+    dialog.dismiss();
+  });
+
+  const token = "t".repeat(43);
+  /** Follow a link with this fragment, tap "Sign in", and say where that led. */
+  const follow = async (fragment: string) => {
+    await page.goto(`/en/auth/verify#${fragment}`);
+    await expect(page.getByText("This link signs you in as visitor@example.org.")).toBeVisible();
+    // The token and the address are taken out of the address bar at once.
+    await expect(page).toHaveURL(`${origin}/en/auth/verify`);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    // Wherever that leads, it is another page (the page a sign-in link opens is never named).
+    // Where it leads nowhere, the address it stayed at is what the test then reports.
+    await page
+      .waitForURL((url) => !url.pathname.endsWith("/auth/verify"), { timeout: 5_000 })
+      .catch(() => {});
+    return page.url();
+  };
+
+  const hostile = [
+    "//evil.example",
+    "//evil.example/en/my",
+    "/\\evil.example",
+    "\\\\evil.example",
+    "https://evil.example/en/my",
+    "https:evil.example",
+    "/en//evil.example",
+    "/en/\\evil.example",
+    "/%2Fevil.example",
+    "%2F%2Fevil.example",
+    "/en/%2F%2Fevil.example",
+    "/en/%5Cevil.example",
+    "/en/../../evil.example",
+    "/en/@evil.example",
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "/en/my#top",
+    "/en/my\n",
+    "/en/my\r\nBcc: someone@evil.example",
+    "/en/my\u202E",
+    "/en/my\u200B",
+    `/en/${"a".repeat(300)}`,
+    "/fr/my",
+    "/api/auth/logout",
+    "/en/sign-in",
+    "/en/auth/verify",
+    "evil.example",
+  ];
+  for (const next of hostile) {
+    // As the server would write it, encoded; and as someone might write it by hand, bare.
+    for (const written of [
+      encodeURIComponent(next),
+      next.replace(/[#&\r\n]/g, encodeURIComponent),
+    ]) {
+      const landed = await follow(`token=${token}&next=${written}`);
+      // On "Your account", where a link that names no page leads, with nothing asked of
+      // another site on the way.
+      expect([landed, elsewhere], JSON.stringify(next)).toEqual([`${origin}/en/me`, []]);
+    }
+  }
+  await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+
+  // An address inside the app is where the person lands; a second one is not looked at.
+  expect(await follow(`token=${token}&next=${encodeURIComponent("/es/reviews")}`)).toBe(
+    `${origin}/es/reviews`,
+  );
+  expect(
+    await follow(
+      `token=${token}&next=${encodeURIComponent(`/en/c/${CALL}/submit?format=x`)}&next=${encodeURIComponent("//evil.example")}`,
+    ),
+  ).toBe(`${origin}/en/c/${CALL}/submit?format=x`);
+  expect(
+    await follow(`token=${token}&next=${encodeURIComponent("//evil.example")}&next=%2Fen%2Fmy`),
+  ).toBe(`${origin}/en/me`);
+  expect(await follow(`token=${token}`)).toBe(`${origin}/en/me`);
+
+  // A link leads to the page it names only if it takes nobody else's place, which is asked of
+  // the server at the tap. What the server says about who is signed in is answered here.
+  const named = `token=${token}&next=${encodeURIComponent("/es/reviews")}`;
+  const signedInAs = (email: string) =>
+    page.route("**/api/me", (route) =>
+      route.fulfill({
+        json: {
+          kind: "person",
+          person: {
+            id: NO_PROPOSAL,
+            email,
+            displayName: null,
+            affiliation: null,
+            country: null,
+            languages: [],
+            pronouns: null,
+            orcid: null,
+            bios: {},
+          },
+          siteAdmin: false,
+          roles: [],
+        },
+      }),
+    );
+  // Another account is signed in: the page warns first, as it always did, and the link leads
+  // to "Your account", which names the account.
+  await signedInAs("someone-else@example.org");
+  await page.goto(`/en/auth/verify#${named}`);
+  await expect(
+    page.getByText("You are currently signed in as someone-else@example.org."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => !url.pathname.endsWith("/auth/verify"));
+  expect(page.url()).toBe(`${origin}/en/me`);
+  await page.unroute("**/api/me");
+  // Nobody was signed in when the page opened, and someone else is by the time of the tap.
+  await page.goto(`/en/auth/verify#${named}`);
+  await expect(page.getByText("This link signs you in as visitor@example.org.")).toBeVisible();
+  await expect(page.getByText(/You are currently signed in as/)).toHaveCount(0);
+  await signedInAs("someone-else@example.org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => !url.pathname.endsWith("/auth/verify"));
+  expect(page.url()).toBe(`${origin}/en/me`);
+  await page.unroute("**/api/me");
+  // The server does not say who is signed in (it fails, or something in between answers in
+  // its place): the link does not lead to the page either.
+  for (const noAnswer of [
+    { status: 500, json: { error: "internal" } },
+    {
+      status: 200,
+      contentType: "text/html",
+      body: "<html><body>Sign in to this network</body></html>",
+    },
+  ]) {
+    await page.goto(`/en/auth/verify#${named}`);
+    await expect(page.getByText("This link signs you in as visitor@example.org.")).toBeVisible();
+    await page.route("**/api/me", (route) => route.fulfill(noAnswer));
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL((url) => !url.pathname.endsWith("/auth/verify"));
+    expect(page.url()).toBe(`${origin}/en/me`);
+    await page.unroute("**/api/me");
+  }
+  // The person the link is for is signed in already: it leads to the page it names.
+  await signedInAs("visitor@example.org");
+  await page.goto(`/en/auth/verify#${named}`);
+  await expect(page.getByText("This link signs you in as visitor@example.org.")).toBeVisible();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => !url.pathname.endsWith("/auth/verify"));
+  expect(page.url()).toBe(`${origin}/es/reviews`);
+  await page.unroute("**/api/me");
+
+  // A link that no longer works offers the page it names, where the sign-in form is, and the
+  // sign-in page where what it names is no page of the app. Nothing else is ever a link here.
+  await page.unroute("**/api/auth/link-info");
+  await page.route("**/api/auth/link-info", (route) =>
+    route.fulfill({ status: 400, json: { error: "invalid_or_expired" } }),
+  );
+  for (const [next, offered] of [
+    ["/es/reviews", "/es/reviews"],
+    ["//evil.example", "/en/sign-in"],
+    ["/\\evil.example", "/en/sign-in"],
+    ["https://evil.example/en/my", "/en/sign-in"],
+    ["javascript:alert(1)", "/en/sign-in"],
+    ["/en/%2F%2Fevil.example", "/en/sign-in"],
+  ]) {
+    await page.goto("/en/");
+    await page.goto(`/en/auth/verify#token=${token}&next=${encodeURIComponent(next as string)}`);
+    await expect(page.getByText("This link has expired or has already been used.")).toBeVisible();
+    await expect(page.locator("main a")).toHaveCount(1);
+    await expect(page.getByRole("link", { name: "Request a new link" }), next).toHaveAttribute(
+      "href",
+      offered as string,
+    );
+  }
+
+  expect(elsewhere).toEqual([]);
+  expect(dialogs).toEqual([]);
 });
 
 test("an unknown conference says so, in the heading and the title", async ({ page }) => {

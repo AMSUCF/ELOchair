@@ -9,6 +9,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   startTitle: "Começar uma proposta",
   startIntro: "Escolha um formato. Pode guardar um rascunho e voltar até ao prazo.",
   startSignInFirst: "Entre para começar uma proposta.",
+  startFormatChosen: "Formato escolhido:",
   startLanguage: "Idioma do resumo",
   startMode: "Como pretende participar?",
   startOwnRole: "O seu papel nesta proposta",
@@ -41,6 +42,9 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
 
   editUntitled: "Proposta sem título",
   editNotFound: "Não encontrámos essa proposta, ou não a pode ver.",
+  editSignedOutTitle: "Proposta",
+  editNeedSignIn:
+    "Entre para ler esta proposta. As propostas só são mostradas às pessoas que nelas constam, a quem as revê e a quem preside ao respetivo congresso.",
   editTitleLabel: "Título",
   editWords: "{count} palavras (entre {min} e {max})",
   editWordsUnder: "{count} palavras: são necessárias pelo menos {min}",
@@ -168,6 +172,7 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
 
   myTitle: "As minhas submissões",
   myEmpty: "Ainda não tem propostas.",
+  myNeedSignIn: "Entre para ver as suas propostas.",
   myInvitations: "Convites à espera da sua resposta",
   myOpen: "Abrir",
 

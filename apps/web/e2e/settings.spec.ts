@@ -88,6 +88,51 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await expect(page).toHaveURL(/\/en\/me$/);
 }
 
+/**
+ * Sign in on a chairs' page itself, with the code from the email (spec 02, §1.11): signed out,
+ * "Manage submissions" has the sign-in form on it, and once the code is typed it shows the
+ * conference's submissions, without a reload and without going anywhere.
+ *
+ * It takes the place of the sign-in on the sign-in page that this file made anyway: the server
+ * rations them, and the suite is close to the limit.
+ */
+async function signInOnManage(page: Page, request: APIRequestContext, email: string) {
+  const here = "/en/c/sandbox/manage";
+  await page.goto(here);
+  const heading = page.getByRole("heading", { level: 1, name: "Manage submissions" });
+  await expect(heading).toBeVisible();
+  // Nobody is signed in: the page asks for that, and does not say "You do not chair".
+  await expect(
+    page.getByText("Sign in to open this page. It is for the chairs of this conference."),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download proposals (CSV)" })).toHaveCount(0);
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+
+  // The link in the email would lead back here: the request names this page.
+  const asked = page.waitForRequest("**/api/auth/request-link");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("button", { name: "Email me a link" }).click();
+  expect((await asked).postDataJSON()).toEqual({ email, lang: "en", next: here });
+  await expect(page.getByText("Check your email.")).toBeVisible();
+  // The sign-in email, by its kind: other email may reach the same address meanwhile.
+  const mail = await request.get(
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+  );
+  const code = /\b(\d{4}) (\d{4})\b/.exec(((await mail.json()) as { text: string }).text);
+  await page.getByLabel("Code from the email").fill(`${code?.[1]}${code?.[2]}`);
+  await page.getByRole("button", { name: "Sign in with code" }).click();
+
+  // Signed in, on the same page, which now shows what a chair comes for. Its heading takes
+  // the focus, as after a navigation.
+  await expect(page.getByRole("link", { name: "Download proposals (CSV)" })).toBeVisible();
+  await expect(page).toHaveURL(here);
+  await expect(heading).toBeFocused();
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Conference settings" })).toBeVisible();
+}
+
 /** What the app keeps unsaved in this browser (apps/web/src/unsaved.ts), by storage key. */
 const unsavedKeys = (page: Page) =>
   page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("elochair:unsaved:")));
@@ -230,7 +275,9 @@ test.describe("conference settings", () => {
 
   test.beforeAll(async ({ browser, request }) => {
     chair = await newPhone(browser);
-    await signIn(chair, request, "chair@example.org");
+    // Changed with spec 02, §1.11: the chair used to sign in on the sign-in page, and land on
+    // "Your account". They now sign in on a page of the conference they chair.
+    await signInOnManage(chair, request, "chair@example.org");
   });
   test.afterAll(() => chair.context().close());
 
@@ -1645,16 +1692,52 @@ test.describe("conference settings", () => {
     await expect(
       invitee.getByRole("heading", { level: 1, name: "You are invited to review" }),
     ).toBeVisible();
-    // Accepting signed nobody in: the page offers to sign in with the invited address.
+    // Accepting signed nobody in. Changed with spec 02, §1.11: the page used to link to the
+    // sign-in page, with the invited address handed over. It now has the sign-in form on it,
+    // with that address filled in.
     expect((await invitee.request.get("/api/me")).status()).toBe(401);
-    const signInLink = invitee.getByRole("link", { name: `Sign in as ${email}` });
-    await expectTouchTarget(signInLink);
-    await expectAccessibleInBothThemes(invitee);
-    await signInLink.click();
-    await expect(invitee).toHaveURL(/\/en\/sign-in$/);
+    await expect(invitee.locator('main a[href$="/sign-in"]')).toHaveCount(0);
     await expect(invitee.getByLabel("Email address")).toHaveValue(email);
+    const emailMe = invitee.getByRole("button", { name: "Email me a link" });
+    await expectTouchTarget(emailMe);
+    await expectAccessibleInBothThemes(invitee);
+    await expectNoHorizontalScroll(invitee);
+    // The link it asks for leads to "Your account", never back to this page, which is nothing
+    // without its token: the request names no address, and nothing of the invitation's link.
+    // Both requests are answered here, and reach no server.
+    let asked: unknown;
+    await invitee.route("**/api/auth/request-link", (route) => {
+      asked = route.request().postDataJSON();
+      return route.fulfill({ status: 202, json: { ok: true } });
+    });
+    await emailMe.click();
+    await expect(invitee.getByText("Check your email.")).toBeVisible();
+    expect(asked).toEqual({ email, lang: "en" });
+    // With the code the person is signed in on this page, and it carries on: what was answered
+    // stays, and the form gives way to a line that says who is signed in, which takes focus.
+    await invitee.route("**/api/auth/verify-code", (route) =>
+      route.fulfill({ status: 200, json: { person: { email } } }),
+    );
+    await invitee.getByLabel("Code from the email").fill("1234 5678");
+    await invitee.getByRole("button", { name: "Sign in with code" }).click();
+    const signedIn = invitee.getByText(`You are signed in as ${email}.`);
+    await expect(signedIn).toBeFocused();
+    await expect(invitee).toHaveURL(/\/en\/role-invitation$/);
+    await expect(invitee.getByLabel("Email address")).toHaveCount(0);
+    await expect(status).toHaveText(
+      `Thank you: ${email} is now a reviewer for ${title}. You can sign in with that address at any time.`,
+    );
+    await expect(
+      invitee.getByRole("heading", { level: 1, name: "You are invited to review" }),
+    ).toBeVisible();
+    await expectAccessibleInBothThemes(invitee);
+    await invitee.unroute("**/api/auth/request-link");
+    await invitee.unroute("**/api/auth/verify-code");
 
     // The link was used: opened again, it gives a plain page and nothing else, not even a role.
+    // (From another page: the invitee is still on the invitation's, and the same address with
+    // another fragment would not load it again.)
+    await invitee.goto("/en/");
     await invitee.goto(mail.link);
     await expect(
       invitee.getByRole("heading", { level: 1, name: "Invitation", exact: true }),
@@ -1746,6 +1829,8 @@ test.describe("conference settings", () => {
       "You declined. No role was given, and the chairs will see your answer.",
     );
     await expect(status).toBeFocused();
+    // Someone who declined is offered no sign-in (the form, where it used to be a link).
+    await expect(invitee.getByLabel("Email address")).toHaveCount(0);
     await expect(invitee.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
     await expectAccessibleInBothThemes(invitee);
     await invitee.context().close();

@@ -65,6 +65,99 @@ async function newPhone(browser: Browser) {
   return context.newPage();
 }
 
+/** The latest sign-in email to an address, by its kind: other email may reach it meanwhile. */
+async function signInMail(request: APIRequestContext, email: string) {
+  const mail = await request.get(
+    `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+  );
+  return ((await mail.json()) as { text: string }).text;
+}
+
+/**
+ * Sign in as someone new to the call does (spec 02, §1.11): signed out on the conference's
+ * page, choose a format, "Start this proposal", and sign in on the start page itself, with the
+ * link from the email. It leads back to the start page, with that format chosen.
+ *
+ * This is the one sign-in in the browser tests that goes the whole way by the emailed link from
+ * a page other than the sign-in page. It takes the place of a sign-in this file made anyway:
+ * the server rations them, and the suite is close to the limit.
+ */
+async function signInToStart(
+  page: Page,
+  request: APIRequestContext,
+  email: string,
+  format: string,
+) {
+  const conference = (await (await request.get(`/api/conferences/${CALL}`)).json()) as {
+    config: { submissionTypes: { key: string; name: Record<string, string> }[] };
+  };
+  const formats = conference.config.submissionTypes;
+  const chosen = formats.find((type) => type.name.en === format);
+  if (!chosen) throw new Error(`the call takes no format named ${format}`);
+  // Not the first: the first is what the start page chooses when it is told nothing.
+  expect(formats[0]?.key).not.toBe(chosen.key);
+  const here = `/en/c/${CALL}/submit?format=${chosen.key}`;
+
+  await page.goto(`/en/c/${CALL}`);
+  await page.getByRole("combobox", { name: "Format", exact: true }).selectOption(chosen.key);
+  await page.locator(".format-panel").getByRole("link", { name: "Start this proposal" }).click();
+  await expect(page).toHaveURL(here);
+
+  // Nobody is signed in. The page says why to sign in and which format was chosen, and has
+  // the sign-in form on it: there is no other page to go to first.
+  await expect(page.getByRole("heading", { level: 1, name: "Start a proposal" })).toBeVisible();
+  await expect(page.getByText("Sign in to start a proposal.")).toBeVisible();
+  await expect(page.getByText(`Selected format: ${format}`)).toBeVisible();
+  await expect(
+    page.getByText("We will email you a link that signs you in. No password needed."),
+  ).toBeVisible();
+  await expect(page.getByText("The link in the email brings you back to this page.")).toBeVisible();
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
+  const send = page.getByRole("button", { name: "Email me a link" });
+  await expectTouchTarget(send);
+  await expectTouchTarget(page.getByText("I already have a code"));
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expectNoHorizontalScroll(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.getByLabel("Email address").fill(email);
+  await send.click();
+  await expect(page.getByText("Check your email.")).toBeVisible();
+  // The code from the same email can be typed here, as on the sign-in page.
+  await expect(page.getByLabel("Code from the email")).toBeVisible();
+  await expectAccessible(page);
+
+  // The link names this page beside its token, in the fragment, which no server is sent.
+  const link = /https?:\/\/\S+/.exec(await signInMail(request, email))?.[0] ?? "";
+  const sent = new URL(link);
+  expect(sent.origin).toBe(new URL(page.url()).origin);
+  expect(sent.pathname + sent.search).toBe("/en/auth/verify");
+  const fragment = new URLSearchParams(sent.hash.slice(1));
+  expect([...fragment.keys()]).toEqual(["token", "next"]);
+  expect(fragment.get("next")).toBe(here);
+  expect(link.endsWith(`&next=${encodeURIComponent(here)}`)).toBe(true);
+
+  // Opening it signs nobody in: it says who, and waits for the tap. Nothing of the fragment
+  // stays in the address bar.
+  await page.goto(link);
+  await expect(page.getByText(`This link signs you in as ${email}.`)).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/auth\/verify$/);
+  expect((await page.request.get("/api/me")).status()).toBe(401);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  // Signed in, and back where they were going: the start form, with their format chosen.
+  await expect(page).toHaveURL(here);
+  const heading = page.getByRole("heading", { level: 1, name: "Start a proposal" });
+  await expect(heading).toBeFocused();
+  await expect(page.getByRole("radio", { name: new RegExp(`^${format}`) })).toBeChecked();
+  await expect(page.getByRole("button", { name: `Start a ${format}` })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
+  expect((await page.request.get("/api/me")).status()).toBe(200);
+}
+
 /** Sign in with the emailed code (the path the installed app uses). */
 async function signIn(page: Page, request: APIRequestContext, email: string) {
   await page.goto("/en/sign-in");
@@ -168,9 +261,29 @@ async function answerByLink(
     await acceptAgreements(page);
     await page.getByRole("button", { name: "Confirm my participation" }).click();
     await expectAnswered(page, "Thank you: you are confirmed.");
+    // Confirming signed nobody in: the page has the sign-in form on it, where it used to link
+    // to the sign-in page (spec 02, §1.11). The link it asks for leads to "Your account", never
+    // back to this page, which is nothing without its token: the request names no address.
+    // It is answered here, and reaches no server.
+    expect((await page.request.get("/api/me")).status()).toBe(401);
+    let asked: unknown;
+    await page.route("**/api/auth/request-link", (route) => {
+      asked = route.request().postDataJSON();
+      return route.fulfill({ status: 202, json: { ok: true } });
+    });
+    await expect(page.getByLabel("Email address")).toHaveValue("");
+    await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
+    await page.getByLabel("Email address").fill(email);
+    await page.getByRole("button", { name: "Email me a link" }).click();
+    await expect(page.getByText("Check your email.")).toBeVisible();
+    expect(asked).toEqual({ email, lang: "en" });
+    await expect(page).not.toHaveURL(/token=/);
+    await expectAccessible(page);
   } else {
     await page.getByRole("button", { name: "Decline" }).click();
     await expectAnswered(page, "You declined.");
+    // Someone who declined is offered no sign-in.
+    await expect(page.getByLabel("Email address")).toHaveCount(0);
   }
   await page.context().close();
 }
@@ -414,7 +527,10 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   page,
   request,
 }) => {
-  await signIn(page, request, "e2e-workshop@example.org");
+  // Changed with spec 02, §1.11: this author used to sign in on the sign-in page. They now
+  // arrive signed out, choose the workshop on the conference's page, and sign in on the start
+  // page with the emailed link, which brings them back to it with the workshop chosen.
+  await signInToStart(page, request, "e2e-workshop@example.org", "Workshop");
   await setName(page, "Wanda Workshop");
   await page.goto(`/en/c/${CALL}`);
   await page.getByRole("link", { name: "Start a proposal" }).click();

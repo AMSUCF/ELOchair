@@ -1,5 +1,6 @@
 import { createHmac, randomInt } from "node:crypto";
 import type { AgentViewer, PersonViewer, Tier } from "@elochair/policy";
+import { afterSignIn } from "@elochair/schema";
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "./db/client";
 import { apiTokens, loginTokens, sessions } from "./db/schema";
@@ -20,9 +21,21 @@ export const MAX_CODE_ATTEMPTS = 5;
 const codeHash = (secret: string, email: string, code: string) =>
   createHmac("sha256", secret).update(`${email}\n${code}`).digest("hex");
 
+/**
+ * `next` is where the person was going, as the page that asked said it. It comes from a public
+ * route, so it is carried only if it is an address inside the app (`afterSignIn`), and left
+ * out without a word otherwise. Nothing of it is stored with the token: it travels in the link.
+ */
 export async function requestMagicLink(
   db: Db,
-  opts: { email: string; lang: string; appOrigin: string; now: Date; secret: string },
+  opts: {
+    email: string;
+    lang: string;
+    appOrigin: string;
+    now: Date;
+    secret: string;
+    next?: unknown;
+  },
 ): Promise<void> {
   const email = normalizeEmail(opts.email);
   const token = newToken();
@@ -37,8 +50,13 @@ export async function requestMagicLink(
   });
   // The token travels in the URL fragment: browsers never send it to the server or in Referer
   // headers. The verify page asks for a tap before using it, so link scanners and other sites
-  // cannot use it up or sign someone in without their knowledge.
-  const link = `${opts.appOrigin}/${opts.lang}/auth/verify#token=${token}`;
+  // cannot use it up or sign someone in without their knowledge. Where to go afterwards
+  // travels beside it, encoded, so that the server's log never holds that either; the page
+  // asks `afterSignIn` again before it goes there.
+  const next = afterSignIn(opts.next);
+  const link = `${opts.appOrigin}/${opts.lang}/auth/verify#token=${token}${
+    next ? `&next=${encodeURIComponent(next)}` : ""
+  }`;
   await enqueueMail(db, "magic_link", magicLinkMessage(opts.lang, email, link, code), opts.now);
 }
 

@@ -35,6 +35,7 @@ import {
 } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { contribStatusKey, contribTone, modeKey, roleKey, selfIdKey } from "../labels";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading, StatusBadge } from "../ui";
 import { browserStore, clearUnsaved, type UnsavedValues } from "../unsaved";
 import { type ProposalForm as Form, showsControl, withUnsaved } from "../unsavedProposal";
@@ -130,6 +131,8 @@ export function SubmissionPage() {
   /** They also hold the reviewer's role there: a chair may be one of a proposal's reviewers. */
   const [reviewsHere, setReviewsHere] = useState(false);
   const [missing, setMissing] = useState(false);
+  /** Nobody is signed in: the page has the sign-in form on it, and nothing else. */
+  const [signedOut, setSignedOut] = useState(false);
 
   const load = useCallback(async () => {
     const [s, k, m] = await Promise.all([
@@ -137,6 +140,14 @@ export function SubmissionPage() {
       api<ConfInfo>(`/api/submissions/${id}/conference`),
       api<Me>("/api/me"),
     ]);
+    // Decided by who is signed in, before anything that was answered about the proposal is
+    // looked at: someone who is not signed in is shown the same page for every address, one
+    // that names a proposal or one that names nothing, and so learns nothing about any.
+    if (nobodySignedIn(m)) {
+      setSignedOut(true);
+      return;
+    }
+    setSignedOut(false);
     if (!s.ok || !k.ok) {
       // Deleted elsewhere: what was left unsaved for it in this browser goes too.
       if (!s.ok && s.status === 404 && m.ok && m.data.kind === "person" && m.data.person) {
@@ -170,9 +181,11 @@ export function SubmissionPage() {
   useEffect(() => {
     setSub(null);
     setMissing(false);
+    setSignedOut(false);
     load();
   }, [load]);
 
+  if (signedOut) return <SignInHere title={t("editSignedOutTitle")} why={t("editNeedSignIn")} />;
   if (missing) return <PageHeading>{t("editNotFound")}</PageHeading>;
   if (!sub || !conf) return <p role="status">{t("loading")}</p>;
   // A reviewer is given less than everyone else (no people, in anonymized review): its own view.

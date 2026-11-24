@@ -9,6 +9,7 @@ import {
   type Decisions,
   type DecisionsPool,
   type DecisionsProposal,
+  type Me,
   type SendConfirmation,
   type SendSummary,
 } from "../api";
@@ -16,7 +17,9 @@ import { Ask, StatusLine, useSaid } from "../asking";
 import { sampleValues } from "../emailPreview";
 import { LANG_NAMES, useT } from "../i18n";
 import { phaseKey } from "../labels";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading, useHashTarget } from "../ui";
+import { useApi } from "../useApi";
 import { recommendationsInWords } from "./ProposalDecision";
 
 /*
@@ -52,6 +55,7 @@ export function DecisionsPage() {
   const { slug = "" } = useParams();
   const { lang, t } = useT();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const me = useApi<Me>("/api/me");
   /** Counts the times the page was read again: each committee's list starts over with it. */
   const [reading, setReading] = useState(0);
   /** The conference this page is on now: an answer about another one is dropped. */
@@ -87,7 +91,12 @@ export function DecisionsPage() {
   // A committee's link at the top of the page leads to its part of it.
   useHashTarget(Boolean(loaded?.conf.ok && loaded.page.ok));
 
-  if (!loaded) return <p role="status">{t("loading")}</p>;
+  // Nobody is signed in: the sign-in form, whatever was answered about the conference (its
+  // requests refuse a visitor and someone who does not chair it alike).
+  if (me && nobodySignedIn(me)) {
+    return <SignInHere title={t("decisionsTitle")} why={t("chairsNeedSignIn")} />;
+  }
+  if (!loaded || !me) return <p role="status">{t("loading")}</p>;
   const { conf, page, waiting } = loaded;
   if (!conf.ok) return <PageHeading>{t("confNotFound")}</PageHeading>;
   if (!page.ok || !waiting.ok) {

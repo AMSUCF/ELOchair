@@ -54,7 +54,9 @@ import {
   restoredEdits,
   typedText,
 } from "../settingsEdits";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading } from "../ui";
+import { useApi } from "../useApi";
 import { useUnsaved } from "../useUnsaved";
 
 /*
@@ -251,24 +253,28 @@ export function SettingsPage() {
   const { slug = "" } = useParams();
   const { t } = useT();
   const [loaded, setLoaded] = useState<ApiResult<SettingsData> | null>(null);
-  /** Whose unsaved changes are kept in this browser: the person signed in. */
-  const [personId, setPersonId] = useState<string | null>(null);
+  const me = useApi<Me>("/api/me");
   const load = useCallback(() => api<SettingsData>(`/api/conferences/${slug}/settings`), [slug]);
 
   useEffect(() => {
     let live = true;
     setLoaded(null);
-    Promise.all([load(), api<Me>("/api/me")]).then(([r, me]) => {
-      if (!live) return;
-      setPersonId(me.ok && me.data.kind === "person" ? (me.data.person?.id ?? null) : null);
-      setLoaded(r);
+    load().then((r) => {
+      if (live) setLoaded(r);
     });
     return () => {
       live = false;
     };
   }, [load]);
 
-  if (!loaded) return <p role="status">{t("loading")}</p>;
+  // Nobody is signed in: the sign-in form, whatever was answered about the conference (its
+  // requests refuse a visitor and someone who does not chair it alike).
+  if (me && nobodySignedIn(me)) {
+    return <SignInHere title={t("settingsTitle")} why={t("chairsNeedSignIn")} />;
+  }
+  if (!loaded || !me) return <p role="status">{t("loading")}</p>;
+  /** Whose unsaved changes are kept in this browser: the person signed in. */
+  const personId = me.ok && me.data.kind === "person" ? (me.data.person?.id ?? null) : null;
   if (!loaded.ok) {
     if (loaded.status === 404) return <PageHeading>{t("confNotFound")}</PageHeading>;
     return (

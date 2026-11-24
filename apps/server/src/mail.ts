@@ -238,15 +238,15 @@ const MAGIC_LINK: Record<Lang, (link: string, code: string) => { subject: string
   {
     en: (link, code) => ({
       subject: "Your ELOchair sign-in link",
-      text: `Use this link to sign in to ELOchair. It works once and expires in 20 minutes:\n\n${link}\n\nOr type this code on the sign-in page (useful in the installed app):\n\n${code}\n\nIf you did not ask for this, you can ignore this email.`,
+      text: `Use this link to sign in to ELOchair. It works once and expires in 20 minutes:\n\n${link}\n\nOr type this code on the page where you asked for this email (useful in the installed app):\n\n${code}\n\nIf you did not ask for this, you can ignore this email.`,
     }),
     es: (link, code) => ({
       subject: "Tu enlace para entrar en ELOchair",
-      text: `Usa este enlace para entrar en ELOchair. Funciona una sola vez y caduca en 20 minutos:\n\n${link}\n\nO escribe este código en la página de entrada (útil en la app instalada):\n\n${code}\n\nSi no lo solicitaste, puedes ignorar este correo.`,
+      text: `Usa este enlace para entrar en ELOchair. Funciona una sola vez y caduca en 20 minutos:\n\n${link}\n\nO escribe este código en la página donde pediste este correo (útil en la app instalada):\n\n${code}\n\nSi no lo solicitaste, puedes ignorar este correo.`,
     }),
     pt: (link, code) => ({
       subject: "O seu link de acesso ao ELOchair",
-      text: `Use este link para entrar no ELOchair. Funciona uma única vez e expira em 20 minutos:\n\n${link}\n\nOu escreva este código na página de entrada (útil na aplicação instalada):\n\n${code}\n\nSe não o pediu, pode ignorar este email.`,
+      text: `Use este link para entrar no ELOchair. Funciona uma única vez e expira em 20 minutos:\n\n${link}\n\nOu escreva este código na página onde pediu este email (útil na aplicação instalada):\n\n${code}\n\nSe não o pediu, pode ignorar este email.`,
     }),
   };
 

@@ -1,3 +1,4 @@
+export { AFTER_SIGN_IN_MAX, afterSignIn } from "./afterSignIn";
 export { type CallState, callState, isCallOpen } from "./call";
 /**
  * Zod-free entry point for browser code: `import { localize } from "@elochair/schema/pure"`.

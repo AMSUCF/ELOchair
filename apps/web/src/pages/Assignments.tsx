@@ -8,8 +8,10 @@ import {
   type AssignmentsProposal,
   api,
   type ConferenceDetail,
+  type Me,
 } from "../api";
 import { useT } from "../i18n";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading, useHashTarget } from "../ui";
 import { useApi } from "../useApi";
 
@@ -31,10 +33,16 @@ export function AssignmentsPage() {
   const { lang, t } = useT();
   const conf = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
   const page = useApi<Assignments>(`/api/conferences/${slug}/assignments?limit=${PAGE_SIZE}`);
+  const me = useApi<Me>("/api/me");
   // A committee's link at the top of the page leads to its part of it.
   useHashTarget(Boolean(conf?.ok && page?.ok));
 
-  if (!conf || !page) return <p role="status">{t("loading")}</p>;
+  // Nobody is signed in: the sign-in form, whatever was answered about the conference (its
+  // requests refuse a visitor and someone who does not chair it alike).
+  if (me && nobodySignedIn(me)) {
+    return <SignInHere title={t("assignmentsTitle")} why={t("chairsNeedSignIn")} />;
+  }
+  if (!conf || !page || !me) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) return <PageHeading>{t("confNotFound")}</PageHeading>;
   if (!page.ok) {
     return (

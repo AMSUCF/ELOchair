@@ -1,5 +1,5 @@
 import { dressedAs } from "@elochair/schema/pure";
-import { useEffect, useRef } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   Link,
   Navigate,
@@ -30,6 +30,7 @@ import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
 import { useReviews } from "./session";
+import { PageRestart } from "./signIn";
 import { FOOTER_SLOT, FocusPending, PageHeading } from "./ui";
 
 export function App() {
@@ -41,17 +42,19 @@ export function App() {
         <Route path="c/:slug" element={<ConferencePage />} />
         <Route path="sign-in" element={<SignInPage />} />
         <Route path="auth/verify" element={<VerifyPage />} />
-        <Route path="me" element={<MePage />} />
-        <Route path="my" element={<MyPage />} />
-        <Route path="reviews" element={<MyReviewsPage />} />
-        <Route path="c/:slug/submit" element={<StartPage />} />
-        <Route path="c/:slug/manage" element={<ManagePage />} />
-        <Route path="c/:slug/settings" element={<SettingsPage />} />
-        <Route path="c/:slug/people" element={<PeoplePage />} />
-        <Route path="c/:slug/assignments" element={<AssignmentsPage />} />
-        <Route path="c/:slug/decisions" element={<DecisionsPage />} />
-        <Route path="s/:id" element={<SubmissionPage />} />
-        <Route path="s/:id/cannot-review" element={<CannotReviewPage />} />
+        <Route element={<SignedInPages />}>
+          <Route path="me" element={<MePage />} />
+          <Route path="my" element={<MyPage />} />
+          <Route path="reviews" element={<MyReviewsPage />} />
+          <Route path="c/:slug/submit" element={<StartPage />} />
+          <Route path="c/:slug/manage" element={<ManagePage />} />
+          <Route path="c/:slug/settings" element={<SettingsPage />} />
+          <Route path="c/:slug/people" element={<PeoplePage />} />
+          <Route path="c/:slug/assignments" element={<AssignmentsPage />} />
+          <Route path="c/:slug/decisions" element={<DecisionsPage />} />
+          <Route path="s/:id" element={<SubmissionPage />} />
+          <Route path="s/:id/cannot-review" element={<CannotReviewPage />} />
+        </Route>
         <Route path="invitation" element={<InvitationPage />} />
         <Route path="role-invitation" element={<RoleInvitationPage />} />
       </Route>
@@ -67,6 +70,31 @@ function Layout() {
     <LangContext.Provider value={lang}>
       <Shell />
     </LangContext.Provider>
+  );
+}
+
+/**
+ * The pages that show a person what is theirs. Each asks who is signed in when it starts, and
+ * has the sign-in form on it when nobody is (signIn.tsx). When someone then signs in on the
+ * page itself, with the code from the email, the form says so (PageRestart) and the page starts
+ * again: it asks everything again, for the person who is signed in now, and its heading takes
+ * the focus as after a navigation. One mechanism for all of them, so that no page has to
+ * remember which of its questions depend on who is asking.
+ *
+ * The two pages of an invitation are not among them. They need nobody signed in, they hold
+ * their link's token in memory only, and they carry on when someone signs in on them.
+ */
+function SignedInPages() {
+  const [starts, setStarts] = useState(0);
+  const focusPending = useContext(FocusPending);
+  const restart = useCallback(() => {
+    if (focusPending) focusPending.current = true;
+    setStarts((n) => n + 1);
+  }, [focusPending]);
+  return (
+    <PageRestart.Provider value={restart}>
+      <Outlet key={starts} />
+    </PageRestart.Provider>
   );
 }
 

@@ -1,13 +1,14 @@
 import type { ConferenceConfig } from "@elochair/schema";
 import { localize } from "@elochair/schema/pure";
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type ConferenceDetail, type Me, type MySubmission, type Role } from "../api";
 import { hasMinimum } from "../format";
 import { startingFormat } from "../formats";
 import { ErrorSummary } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { modeKey, roleKey } from "../labels";
+import { nobodySignedIn, SignInForm, useHere } from "../signIn";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -16,9 +17,11 @@ const MODES = ["in_person", "online", "undecided"] as const;
 
 export function StartPage() {
   const { slug } = useParams();
-  const { lang, t } = useT();
+  const { t } = useT();
   const conf = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
   const me = useApi<Me>("/api/me");
+  const here = useHere();
+  const [params] = useSearchParams();
 
   if (!conf || !me) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) {
@@ -27,6 +30,9 @@ export function StartPage() {
   const c = conf.data.config;
   // The server's clock decides; a phone with a wrong clock must not hide or show the form.
   const open = conf.data.callOpen;
+  // The format "Start this proposal" named, if the call takes it here: said while the person
+  // signs in, so that they see their choice was kept. The form begins with it afterwards.
+  const chosen = c.submissionTypes.find((type) => type.key === params.get("format"));
   return (
     <>
       <PageHeading title={t("startTitle")}>{t("startTitle")}</PageHeading>
@@ -35,10 +41,20 @@ export function StartPage() {
       </p>
       {!open ? (
         <p role="alert">{t("startClosed")}</p>
+      ) : nobodySignedIn(me) ? (
+        <>
+          {chosen && (
+            <p className="meta">
+              {t("startFormatChosen")} <Localized text={chosen.name} fallback={c.defaultLanguage} />
+            </p>
+          )}
+          <p>{t("startSignInFirst")}</p>
+          {/* The link in the email leads back here, with the format still in the address. */}
+          <SignInForm next={here} />
+        </>
       ) : !me.ok || me.data.kind !== "person" ? (
-        <p>
-          {t("startSignInFirst")} <Link to={`/${lang}/sign-in`}>{t("navSignIn")}</Link>
-        </p>
+        // Who is signed in did not arrive: that does not say that nobody is.
+        <p role="alert">{t(!me.ok && me.status === 0 ? "verifyNetwork" : "errorGeneric")}</p>
       ) : (
         <StartForm config={c} slug={slug ?? ""} />
       )}

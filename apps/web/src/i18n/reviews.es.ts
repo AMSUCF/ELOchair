@@ -120,4 +120,5 @@ export const reviewsEs: Record<keyof typeof reviewsEn, string> = {
   cannotNotOffered:
     "Esto ya no es posible: tu revisión de esta propuesta se envió, o el congreso ya no está en revisión.",
   cannotGone: "No tienes asignada esta propuesta.",
+  cannotNeedSignIn: "Entra para avisar a la presidencia de que no puedes revisar esta propuesta.",
 };
