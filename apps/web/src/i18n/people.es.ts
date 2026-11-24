@@ -168,5 +168,4 @@ export const peopleEs: Record<keyof typeof peopleEn, string> = {
   roleInvDeclined: "Has rechazado. No se dio ningún rol, y la presidencia verá tu respuesta.",
   roleInvInvalid:
     "Este enlace de invitación ya no funciona: caducó, ya se respondió o se canceló. Si te enviaron un correo más reciente, usa el enlace de ese correo. Si no, pide a quienes presiden el congreso que te inviten de nuevo.",
-  roleInvSignIn: "Entrar como {email}",
 };

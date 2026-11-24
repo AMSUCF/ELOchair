@@ -7,6 +7,7 @@ import {
   api,
   type ConferenceDetail,
   type InvitableRole,
+  type Me,
   type People,
   type PeopleInvitation,
   type RemovableRole,
@@ -16,6 +17,7 @@ import { Ask, type Asking, type Outcome, type Said, StatusLine, useSaid } from "
 import { formatDateTime, viewerTimeZone } from "../format";
 import { cleanName } from "../forms";
 import { LANG_NAMES, LANGS, type Lang, type MessageKey, useT } from "../i18n";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -62,6 +64,7 @@ export function PeoplePage() {
   const { slug = "" } = useParams();
   const { lang, t } = useT();
   const conf = useApi<ConferenceDetail>(`/api/conferences/${slug}`);
+  const me = useApi<Me>("/api/me");
   const { people, reread } = usePeople(slug);
   const [asking, setAsking] = useState<Asking>(null);
   /** Said inside the open confirmation when it stays open: what went wrong, to try again. */
@@ -83,7 +86,12 @@ export function PeoplePage() {
     document.getElementById(id)?.focus();
   });
 
-  if (!conf || !people) return <p role="status">{t("loading")}</p>;
+  // Nobody is signed in: the sign-in form, whatever was answered about the conference (its
+  // requests refuse a visitor and someone who does not chair it alike).
+  if (me && nobodySignedIn(me)) {
+    return <SignInHere title={t("peopleTitle")} why={t("chairsNeedSignIn")} />;
+  }
+  if (!conf || !people || !me) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) return <PageHeading>{t("confNotFound")}</PageHeading>;
   if (!people.ok) {
     return (

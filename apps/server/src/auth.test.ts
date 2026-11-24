@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
+import { AFTER_SIGN_IN_MAX, afterSignIn, SCHEME_LINK } from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { auditLog, loginTokens } from "./db/schema";
+import { auditLog, loginTokens, outbox } from "./db/schema";
 import { call, makeTestApp, signIn, type TestApp } from "./testkit";
 
 let t: TestApp;
@@ -299,5 +300,148 @@ describe("review fixes, round 2: codes", () => {
     expect(row?.codeHash).toBeTruthy();
     expect(row?.codeHash).not.toBe(plain);
     await u.close();
+  });
+});
+
+describe("a sign-in link carries where the person was going (spec 02, §1.11)", () => {
+  let u: TestApp;
+  beforeAll(async () => {
+    u = await makeTestApp();
+  });
+  afterAll(() => u.close());
+
+  /** The start page of a made-up call, with a format chosen: what a page sends as its own address. */
+  const NEXT = "/es/c/made-up-call/submit?format=reading";
+  const PLAIN =
+    /^https:\/\/chair\.example\.org\/(en|es|pt)\/auth\/verify#token=[A-Za-z0-9_-]{20,}$/;
+
+  /** Ask for a sign-in email, and read it as it was sent. */
+  async function ask(email: string, next?: unknown, lang = "en") {
+    const res = await call(u.public, "POST", "/api/auth/request-link", {
+      body: { email, lang, ...(next === undefined ? {} : { next }) },
+    });
+    const mail = await call(
+      u.public,
+      "GET",
+      `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
+    );
+    const text: string = mail.json.text;
+    return { res, text, link: /https:\/\/\S+/.exec(text)?.[0] ?? "" };
+  }
+  /** An email with what differs from one request to the next taken out. */
+  const withoutSecrets = (text: string) =>
+    text.replace(/#token=[A-Za-z0-9_-]+/, "#token=T").replace(/\b\d{4} \d{4}\b/, "CODE");
+
+  it("an address inside the app goes into the link's fragment, encoded, beside the token", async () => {
+    const { res, text, link } = await ask("going@example.org", NEXT, "es");
+    expect(res.status).toBe(202);
+    expect(res.json).toEqual({ ok: true });
+    expect(link).toMatch(
+      /^https:\/\/chair\.example\.org\/es\/auth\/verify#token=[A-Za-z0-9_-]{20,}&next=%2Fes%2Fc%2Fmade-up-call%2Fsubmit%3Fformat%3Dreading$/,
+    );
+    // All of it is in the fragment, which a browser sends to no server: the address the server
+    // is asked for is the same for every link.
+    const read = new URL(link);
+    expect(read.origin).toBe("https://chair.example.org");
+    expect(read.pathname + read.search).toBe("/es/auth/verify");
+    const fragment = new URLSearchParams(read.hash.slice(1));
+    expect([...fragment.keys()]).toEqual(["token", "next"]);
+    expect(fragment.get("next")).toBe(NEXT);
+    expect(afterSignIn(fragment.get("next"))).toBe(NEXT);
+    // In the email it is one link on a line of its own, as the shorter one was.
+    expect(text.split("\n")).toContain(link);
+    expect(Array.from(text.matchAll(SCHEME_LINK), (m) => m[0])).toEqual([link]);
+  });
+
+  it("without one the link is as it always was", async () => {
+    const { res, link } = await ask("plain@example.org");
+    expect(res.status).toBe(202);
+    expect(link).toMatch(PLAIN);
+  });
+
+  it("an address that does not pass is left out, and nothing in the answer or the email says so", async () => {
+    const plain = await ask("refused-0@example.org");
+    const refused: unknown[] = [
+      "//evil.example",
+      "/\\evil.example",
+      "https://evil.example/en/my",
+      "/en//evil.example",
+      "/en/%2F%2Fevil.example",
+      "/en/my#token=abcdefghijklmnopqrstuvwxyz",
+      "/en/my\r\nBcc: someone@evil.example",
+      "/en/my\u202E",
+      "/fr/my",
+      "/en/sign-in",
+      `/en/${"a".repeat(AFTER_SIGN_IN_MAX)}`,
+      7,
+      { toString: "/en/my" },
+      ["/en/my"],
+      null,
+    ];
+    for (const [i, next] of refused.entries()) {
+      const { res, text, link } = await ask(`refused-${i + 1}@example.org`, next);
+      expect([res.status, res.json], JSON.stringify(next)).toEqual([202, { ok: true }]);
+      expect([...res.headers.keys()].sort()).toEqual([...plain.res.headers.keys()].sort());
+      expect(link, JSON.stringify(next)).toMatch(PLAIN);
+      expect(withoutSecrets(text)).toBe(withoutSecrets(plain.text));
+    }
+  });
+
+  it("the answer is the same whether or not the address has an account", async () => {
+    await signIn(u, "known@example.org");
+    const known = await ask("known@example.org", NEXT);
+    const unknown = await ask("unknown@example.org", NEXT);
+    expect([known.res.status, known.res.json]).toEqual([unknown.res.status, unknown.res.json]);
+    expect(withoutSecrets(known.text)).toBe(withoutSecrets(unknown.text));
+  });
+
+  it("the stored copy loses the token and the code, and keeps nothing else that works", async () => {
+    const { text, link } = await ask("stored@example.org", NEXT, "es");
+    const token = new URLSearchParams(new URL(link).hash.slice(1)).get("token") as string;
+    const [row] = await u.db.select().from(outbox).where(eq(outbox.toEmail, "stored@example.org"));
+    expect(row?.sentAt).not.toBeNull();
+    expect(row?.bodyText).not.toContain(token);
+    // What is left of the link is the page that signs people in and an address inside the app.
+    expect(row?.bodyText).toContain(
+      "https://chair.example.org/es/auth/verify#token=[redacted]&next=%2Fes%2Fc%2Fmade-up-call%2Fsubmit%3Fformat%3Dreading\n",
+    );
+    expect(row?.bodyText).toBe(
+      text.replace(token, "[redacted]").replace(/\b\d{4} \d{4}\b/, "[redacted]"),
+    );
+  });
+
+  it("the token signs in as before, and nothing of the address is stored with it", async () => {
+    const { link } = await ask("same@example.org", NEXT);
+    const token = new URLSearchParams(new URL(link).hash.slice(1)).get("token") as string;
+    const rows = await u.db
+      .select()
+      .from(loginTokens)
+      .where(eq(loginTokens.email, "same@example.org"));
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows)).not.toMatch(/made-up-call|next/);
+    const info = await call(u.public, "POST", "/api/auth/link-info", { body: { token } });
+    expect([info.status, info.json]).toEqual([200, { email: "same@example.org" }]);
+    const verified = await call(u.public, "POST", "/api/auth/verify", { body: { token } });
+    expect(verified.status).toBe(200);
+    expect(verified.json.person.email).toBe("same@example.org");
+    expect(verified.headers.get("set-cookie")).toMatch(/elo_session=/);
+    // Used once, as ever.
+    expect((await call(u.public, "POST", "/api/auth/verify", { body: { token } })).status).toBe(
+      400,
+    );
+    const audited = (await u.db.select().from(auditLog)).filter(
+      (r) => r.action === "auth.signed_in",
+    );
+    expect(audited.at(-1)?.details).toEqual({ method: "link" });
+  });
+
+  it("the code of an email whose link carries an address signs in as before", async () => {
+    const { text } = await ask("typed@example.org", NEXT);
+    const code = /\b(\d{4}) (\d{4})\b/.exec(text);
+    const res = await call(u.public, "POST", "/api/auth/verify-code", {
+      body: { email: "typed@example.org", code: `${code?.[1]}${code?.[2]}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.person.email).toBe("typed@example.org");
   });
 });

@@ -11,6 +11,7 @@ import { Link, useParams } from "react-router";
 import { type ApiResult, api, type ConferenceDetail, type Me } from "../api";
 import { type MessageKey, useT } from "../i18n";
 import { type IssueCode, issueLabelKey, phaseDoesKey, phaseKey, statusKey } from "../labels";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -229,7 +230,12 @@ export function ManagePage() {
         (r) => r.conference === slug && (r.role === "admin" || r.role === "chair"),
       ));
 
-  if (!conf || !overview) return <p role="status">{t("loading")}</p>;
+  // Nobody is signed in: the sign-in form, whatever was answered about the conference (its
+  // requests refuse a visitor and someone who does not chair it alike).
+  if (me && nobodySignedIn(me)) {
+    return <SignInHere title={t("manageTitle")} why={t("chairsNeedSignIn")} />;
+  }
+  if (!conf || !overview || !me) return <p role="status">{t("loading")}</p>;
   if (!conf.ok) return <PageHeading>{t("confNotFound")}</PageHeading>;
   if (!overview.ok) {
     return (

@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router";
 import type { MyReviews, OwnReviewStatus } from "../api";
 import { deadlineText } from "../format";
 import { LANG_NAMES, type Lang, useT } from "../i18n";
+import { SignInHere } from "../signIn";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -28,7 +29,7 @@ const TONE: Record<OwnReviewStatus, "good" | "warn" | undefined> = {
 export type LeftList = { left: string };
 
 export function MyReviewsPage() {
-  const { lang, t } = useT();
+  const { t } = useT();
   const location = useLocation();
   const res = useApi<{ conferences: MyReviews[] }>("/api/me/reviews");
   /** The proposal that has just left the list: "I cannot review this proposal" led here. */
@@ -43,17 +44,14 @@ export function MyReviewsPage() {
 
   if (!res) return <p role="status">{t("loading")}</p>;
   if (!res.ok) {
+    if (res.status === 401) {
+      return <SignInHere title={t("myReviewsTitle")} why={t("myReviewsNeedSignIn")} />;
+    }
     return (
       <>
         <PageHeading>{t("myReviewsTitle")}</PageHeading>
-        {res.status === 401 ? (
-          <p>
-            {t("myReviewsNeedSignIn")} <Link to={`/${lang}/sign-in`}>{t("navSignIn")}</Link>
-          </p>
-        ) : (
-          // Signed in, and the list did not arrive: asking them to sign in would be wrong.
-          <p role="alert">{t(res.status === 0 ? "verifyNetwork" : "errorGeneric")}</p>
-        )}
+        {/* Signed in, and the list did not arrive: asking them to sign in would be wrong. */}
+        <p role="alert">{t(res.status === 0 ? "verifyNetwork" : "errorGeneric")}</p>
       </>
     );
   }

@@ -1,11 +1,11 @@
 import { LIMITS, localize, ROLE_INVITATIONS } from "@elochair/schema/pure";
 import { type RefObject, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 import { api, type RoleInvitation } from "../api";
 import { formatDateTime, viewerTimeZone } from "../format";
 import { cleanName, nameRefusal } from "../forms";
 import { LANG_NAMES, LANGS, type Lang, type MessageKey, useT } from "../i18n";
 import { sessionChanged } from "../session";
+import { SignInForm } from "../signIn";
 import { FocusPending, PageHeading } from "../ui";
 
 type Answered = { answer: "accepted" | "declined"; info: RoleInvitation };
@@ -50,7 +50,9 @@ const failure = (status: number): State =>
  * says the role ("You are invited to review"), and under it which conference, for a reviewer
  * which committees, and what accepting means. It offers "Accept" and "Decline". Accepting
  * gives the role to the address the invitation was sent to, whoever opened the link, and signs
- * nobody in: the page then offers sign-in with that address.
+ * nobody in: the page then has the sign-in form on it, with that address filled in. The code
+ * signs the person in here; the emailed link leads to "Your account", never back to this page,
+ * which is nothing without its token (the form is given no address to come back to).
  */
 export function RoleInvitationPage() {
   const { lang, t } = useT();
@@ -248,12 +250,7 @@ export function RoleInvitationPage() {
         </p>
       )}
       {state.step === "done" && state.answer === "accepted" && (
-        <p>
-          {/* The address goes along, so that the sign-in page starts with it filled in. */}
-          <Link className="button" to={`/${lang}/sign-in`} state={{ email: state.info.email }}>
-            {t("roleInvSignIn", { email: state.info.email })}
-          </Link>
-        </p>
+        <SignInForm email={state.info.email} />
       )}
     </>
   );

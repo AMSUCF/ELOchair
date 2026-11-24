@@ -9,6 +9,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   startTitle: "Empezar una propuesta",
   startIntro: "Elige un formato. Puedes guardar un borrador y volver hasta el cierre.",
   startSignInFirst: "Entra para empezar una propuesta.",
+  startFormatChosen: "Formato elegido:",
   startLanguage: "Idioma del resumen",
   startMode: "¿Cómo piensas participar?",
   startOwnRole: "Tu rol en esta propuesta",
@@ -41,6 +42,9 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
 
   editUntitled: "Propuesta sin título",
   editNotFound: "No encontramos esa propuesta, o no puedes verla.",
+  editSignedOutTitle: "Propuesta",
+  editNeedSignIn:
+    "Entra para leer esta propuesta. Las propuestas solo se muestran a las personas que figuran en ellas, a quienes las revisan y a quienes presiden su congreso.",
   editTitleLabel: "Título",
   editWords: "{count} palabras (entre {min} y {max})",
   editWordsUnder: "{count} palabras: se necesitan al menos {min}",
@@ -167,6 +171,7 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
 
   myTitle: "Mis envíos",
   myEmpty: "Aún no tienes propuestas.",
+  myNeedSignIn: "Entra para ver tus propuestas.",
   myInvitations: "Invitaciones que esperan tu respuesta",
   myOpen: "Abrir",
 

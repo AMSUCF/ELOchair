@@ -157,20 +157,54 @@ async function newPhone(browser: Browser) {
   return context.newPage();
 }
 
-/** Sign in with the emailed code (the path the installed app uses). */
-async function signIn(page: Page, request: APIRequestContext, email: string) {
-  await page.goto("/en/sign-in");
+/**
+ * Sign in on "My reviews" itself, with the code from the email (spec 02, §1.11): signed out,
+ * the page has the sign-in form on it, and once the code is typed it shows the list, without a
+ * reload and without going anywhere.
+ *
+ * It takes the place of the sign-in on the sign-in page that this file made anyway: the server
+ * rations them, and the suite is close to the limit.
+ */
+async function signInOnMyReviews(page: Page, request: APIRequestContext, email: string) {
+  await page.goto("/en/reviews");
+  const heading = page.getByRole("heading", { level: 1, name: "My reviews" });
+  await expect(heading).toBeVisible();
+  await expect(page.getByText("Please sign in to see your reviews.")).toBeVisible();
+  await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
+  // Nobody is signed in, so the menu offers no "My reviews" yet.
+  const menu = page.getByRole("navigation", { name: "Main menu" });
+  await expect(menu.getByRole("link", { name: "My reviews" })).toHaveCount(0);
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+
+  // The link in the email would lead back here: the request names this page.
+  const asked = page.waitForRequest("**/api/auth/request-link");
   await page.getByLabel("Email address").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
+  expect((await asked).postDataJSON()).toEqual({ email, lang: "en", next: "/en/reviews" });
   await expect(page.getByText("Check your email.")).toBeVisible();
   // The sign-in email, by its kind: other email may reach the same address meanwhile.
   const mail = await request.get(
     `/api/_test/outbox/latest?kind=magic_link&to=${encodeURIComponent(email)}`,
   );
-  const code = /\b(\d{4}) (\d{4})\b/.exec(((await mail.json()) as { text: string }).text);
+  const text = ((await mail.json()) as { text: string }).text;
+  expect(text).toMatch(/\/en\/auth\/verify#token=[A-Za-z0-9_-]+&next=%2Fen%2Freviews\n/);
+  const code = /\b(\d{4}) (\d{4})\b/.exec(text);
   await page.getByLabel("Code from the email").fill(`${code?.[1]}${code?.[2]}`);
   await page.getByRole("button", { name: "Sign in with code" }).click();
-  await expect(page).toHaveURL(/\/en\/me$/);
+
+  // Signed in, on the same page, which now shows what they came for. Its heading takes the
+  // focus, as after a navigation, and the menu has learned that they review.
+  await expect(
+    page.getByText(
+      "You see only the proposals assigned to you. Nobody else who reviews them is shown.",
+    ),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/reviews$/);
+  await expect(heading).toBeFocused();
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
+  await expect(page.getByText("Please sign in to see your reviews.")).toHaveCount(0);
+  await expect(menu.getByRole("link", { name: "My reviews" })).toBeVisible();
 }
 
 /** What the app keeps unsaved in this browser (apps/web/src/unsaved.ts), by storage key. */
@@ -197,7 +231,9 @@ test.describe("a reviewer's screens", () => {
   test.beforeAll(async ({ browser, request }) => {
     page = await newPhone(browser);
     page.on("pageerror", (e) => failures.push(e.message));
-    await signIn(page, request, REVIEWER);
+    // Changed with spec 02, §1.11: the reviewer used to sign in on the sign-in page, and land
+    // on "Your account". They now sign in on "My reviews", where they are going.
+    await signInOnMyReviews(page, request, REVIEWER);
   });
   test.afterAll(() => page.context().close());
 

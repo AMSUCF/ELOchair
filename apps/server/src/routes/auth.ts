@@ -18,6 +18,10 @@ import { getPerson, normalizeEmail } from "../repo";
 const RequestLink = z.object({
   email: z.email(),
   lang: z.enum(["en", "es", "pt"]).default("en"),
+  // Where the person was going: the address of the page that asked (spec 02, §1.11). Anything
+  // is taken here and nothing is refused for it: requestMagicLink carries it only if it is an
+  // address inside the app, and the answer is the same either way.
+  next: z.unknown().optional(),
 });
 const Token = z.object({ token: z.string().min(20).max(200) });
 const Code = z.object({ email: z.email(), code: z.string().min(8).max(20) });
@@ -82,6 +86,7 @@ export const authRoutes = new Hono<AppEnv>()
     await requestMagicLink(deps.db, {
       email,
       lang: body.lang,
+      next: body.next,
       appOrigin: new URL(deps.env.APP_ORIGIN).origin,
       now: deps.now(),
       secret: deps.env.SECRET_KEY,

@@ -1,7 +1,14 @@
 import { commentsForAuthors } from "@elochair/policy";
-import { hasStrayInvisible, linkSpans, type Review } from "@elochair/schema";
+import {
+  AFTER_SIGN_IN_MAX,
+  afterSignIn,
+  hasStrayInvisible,
+  linkSpans,
+  type Review,
+} from "@elochair/schema";
 import { eq } from "drizzle-orm";
 import fc from "fast-check";
+import nodemailer from "nodemailer";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openDatabase } from "./db/client";
 import { outbox } from "./db/schema";
@@ -66,6 +73,66 @@ describe("outbox delivery", () => {
     const [row] = await db.select().from(outbox).where(eq(outbox.toEmail, "redact@example.org"));
     expect(row?.bodyText).not.toContain("SECRETtoken_123");
     expect(row?.bodyText).not.toContain("1234 5678");
+  });
+
+  it("removes the token from a sign-in link that says where to go, and leaves that address", async () => {
+    const mail = new MemoryTransport();
+    const link =
+      "https://x.example/en/auth/verify#token=SECRET_token-456&next=%2Fen%2Fc%2Fmade-up-call%2Fsubmit%3Fformat%3Dreading";
+    const msg = magicLinkMessage("en", "redact-next@example.org", link, "87654321");
+    await enqueueMail(db, "magic_link", msg, at);
+    await deliverPending(db, mail, { now });
+    expect(mail.latestTo("redact-next@example.org")?.text).toContain(`\n${link}\n`);
+    const [row] = await db
+      .select()
+      .from(outbox)
+      .where(eq(outbox.toEmail, "redact-next@example.org"));
+    expect(row?.bodyText).not.toContain("SECRET_token-456");
+    expect(row?.bodyText).not.toContain("8765 4321");
+    expect(row?.bodyText).toContain(
+      "\nhttps://x.example/en/auth/verify#token=[redacted]&next=%2Fen%2Fc%2Fmade-up-call%2Fsubmit%3Fformat%3Dreading\n",
+    );
+  });
+
+  it("a sign-in email carries its link on one unbroken line, however long the address in it", async () => {
+    // The longest address a link may carry, made of the characters that grow most when encoded.
+    const next = `/pt/${"a/".repeat((AFTER_SIGN_IN_MAX - 4) / 2)}`;
+    expect(next).toHaveLength(AFTER_SIGN_IN_MAX);
+    expect(afterSignIn(next)).toBe(next);
+    const link = `https://submissions.a-long-conference-name.example.org/pt/auth/verify#token=${"t".repeat(43)}&next=${encodeURIComponent(next)}`;
+    expect(link).not.toMatch(/\s/);
+    // As it is sent: the same call SmtpTransport makes, written out instead of handed to a server.
+    const smtp = nodemailer.createTransport({
+      streamTransport: true,
+      buffer: true,
+      newline: "windows",
+    });
+    for (const lang of ["en", "es", "pt"]) {
+      const msg = magicLinkMessage(lang, "long@example.org", link, "12345678");
+      const sent = await smtp.sendMail({
+        from: "ELOchair <no-reply@example.org>",
+        to: msg.to,
+        subject: msg.subject,
+        text: msg.text,
+      });
+      const raw = String(sent.message);
+      const [head = "", ...rest] = raw.split("\r\n\r\n");
+      // A line of the message itself stays far below what a mail server takes (998 characters):
+      // the long line is folded for transport, and a mail program puts it back together.
+      expect(head).toMatch(/^Content-Transfer-Encoding: quoted-printable$/m);
+      for (const line of raw.split("\r\n")) expect(line.length).toBeLessThanOrEqual(78);
+      const read = Buffer.from(
+        rest
+          .join("\r\n\r\n")
+          .replace(/=\r\n/g, "")
+          .replace(/=([0-9A-F]{2})/g, (_, hex: string) =>
+            String.fromCharCode(Number.parseInt(hex, 16)),
+          ),
+        "latin1",
+      ).toString("utf8");
+      expect(read.replace(/\r\n/g, "\n").trimEnd()).toBe(msg.text);
+      expect(read.split("\r\n")).toContain(link);
+    }
   });
 
   it("does not send a sign-in email after its link has expired", async () => {

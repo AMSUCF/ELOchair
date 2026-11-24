@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { api, type Issue, type Me, type OwnReview } from "../api";
 import { describedBy, ErrorSummary, FieldError, fieldId } from "../forms";
 import { useT } from "../i18n";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { PageHeading } from "../ui";
 import { browserStore, clearUnsaved } from "../unsaved";
 import { reviewScope } from "../unsavedReview";
@@ -18,6 +19,8 @@ import type { LeftList } from "./MyReviews";
 
 type Loaded =
   | { state: "loading" }
+  /** Nobody is signed in: the page has the sign-in form on it, whatever the address names. */
+  | { state: "signed-out" }
   | { state: "missing" }
   | {
       state: "ready";
@@ -51,6 +54,9 @@ export function CannotReviewPage() {
       api<Me>("/api/me"),
     ]).then(([s, r, m]) => {
       if (!live) return;
+      // Decided by who is signed in, before anything that was answered about the proposal:
+      // someone who is not signed in is shown the same for every address.
+      if (nobodySignedIn(m)) return setLoaded({ state: "signed-out" });
       // Only for the proposal's reviewer, which the server decides (their own review is there
       // to read): anyone else is told what a stranger is told. A chair who also reviews reads
       // the proposal as a chair, and is its reviewer all the same.
@@ -70,6 +76,9 @@ export function CannotReviewPage() {
   }, [id]);
 
   if (loaded.state === "loading") return <p role="status">{t("loading")}</p>;
+  if (loaded.state === "signed-out") {
+    return <SignInHere title={t("cannotTitle")} why={t("cannotNeedSignIn")} />;
+  }
   if (loaded.state === "missing") {
     return (
       <>

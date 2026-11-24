@@ -4,6 +4,7 @@ import type { MySubmission } from "../api";
 import { deadlineText } from "../format";
 import { useT } from "../i18n";
 import { statusKey } from "../labels";
+import { nobodySignedIn, SignInHere } from "../signIn";
 import { Localized, PageHeading } from "../ui";
 import { useApi } from "../useApi";
 
@@ -20,16 +21,16 @@ type Item = {
 };
 
 export function MyPage() {
-  const { lang, t } = useT();
+  const { t } = useT();
   const res = useApi<{ items: Item[] }>("/api/me/submissions");
   if (!res) return <p role="status">{t("loading")}</p>;
   if (!res.ok) {
+    if (nobodySignedIn(res)) return <SignInHere title={t("myTitle")} why={t("myNeedSignIn")} />;
     return (
       <>
         <PageHeading>{t("myTitle")}</PageHeading>
-        <p>
-          {t("meNeedSignIn")} <Link to={`/${lang}/sign-in`}>{t("navSignIn")}</Link>
-        </p>
+        {/* Signed in, and the list did not arrive: asking them to sign in would be wrong. */}
+        <p role="alert">{t(res.status === 0 ? "verifyNetwork" : "errorGeneric")}</p>
       </>
     );
   }
