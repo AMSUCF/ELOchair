@@ -105,6 +105,14 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
   if (closed) return <p role="alert">{t("startClosed")}</p>;
   return (
     <form onSubmit={start} className="stack wide" noValidate>
+      {/* Which format is chosen, said at the top, where the page says it while the person signs
+          in: with every description on the page the list is long, and on a phone the chosen
+          format may be a screen or two down. It follows the choice. */}
+      {type && (
+        <p className="meta">
+          {t("startFormatChosen")} <Localized text={type.name} fallback={c.defaultLanguage} />
+        </p>
+      )}
       <p>{t("startIntro")}</p>
       <ErrorSummary issues={issues} title={t("editErrors")} />
       {/* Every format with its lengths and its description, all at once: choosing one needs

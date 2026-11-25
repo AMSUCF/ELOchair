@@ -153,6 +153,10 @@ async function signInToStart(
   const heading = page.getByRole("heading", { level: 1, name: "Start a proposal" });
   await expect(heading).toBeFocused();
   await expect(page.getByRole("radio", { name: new RegExp(`^${format}`) })).toBeChecked();
+  // The page still says which format that is, at the top, where it said so before they signed
+  // in: on a phone the chosen format itself may be a screen or two down the list.
+  await expect(page.getByText(`Selected format: ${format}`)).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByRole("button", { name: `Start a ${format}` })).toBeVisible();
   await expect(page.getByLabel("Email address")).toHaveCount(0);
   expect((await page.request.get("/api/me")).status()).toBe(200);
@@ -579,10 +583,14 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   ];
   await expect(choice(first)).toBeChecked();
   await expect(page.locator(".format-option.chosen")).toHaveCount(1);
+  // The line at the top says which format is chosen, and follows the choice.
+  await expect(page.getByText(`Selected format: ${first.name.en}`)).toBeInViewport();
   await page.getByText(last.description.en ?? "", { exact: true }).click();
   await expect(choice(last)).toBeChecked();
   await expect(choice(first)).not.toBeChecked();
   await expect(page.locator(".format-option.chosen")).toContainText(last.name.en ?? "");
+  await expect(page.getByText(`Selected format: ${last.name.en}`)).toHaveCount(1);
+  await expect(page.getByText(`Selected format: ${first.name.en}`)).toHaveCount(0);
   await expect(page.getByRole("button", { name: `Start a ${last.name.en}` })).toBeVisible();
   // On a phone the formats stand one under the other, each tall enough to press; nothing
   // scrolls sideways; and both themes pass.
