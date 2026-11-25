@@ -140,7 +140,10 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
     return (
       <>
         <p>{t("startChooseFormat")}</p>
-        <ul className="format-rows" aria-label={t("manageType")}>
+        {/* A list whose markers are styled away is no list to VoiceOver on Safari unless it
+            says that it is one: this is a list to choose from, and how many there are matters. */}
+        {/* biome-ignore lint/a11y/noRedundantRoles: Safari drops the role with the markers */}
+        <ul className="format-rows" role="list" aria-label={t("manageType")}>
           {types.map((x) => {
             const current = x.key === typeKey;
             return (

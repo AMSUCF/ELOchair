@@ -160,7 +160,7 @@ async function signInToStart(
   await expect(page.getByRole("list", { name: "Format" })).toHaveCount(0);
   await expect(box.getByRole("button", { name: "Choose another format" })).toBeVisible();
   await expect(page.getByLabel("Language of your abstract")).toBeInViewport();
-  await expect(page.getByRole("button", { name: `Start a ${format}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Start: ${format}` })).toBeVisible();
   await expect(page.getByLabel("Email address")).toHaveCount(0);
   expect((await page.request.get("/api/me")).status()).toBe(200);
 }
@@ -199,7 +199,7 @@ async function start(page: Page, format: string) {
     .getByRole("button", { name: new RegExp(`^${format} · `) })
     .click();
   await page.getByRole("radio", { name: "In person" }).check();
-  await page.getByRole("button", { name: /^Start a / }).click();
+  await page.getByRole("button", { name: /^Start: / }).click();
   await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
 }
 
@@ -574,7 +574,7 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await expect(list.locator('[aria-current="true"]')).toHaveCount(0);
   await expect(page.getByRole("radio")).toHaveCount(0);
   await expect(page.getByLabel("Language of your abstract")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Start a / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Start: / })).toHaveCount(0);
   // A format's name and lengths are what its row is called, and its description is read
   // after them.
   await expect(
@@ -638,7 +638,7 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await expect(page.getByText(first.description.en ?? "", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Language of your abstract")).toBeVisible();
   await expect(page.getByRole("radio")).toHaveCount(3); // how you take part
-  await expect(page.getByRole("button", { name: `Start a ${last.name.en}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Start: ${last.name.en}` })).toBeVisible();
   await expectAccessibleInBothThemes(page);
   await expectNoHorizontalScroll(page);
   // "Choose another format" brings the list back, with theirs marked and in focus, and what
@@ -651,13 +651,13 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await expect(named(last)).toHaveAttribute("aria-current", "true");
   await expect(row(last)).toContainText("Selected");
   await expect(list.locator('[aria-current="true"]')).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /^Start a / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Start: / })).toHaveCount(0);
   await expectAccessibleInBothThemes(page);
   await list.getByRole("button", { name: /^Workshop · / }).click();
   await expect(chosen.getByText("Selected format: Workshop")).toBeFocused();
   await expect(page.getByRole("radio", { name: "Online" })).toBeChecked();
   await page.getByRole("radio", { name: "In person" }).check();
-  await page.getByRole("button", { name: "Start a Workshop" }).click();
+  await page.getByRole("button", { name: "Start: Workshop" }).click();
   await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
 
   await page.getByLabel("Title").fill("Mapping attention by hand");

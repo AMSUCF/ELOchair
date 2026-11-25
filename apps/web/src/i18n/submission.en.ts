@@ -15,7 +15,7 @@ export const submissionEn = {
   startMode: "How do you plan to take part?",
   startOwnRole: "Your role in this proposal",
   startCounts: "Lead and presenting roles count toward the limit of {max} per person.",
-  startButton: "Start a {format}",
+  startButton: "Start: {format}",
   startClosed: "This call is not open for submissions.",
 
   mode_in_person: "In person",

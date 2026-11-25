@@ -383,7 +383,7 @@ test.describe("conference settings", () => {
       .getByRole("button", { name: new RegExp(`^${FORMAT} · `) })
       .click();
     await page.getByRole("radio", { name: "In person" }).check();
-    await page.getByRole("button", { name: /^Start a / }).click();
+    await page.getByRole("button", { name: /^Start: / }).click();
     await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
     await page.getByLabel("Title").fill("A reading for forty words");
     await page.getByLabel("Abstract", { exact: true }).fill(words(40));
@@ -970,9 +970,7 @@ test.describe("conference settings", () => {
     const called = (format: { name: Record<string, string> }) =>
       new RegExp(`^${(format.name.en ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} · `);
     await expect(chosen.getByText(`Selected format: ${lastFormat.name.en}`)).toBeVisible();
-    await expect(
-      chair.getByRole("button", { name: `Start a ${lastFormat.name.en}` }),
-    ).toBeVisible();
+    await expect(chair.getByRole("button", { name: `Start: ${lastFormat.name.en}` })).toBeVisible();
     await expect(formatList).toHaveCount(0);
     await chosen.getByRole("button", { name: "Choose another format" }).click();
     await expect(formatList.locator('[aria-current="true"]')).toHaveAccessibleName(
@@ -981,7 +979,7 @@ test.describe("conference settings", () => {
     await formatList.getByRole("button", { name: called(firstFormat) }).click();
     await expect(chosen.getByText(`Selected format: ${firstFormat.name.en}`)).toBeFocused();
     await expect(
-      chair.getByRole("button", { name: `Start a ${firstFormat.name.en}` }),
+      chair.getByRole("button", { name: `Start: ${firstFormat.name.en}` }),
     ).toBeVisible();
     // An address that names no format of the call chooses none, and the page asks for one.
     // (It used to begin with the first.)
@@ -989,7 +987,7 @@ test.describe("conference settings", () => {
     await expect(chair.getByText("Choose a format for your proposal.")).toBeVisible();
     await expect(formatList.getByRole("button")).toHaveCount(types.length);
     await expect(formatList.locator('[aria-current="true"]')).toHaveCount(0);
-    await expect(chair.getByRole("button", { name: /^Start a / })).toHaveCount(0);
+    await expect(chair.getByRole("button", { name: /^Start: / })).toHaveCount(0);
 
     // Back exactly as it was, for the tests that run beside this one.
     await openSettings(chair);
