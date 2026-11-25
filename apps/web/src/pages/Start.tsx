@@ -1,6 +1,6 @@
-import type { ConferenceConfig } from "@elochair/schema";
+import type { ConferenceConfig, SubmissionType } from "@elochair/schema";
 import { localize } from "@elochair/schema/pure";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type ConferenceDetail, type Me, type MySubmission, type Role } from "../api";
 import { hasMinimum } from "../format";
@@ -65,12 +65,14 @@ export function StartPage() {
 function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string }) {
   const { lang, t } = useT();
   const navigate = useNavigate();
-  // "Start this proposal" on the conference's page names the format in the address; it is only
-  // where the form begins, and the person may still choose another.
+  const types = c.submissionTypes;
+  // The format the proposal will be in. "Start this proposal" on the conference's page names
+  // it in the address, and a call with one format has no other. Otherwise there is none yet,
+  // and the page asks before anything else.
   const [params] = useSearchParams();
-  const [typeKey, setTypeKey] = useState(() =>
-    startingFormat(c.submissionTypes, params.get("format")),
-  );
+  const [typeKey, setTypeKey] = useState(() => startingFormat(types, params.get("format")));
+  /** The person asked for another format: the list is there again, with theirs marked. */
+  const [changing, setChanging] = useState(false);
   const [language, setLanguage] = useState(c.languages.includes(lang) ? lang : c.defaultLanguage);
   const [mode, setMode] = useState<(typeof MODES)[number] | "">("");
   const [ownRole, setOwnRole] = useState<Role>("lead");
@@ -80,7 +82,34 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
   const [closed, setClosed] = useState(false);
   const hybrid = c.modality === "hybrid";
   const cap = c.rules.presenterCap;
-  const type = c.submissionTypes.find((x) => x.key === typeKey);
+  const type = types.find((x) => x.key === typeKey);
+  const choosing = !type || changing;
+
+  // Choosing a format, and asking for another, each put something else in the place of what
+  // was pressed: the focus goes there, to the format that is now chosen, or to it in the list.
+  const moved = useRef(false);
+  const chosenRef = useRef<HTMLParagraphElement>(null);
+  const currentRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!moved.current) return;
+    moved.current = false;
+    (choosing ? currentRef : chosenRef).current?.focus();
+  }, [choosing]);
+
+  function choose(key: string) {
+    moved.current = true;
+    setTypeKey(key);
+    setChanging(false);
+  }
+
+  /** "up to 300 words · 15 minutes": what the call says of a format's lengths. */
+  const lengths = (x: SubmissionType) =>
+    [
+      hasMinimum(x.abstract.minWords)
+        ? t("confWords", { min: x.abstract.minWords, max: x.abstract.maxWords })
+        : t("confWordsMax", { max: x.abstract.maxWords }),
+      ...(x.durationMinutes ? [t("confMinutes", { n: x.durationMinutes })] : []),
+    ].join(" · ");
 
   async function start(e: FormEvent) {
     e.preventDefault();
@@ -103,64 +132,90 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
   }
 
   if (closed) return <p role="alert">{t("startClosed")}</p>;
-  return (
-    <form onSubmit={start} className="stack wide" noValidate>
-      {/* Which format is chosen, said at the top, where the page says it while the person signs
-          in: with every description on the page the list is long, and on a phone the chosen
-          format may be a screen or two down. It follows the choice. */}
-      {type && (
-        <p className="meta">
-          {t("startFormatChosen")} <Localized text={type.name} fallback={c.defaultLanguage} />
-        </p>
-      )}
-      <p>{t("startIntro")}</p>
-      <ErrorSummary issues={issues} title={t("editErrors")} />
-      {/* Every format with its lengths and its description, all at once: choosing one needs
-          no pressing through the others to read what each is. A format's name and lengths are
-          what its choice is called; its description is read after them (aria-describedby),
-          and pressing anywhere on it chooses it. */}
-      <fieldset className="plain format-chooser">
-        <legend>{t("manageType")}</legend>
-        <div className="format-options">
-          {c.submissionTypes.map((x) => (
-            <label
-              key={x.key}
-              className={typeKey === x.key ? "choice format-option chosen" : "choice format-option"}
-            >
-              <input
-                type="radio"
-                name="typeKey"
-                value={x.key}
-                checked={typeKey === x.key}
-                onChange={() => setTypeKey(x.key)}
-                id={x === c.submissionTypes[0] ? "field-typeKey" : undefined}
-                aria-labelledby={`format-${x.key}-name`}
-                aria-describedby={`format-${x.key}-about`}
-              />
-              <span className="format-option-text">
-                {/* The name, and under it the lengths. Read out, they are one line as before
-                    ("Paper · up to 300 words · 15 minutes"): the dot between them is there for
-                    that, and is not drawn. */}
-                <span id={`format-${x.key}-name`} className="format-option-name">
-                  <strong>
-                    <Localized text={x.name} fallback={c.defaultLanguage} />
-                  </strong>
-                  <span className="visually-hidden"> · </span>
-                  <span className="format-option-lengths">
-                    {hasMinimum(x.abstract.minWords)
-                      ? t("confWords", { min: x.abstract.minWords, max: x.abstract.maxWords })
-                      : t("confWordsMax", { max: x.abstract.maxWords })}
-                    {x.durationMinutes ? ` · ${t("confMinutes", { n: x.durationMinutes })}` : ""}
-                  </span>
+
+  // First the format, and nothing else: every format the call takes here, each with its
+  // lengths and its description, so that none has to be pressed to be read. Pressing one
+  // chooses it, and the list gives way to the rest of the form.
+  if (choosing) {
+    return (
+      <>
+        <p>{t("startChooseFormat")}</p>
+        <ul className="format-rows" aria-label={t("manageType")}>
+          {types.map((x) => {
+            const current = x.key === typeKey;
+            return (
+              <li key={x.key} className={current ? "format-row current" : "format-row"}>
+                <span className="format-row-head">
+                  {/* The button is the format's name and lengths, which is what it is called
+                      ("Paper · up to 300 words · 15 minutes": the dot is read out, and not
+                      drawn); the description is read after them. The whole row is pressed as
+                      the button is (its ::after covers the row). */}
+                  <button
+                    type="button"
+                    className="format-row-name"
+                    ref={current ? currentRef : undefined}
+                    aria-current={current ? "true" : undefined}
+                    aria-describedby={`format-${x.key}-about`}
+                    onClick={() => choose(x.key)}
+                  >
+                    <strong>
+                      <Localized text={x.name} fallback={c.defaultLanguage} />
+                    </strong>
+                    <span className="visually-hidden"> · </span>
+                    <span className="format-row-lengths">{lengths(x)}</span>
+                  </button>
+                  {/* The format that is chosen already (aria-current says so as well). */}
+                  {current && <span className="badge">{t("startFormatCurrent")}</span>}
                 </span>
-                <span id={`format-${x.key}-about`} className="format-option-about">
+                <span id={`format-${x.key}-about`} className="format-row-about">
                   <Localized text={x.description} fallback={c.defaultLanguage} />
                 </span>
-              </span>
-            </label>
-          ))}
+                <span className="format-row-mark" aria-hidden="true">
+                  →
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    );
+  }
+
+  return (
+    <form onSubmit={start} className="stack wide" noValidate>
+      <ErrorSummary issues={issues} title={t("editErrors")} />
+      {/* The format that is chosen, and the way to another. The others are not on the page:
+          the rest of the form follows at once. */}
+      <fieldset className="format-chosen">
+        <legend>{t("manageType")}</legend>
+        <div>
+          <p id="field-typeKey" className="format-chosen-name" tabIndex={-1} ref={chosenRef}>
+            <span className="visually-hidden">{t("startFormatChosen")} </span>
+            <strong>
+              <Localized text={type.name} fallback={c.defaultLanguage} />
+            </strong>
+          </p>
+          <p className="format-row-lengths">{lengths(type)}</p>
         </div>
+        <p>
+          <Localized text={type.description} fallback={c.defaultLanguage} />
+        </p>
+        {types.length > 1 && (
+          <p>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                moved.current = true;
+                setChanging(true);
+              }}
+            >
+              {t("startChangeFormat")}
+            </button>
+          </p>
+        )}
       </fieldset>
+      <p>{t("startIntro")}</p>
       <label htmlFor="field-language">{t("startLanguage")}</label>
       <select id="field-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
         {c.languages.map((l) => (

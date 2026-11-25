@@ -61,10 +61,14 @@ export function steppedIndex(count: number, index: number, step: -1 | 1): number
 
 /**
  * The format the start page begins with: the one its address names ("?format=<key>"), if the
- * call takes it here; otherwise the first.
+ * call takes it here, or the only one the call takes. Otherwise none: the page asks which.
  */
-export function startingFormat(types: readonly { key: string }[], named: string | null): string {
-  return types.find((type) => type.key === named)?.key ?? types[0]?.key ?? "";
+export function startingFormat(
+  types: readonly { key: string }[],
+  named: string | null,
+): string | null {
+  const only = types.length === 1 ? types[0]?.key : undefined;
+  return types.find((type) => type.key === named)?.key ?? only ?? null;
 }
 
 /** Where "Start this proposal" leads: the start page, with the format chosen. */

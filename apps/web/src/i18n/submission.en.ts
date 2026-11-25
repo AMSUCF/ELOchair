@@ -5,7 +5,10 @@ export const submissionEn = {
   confManageLink: "Manage submissions",
 
   startTitle: "Start a proposal",
-  startIntro: "Choose a format. You can save a draft and come back until the deadline.",
+  startIntro: "You can save a draft and come back until the deadline.",
+  startChooseFormat: "Choose a format for your proposal.",
+  startChangeFormat: "Choose another format",
+  startFormatCurrent: "Selected",
   startSignInFirst: "Sign in to start a proposal.",
   startFormatChosen: "Selected format:",
   startLanguage: "Language of your abstract",

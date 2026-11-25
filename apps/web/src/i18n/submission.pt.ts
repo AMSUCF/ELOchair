@@ -7,7 +7,10 @@ export const submissionPt: Record<keyof typeof submissionEn, string> = {
   confManageLink: "Gerir submissões",
 
   startTitle: "Começar uma proposta",
-  startIntro: "Escolha um formato. Pode guardar um rascunho e voltar até ao prazo.",
+  startIntro: "Pode guardar um rascunho e voltar até ao prazo.",
+  startChooseFormat: "Escolha um formato para a sua proposta.",
+  startChangeFormat: "Escolher outro formato",
+  startFormatCurrent: "Escolhido",
   startSignInFirst: "Entre para começar uma proposta.",
   startFormatChosen: "Formato escolhido:",
   startLanguage: "Idioma do resumo",

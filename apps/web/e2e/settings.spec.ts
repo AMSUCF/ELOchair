@@ -377,7 +377,11 @@ test.describe("conference settings", () => {
     await expect(page.getByText("Profile saved.")).toBeVisible();
     await page.goto(`/en/c/${CALL}`);
     await page.getByRole("link", { name: "Start a proposal" }).click();
-    await page.getByRole("radio", { name: new RegExp(FORMAT) }).check();
+    // The page asks for the format first: one row to a format, and pressing one chooses it.
+    await page
+      .getByRole("list", { name: "Format" })
+      .getByRole("button", { name: new RegExp(`^${FORMAT} · `) })
+      .click();
     await page.getByRole("radio", { name: "In person" }).check();
     await page.getByRole("button", { name: /^Start a / }).click();
     await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
@@ -944,7 +948,9 @@ test.describe("conference settings", () => {
 
     // Checked here because this file has someone signed in, and the start page shows its form
     // only to them: "Start this proposal" in a format's panel begins the form with that format,
-    // and the person may still choose another. Nothing is started.
+    // and the person may still choose another. Nothing is started. (Changed with the start
+    // page: the format is no longer one of a group of radio buttons that are all on the page.
+    // The form says which format it is for, and "Choose another format" brings the list.)
     const types = before.config.submissionTypes;
     const [firstFormat, lastFormat] = [types[0], types.at(-1)];
     if (!firstFormat || !lastFormat || firstFormat === lastFormat) {
@@ -959,14 +965,31 @@ test.describe("conference settings", () => {
     await startThis.click();
     await expect(chair).toHaveURL(new RegExp(`/en/c/${CALL}/submit\\?format=${lastFormat.key}$`));
     await expect(chair.getByRole("heading", { level: 1, name: "Start a proposal" })).toBeFocused();
-    const chosen = chair.locator('input[name="typeKey"]:checked');
-    await expect(chosen).toHaveCount(1);
-    await expect(chosen).toHaveValue(lastFormat.key);
-    await chair.locator(`input[name="typeKey"][value="${firstFormat.key}"]`).check();
-    await expect(chosen).toHaveValue(firstFormat.key);
-    // An address that names no format of the call begins with the first, as the page always did.
+    const chosen = chair.getByRole("group", { name: "Format" });
+    const formatList = chair.getByRole("list", { name: "Format" });
+    const called = (format: { name: Record<string, string> }) =>
+      new RegExp(`^${(format.name.en ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} · `);
+    await expect(chosen.getByText(`Selected format: ${lastFormat.name.en}`)).toBeVisible();
+    await expect(
+      chair.getByRole("button", { name: `Start a ${lastFormat.name.en}` }),
+    ).toBeVisible();
+    await expect(formatList).toHaveCount(0);
+    await chosen.getByRole("button", { name: "Choose another format" }).click();
+    await expect(formatList.locator('[aria-current="true"]')).toHaveAccessibleName(
+      called(lastFormat),
+    );
+    await formatList.getByRole("button", { name: called(firstFormat) }).click();
+    await expect(chosen.getByText(`Selected format: ${firstFormat.name.en}`)).toBeFocused();
+    await expect(
+      chair.getByRole("button", { name: `Start a ${firstFormat.name.en}` }),
+    ).toBeVisible();
+    // An address that names no format of the call chooses none, and the page asks for one.
+    // (It used to begin with the first.)
     await chair.goto(`/en/c/${CALL}/submit?format=no_such_format`);
-    await expect(chosen).toHaveValue(firstFormat.key);
+    await expect(chair.getByText("Choose a format for your proposal.")).toBeVisible();
+    await expect(formatList.getByRole("button")).toHaveCount(types.length);
+    await expect(formatList.locator('[aria-current="true"]')).toHaveCount(0);
+    await expect(chair.getByRole("button", { name: /^Start a / })).toHaveCount(0);
 
     // Back exactly as it was, for the tests that run beside this one.
     await openSettings(chair);

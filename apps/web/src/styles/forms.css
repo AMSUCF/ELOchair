@@ -108,62 +108,138 @@ legend {
 }
 
 /*
- * The formats on the start page: every format the call takes here, each with its lengths and
- * its description, so that choosing one needs no pressing through the others. One to a row on
- * a phone, and side by side where there is room for two. Each has an edge of its own, the
- * colour of a field's border (as a row of the formats on the conference's page has), and the
- * chosen one has the accent's, twice as thick. Its radio button says which is chosen as well.
+ * The formats on the start page, while one is being chosen: one list in one box, a row to a
+ * format, with a line between rows. A row holds the format's name with its lengths under it,
+ * and its description, beside them where the list is wide enough and under them on a phone,
+ * so that the names stand in one column and the descriptions in another. Every description is
+ * there at once. The name is a button, and the whole row is pressed as that button is.
+ * The box has the edge of a field, as a row of the formats on the conference's page has.
  */
-.format-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
-  gap: 10px;
-}
-
-.format-option {
-  padding: 12px 14px;
+.format-rows {
+  container-type: inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--control-border);
   border-radius: var(--radius);
   background: var(--surface);
-  cursor: pointer;
 }
 
-.format-option:hover {
-  border-color: var(--accent);
-}
-
-.format-option.chosen {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-.format-option-text {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* The format's name, and under it its lengths. */
-.format-option-name {
+.format-row {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 16px;
+  min-height: var(--touch);
+  padding: 14px 16px;
+  /* A line between rows: each row has one above it, and the box cuts off the first one's. */
+  margin-top: -1px;
+  border-top: 1px solid var(--line);
+}
+
+.format-row:hover {
+  background: var(--sunken);
+}
+
+/* The format's name, under it its lengths, and "Selected" on the one that is chosen already. */
+.format-row-head {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+/* The button: it looks like the text it is, and the row around it is its to be pressed. */
+.format-row-name {
+  display: grid;
+  justify-items: start;
   gap: 2px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  font-weight: 400;
+  line-height: inherit;
+  text-align: start;
 }
 
-.format-option-lengths {
+.format-row-name::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.format-row-name:hover {
+  box-shadow: none;
+}
+
+.format-row-name:active {
+  transform: none;
+}
+
+/* The ring goes round the row, inside it: the box cuts off what is outside. */
+.format-row-name:focus-visible {
+  outline: none;
+}
+
+.format-row-name:focus-visible::after {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.format-row-lengths {
+  margin: 0;
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
 }
 
-.format-option-about {
-  font-size: 0.9375rem;
-  line-height: 1.45;
+.format-row-about {
+  grid-column: 1;
 }
 
-/* "Format" stands at the edge the formats have. */
-.format-chooser > legend {
-  padding-inline: 0;
+/* At the end of the row: an arrow, which says that the row is to be pressed. */
+.format-row-mark {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The chosen format, where the person came back to choose another: a bar of the accent. */
+.format-row.current {
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+@container (min-width: 40rem) {
+  .format-row {
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) auto;
+  }
+
+  .format-row-about {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .format-row-mark {
+    grid-column: 3;
+  }
+}
+
+/* The format that is chosen, in a box like the form's other groups, with the way to another. */
+.format-chosen p {
+  margin: 0;
+}
+
+.format-chosen-name {
+  position: relative;
+  font-size: 1.125rem;
+}
+
+.format-chosen button {
+  margin-top: 4px;
 }
 
 /* A choice that stands alone, outside a group: its own box, as a group has one. */

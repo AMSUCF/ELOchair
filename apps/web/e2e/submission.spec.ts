@@ -152,11 +152,14 @@ async function signInToStart(
   await expect(page).toHaveURL(here);
   const heading = page.getByRole("heading", { level: 1, name: "Start a proposal" });
   await expect(heading).toBeFocused();
-  await expect(page.getByRole("radio", { name: new RegExp(`^${format}`) })).toBeChecked();
-  // The page still says which format that is, at the top, where it said so before they signed
-  // in: on a phone the chosen format itself may be a screen or two down the list.
-  await expect(page.getByText(`Selected format: ${format}`)).toBeInViewport();
+  // The format they chose is the one the form is for, said at its top; the other formats are
+  // not on the page, and the rest of the form follows at once.
+  const box = page.getByRole("group", { name: "Format" });
+  await expect(box.getByText(`Selected format: ${format}`)).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.getByRole("list", { name: "Format" })).toHaveCount(0);
+  await expect(box.getByRole("button", { name: "Choose another format" })).toBeVisible();
+  await expect(page.getByLabel("Language of your abstract")).toBeInViewport();
   await expect(page.getByRole("button", { name: `Start a ${format}` })).toBeVisible();
   await expect(page.getByLabel("Email address")).toHaveCount(0);
   expect((await page.request.get("/api/me")).status()).toBe(200);
@@ -190,7 +193,11 @@ async function setName(page: Page, name: string) {
 async function start(page: Page, format: string) {
   await page.goto(`/en/c/${CALL}`);
   await page.getByRole("link", { name: "Start a proposal" }).click();
-  await page.getByRole("radio", { name: new RegExp(format) }).check();
+  // The page asks for the format first: one row to a format, and pressing one chooses it.
+  await page
+    .getByRole("list", { name: "Format" })
+    .getByRole("button", { name: new RegExp(`^${format} · `) })
+    .click();
   await page.getByRole("radio", { name: "In person" }).check();
   await page.getByRole("button", { name: /^Start a / }).click();
   await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
@@ -553,69 +560,104 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
         }>,
     );
   await page.getByRole("link", { name: "Start a proposal" }).click();
-  // The seven formats submitted here are offered; the one taken by email is not.
-  await expect(page.getByRole("radio")).toHaveCount(7 + 3); // formats, and how you take part
-  await expect(
-    page.getByRole("radio", { name: /Lightning talk · up to 150 words · 5 minutes/ }),
-  ).toBeVisible();
-  await expect(page.getByRole("radio", { name: /Curatorial/ })).toHaveCount(0);
-
-  // Every format is there with its description, all at once: nobody has to choose a format
-  // to read what it is. (The page used to say only what the chosen one is.) A format's name
-  // and lengths are what its choice is called, and its description is read after them.
+  // Nothing named a format, so the page asks for one first, and for nothing else. Every
+  // format the call takes here is there with its description, all at once: nobody has to
+  // choose a format to read what it is. (Changed twice on the owner's word: the page used to
+  // say only what the chosen format is, and then to keep every format on the page after one
+  // was chosen.) The one the call takes by email is not offered.
   const formats = (await told).config.submissionTypes;
   expect(formats.length).toBeGreaterThan(1);
+  const list = page.getByRole("list", { name: "Format" });
+  await expect(page.getByText("Choose a format for your proposal.")).toBeVisible();
+  await expect(list.getByRole("button")).toHaveCount(formats.length);
+  await expect(list.getByRole("button", { name: /Curatorial/ })).toHaveCount(0);
+  await expect(list.locator('[aria-current="true"]')).toHaveCount(0);
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  await expect(page.getByLabel("Language of your abstract")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Start a / })).toHaveCount(0);
+  // A format's name and lengths are what its row is called, and its description is read
+  // after them.
+  await expect(
+    list.getByRole("button", { name: "Lightning talk · up to 150 words · 5 minutes" }),
+  ).toBeVisible();
   const beginning = (text: string) => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
-  const choice = (format: (typeof formats)[number]) =>
-    page.getByRole("radio", { name: beginning(`${format.name.en} · `) });
+  const named = (format: (typeof formats)[number]) =>
+    list.getByRole("button", { name: beginning(`${format.name.en} · `) });
+  /** A format's row: its name is the button, and the whole row is pressed as that button is. */
+  const row = (format: (typeof formats)[number]) =>
+    list.locator("li", {
+      has: page.getByRole("button", { name: beginning(`${format.name.en} · `) }),
+    });
   for (const format of formats) {
     const about = format.description.en ?? "";
     expect(about, `a description of ${format.key}`).not.toBe("");
     await expect(page.getByText(about, { exact: true })).toHaveCount(1);
     await expect(page.getByText(about, { exact: true })).toBeVisible();
-    await expect(choice(format)).toHaveAccessibleDescription(about);
+    await expect(named(format)).toHaveAccessibleDescription(about);
+    await expectTouchTarget(row(format));
   }
-  // The first is chosen until another is; pressing anywhere on a format chooses it, its
-  // description included, and the button says which format the proposal will be.
+  // On a phone a description stands under its format's name; nothing scrolls sideways; and
+  // both themes pass.
   const [first, last] = [formats[0], formats.at(-1)] as [
     (typeof formats)[number],
     (typeof formats)[number],
   ];
-  await expect(choice(first)).toBeChecked();
-  await expect(page.locator(".format-option.chosen")).toHaveCount(1);
-  // The line at the top says which format is chosen, and follows the choice.
-  await expect(page.getByText(`Selected format: ${first.name.en}`)).toBeInViewport();
-  await page.getByText(last.description.en ?? "", { exact: true }).click();
-  await expect(choice(last)).toBeChecked();
-  await expect(choice(first)).not.toBeChecked();
-  await expect(page.locator(".format-option.chosen")).toContainText(last.name.en ?? "");
-  await expect(page.getByText(`Selected format: ${last.name.en}`)).toHaveCount(1);
-  await expect(page.getByText(`Selected format: ${first.name.en}`)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: `Start a ${last.name.en}` })).toBeVisible();
-  // On a phone the formats stand one under the other, each tall enough to press; nothing
-  // scrolls sideways; and both themes pass.
-  const options = page.locator(".format-option");
-  await expect(options).toHaveCount(formats.length);
-  const edges = async () =>
-    options.evaluateAll((all) => all.map((el) => Math.round(el.getBoundingClientRect().left)));
-  expect(new Set(await edges()).size).toBe(1);
-  for (const option of await options.all()) await expectTouchTarget(option);
+  const places = (format: (typeof formats)[number]) =>
+    row(format).evaluate((el) => {
+      const at = (part: string) => el.querySelector(part)?.getBoundingClientRect();
+      const [name, about] = [at(".format-row-name"), at(".format-row-about")];
+      return {
+        nameLeft: Math.round(name?.left ?? 0),
+        aboutLeft: Math.round(about?.left ?? 0),
+        under: (about?.top ?? 0) >= (name?.bottom ?? 0),
+      };
+    });
+  expect(await places(first)).toMatchObject({ under: true });
   await expectAccessibleInBothThemes(page);
   await expectNoHorizontalScroll(page);
   await page.setViewportSize({ width: 360, height: 740 });
   await expectNoHorizontalScroll(page);
-  // Where there is room they stand two side by side.
+  // Where there is room the names stand in one column and the descriptions in another,
+  // each at one edge for every format.
   await page.setViewportSize({ width: 1280, height: 900 });
-  expect(new Set(await edges()).size).toBe(2);
-  const tops = await options.evaluateAll((all) =>
-    all.slice(0, 2).map((el) => Math.round(el.getBoundingClientRect().top)),
-  );
-  expect(tops[0]).toBe(tops[1]);
+  const wide = await Promise.all(formats.map(places));
+  expect(new Set(wide.map((at) => at.nameLeft)).size).toBe(1);
+  expect(new Set(wide.map((at) => at.aboutLeft)).size).toBe(1);
+  expect(wide.every((at) => !at.under && at.aboutLeft > at.nameLeft)).toBe(true);
   await expectAccessible(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("radio", { name: /Workshop/ }).check();
+
+  // Pressing a row, anywhere on it, chooses that format, and the list gives way to the rest
+  // of the form: the other formats are gone from the page. What took the list's place says
+  // which format it is, and takes the focus.
+  await row(last).click();
+  await expect(list).toHaveCount(0);
+  const chosen = page.getByRole("group", { name: "Format" });
+  await expect(chosen.getByText(`Selected format: ${last.name.en}`)).toBeFocused();
+  await expect(chosen).toContainText(last.description.en ?? "");
+  await expect(page.getByText(first.description.en ?? "", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Language of your abstract")).toBeVisible();
+  await expect(page.getByRole("radio")).toHaveCount(3); // how you take part
+  await expect(page.getByRole("button", { name: `Start a ${last.name.en}` })).toBeVisible();
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+  // "Choose another format" brings the list back, with theirs marked and in focus, and what
+  // they had filled in is kept.
+  await page.getByRole("radio", { name: "Online" }).check();
+  const another = chosen.getByRole("button", { name: "Choose another format" });
+  await expectTouchTarget(another);
+  await another.click();
+  await expect(named(last)).toBeFocused();
+  await expect(named(last)).toHaveAttribute("aria-current", "true");
+  await expect(row(last)).toContainText("Selected");
+  await expect(list.locator('[aria-current="true"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Start a / })).toHaveCount(0);
+  await expectAccessibleInBothThemes(page);
+  await list.getByRole("button", { name: /^Workshop · / }).click();
+  await expect(chosen.getByText("Selected format: Workshop")).toBeFocused();
+  await expect(page.getByRole("radio", { name: "Online" })).toBeChecked();
   await page.getByRole("radio", { name: "In person" }).check();
-  await page.getByRole("button", { name: /^Start a / }).click();
+  await page.getByRole("button", { name: "Start a Workshop" }).click();
   await expect(page).toHaveURL(/\/en\/s\/[0-9a-f-]+$/);
 
   await page.getByLabel("Title").fill("Mapping attention by hand");

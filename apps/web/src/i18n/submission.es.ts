@@ -7,7 +7,10 @@ export const submissionEs: Record<keyof typeof submissionEn, string> = {
   confManageLink: "Gestionar envíos",
 
   startTitle: "Empezar una propuesta",
-  startIntro: "Elige un formato. Puedes guardar un borrador y volver hasta el cierre.",
+  startIntro: "Puedes guardar un borrador y volver hasta el cierre.",
+  startChooseFormat: "Elige un formato para tu propuesta.",
+  startChangeFormat: "Elegir otro formato",
+  startFormatCurrent: "Elegido",
   startSignInFirst: "Entra para empezar una propuesta.",
   startFormatChosen: "Formato elegido:",
   startLanguage: "Idioma del resumen",
