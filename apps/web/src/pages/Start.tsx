@@ -105,41 +105,62 @@ function StartForm({ config: c, slug }: { config: ConferenceConfig; slug: string
   if (closed) return <p role="alert">{t("startClosed")}</p>;
   return (
     <form onSubmit={start} className="stack wide" noValidate>
-      <p>{t("startIntro")}</p>
-      <ErrorSummary issues={issues} title={t("editErrors")} />
-      <fieldset>
-        <legend>{t("manageType")}</legend>
-        {c.submissionTypes.map((x) => (
-          <label key={x.key} className="choice">
-            <input
-              type="radio"
-              name="typeKey"
-              value={x.key}
-              checked={typeKey === x.key}
-              onChange={() => setTypeKey(x.key)}
-              id={x === c.submissionTypes[0] ? "field-typeKey" : undefined}
-            />
-            <span>
-              <strong>
-                <Localized text={x.name} fallback={c.defaultLanguage} />
-              </strong>
-              <span className="meta">
-                {" "}
-                ·{" "}
-                {hasMinimum(x.abstract.minWords)
-                  ? t("confWords", { min: x.abstract.minWords, max: x.abstract.maxWords })
-                  : t("confWordsMax", { max: x.abstract.maxWords })}
-                {x.durationMinutes ? ` · ${t("confMinutes", { n: x.durationMinutes })}` : ""}
-              </span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
+      {/* Which format is chosen, said at the top, where the page says it while the person signs
+          in: with every description on the page the list is long, and on a phone the chosen
+          format may be a screen or two down. It follows the choice. */}
       {type && (
         <p className="meta">
-          <Localized text={type.description} fallback={c.defaultLanguage} />
+          {t("startFormatChosen")} <Localized text={type.name} fallback={c.defaultLanguage} />
         </p>
       )}
+      <p>{t("startIntro")}</p>
+      <ErrorSummary issues={issues} title={t("editErrors")} />
+      {/* Every format with its lengths and its description, all at once: choosing one needs
+          no pressing through the others to read what each is. A format's name and lengths are
+          what its choice is called; its description is read after them (aria-describedby),
+          and pressing anywhere on it chooses it. */}
+      <fieldset className="plain format-chooser">
+        <legend>{t("manageType")}</legend>
+        <div className="format-options">
+          {c.submissionTypes.map((x) => (
+            <label
+              key={x.key}
+              className={typeKey === x.key ? "choice format-option chosen" : "choice format-option"}
+            >
+              <input
+                type="radio"
+                name="typeKey"
+                value={x.key}
+                checked={typeKey === x.key}
+                onChange={() => setTypeKey(x.key)}
+                id={x === c.submissionTypes[0] ? "field-typeKey" : undefined}
+                aria-labelledby={`format-${x.key}-name`}
+                aria-describedby={`format-${x.key}-about`}
+              />
+              <span className="format-option-text">
+                {/* The name, and under it the lengths. Read out, they are one line as before
+                    ("Paper · up to 300 words · 15 minutes"): the dot between them is there for
+                    that, and is not drawn. */}
+                <span id={`format-${x.key}-name`} className="format-option-name">
+                  <strong>
+                    <Localized text={x.name} fallback={c.defaultLanguage} />
+                  </strong>
+                  <span className="visually-hidden"> · </span>
+                  <span className="format-option-lengths">
+                    {hasMinimum(x.abstract.minWords)
+                      ? t("confWords", { min: x.abstract.minWords, max: x.abstract.maxWords })
+                      : t("confWordsMax", { max: x.abstract.maxWords })}
+                    {x.durationMinutes ? ` · ${t("confMinutes", { n: x.durationMinutes })}` : ""}
+                  </span>
+                </span>
+                <span id={`format-${x.key}-about`} className="format-option-about">
+                  <Localized text={x.description} fallback={c.defaultLanguage} />
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label htmlFor="field-language">{t("startLanguage")}</label>
       <select id="field-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
         {c.languages.map((l) => (
