@@ -533,6 +533,21 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
   await signInToStart(page, request, "e2e-workshop@example.org", "Workshop");
   await setName(page, "Wanda Workshop");
   await page.goto(`/en/c/${CALL}`);
+  // What the start page is told about the call: the formats below are held to it.
+  const told = page
+    .waitForResponse((r) => new URL(r.url()).pathname === `/api/conferences/${CALL}` && r.ok())
+    .then(
+      (r) =>
+        r.json() as Promise<{
+          config: {
+            submissionTypes: {
+              key: string;
+              name: Record<string, string>;
+              description: Record<string, string>;
+            }[];
+          };
+        }>,
+    );
   await page.getByRole("link", { name: "Start a proposal" }).click();
   // The seven formats submitted here are offered; the one taken by email is not.
   await expect(page.getByRole("radio")).toHaveCount(7 + 3); // formats, and how you take part
@@ -540,6 +555,56 @@ test("a workshop says how many people it is for, within the call's 15 to 30", as
     page.getByRole("radio", { name: /Lightning talk · up to 150 words · 5 minutes/ }),
   ).toBeVisible();
   await expect(page.getByRole("radio", { name: /Curatorial/ })).toHaveCount(0);
+
+  // Every format is there with its description, all at once: nobody has to choose a format
+  // to read what it is. (The page used to say only what the chosen one is.) A format's name
+  // and lengths are what its choice is called, and its description is read after them.
+  const formats = (await told).config.submissionTypes;
+  expect(formats.length).toBeGreaterThan(1);
+  const beginning = (text: string) => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+  const choice = (format: (typeof formats)[number]) =>
+    page.getByRole("radio", { name: beginning(`${format.name.en} · `) });
+  for (const format of formats) {
+    const about = format.description.en ?? "";
+    expect(about, `a description of ${format.key}`).not.toBe("");
+    await expect(page.getByText(about, { exact: true })).toHaveCount(1);
+    await expect(page.getByText(about, { exact: true })).toBeVisible();
+    await expect(choice(format)).toHaveAccessibleDescription(about);
+  }
+  // The first is chosen until another is; pressing anywhere on a format chooses it, its
+  // description included, and the button says which format the proposal will be.
+  const [first, last] = [formats[0], formats.at(-1)] as [
+    (typeof formats)[number],
+    (typeof formats)[number],
+  ];
+  await expect(choice(first)).toBeChecked();
+  await expect(page.locator(".format-option.chosen")).toHaveCount(1);
+  await page.getByText(last.description.en ?? "", { exact: true }).click();
+  await expect(choice(last)).toBeChecked();
+  await expect(choice(first)).not.toBeChecked();
+  await expect(page.locator(".format-option.chosen")).toContainText(last.name.en ?? "");
+  await expect(page.getByRole("button", { name: `Start a ${last.name.en}` })).toBeVisible();
+  // On a phone the formats stand one under the other, each tall enough to press; nothing
+  // scrolls sideways; and both themes pass.
+  const options = page.locator(".format-option");
+  await expect(options).toHaveCount(formats.length);
+  const edges = async () =>
+    options.evaluateAll((all) => all.map((el) => Math.round(el.getBoundingClientRect().left)));
+  expect(new Set(await edges()).size).toBe(1);
+  for (const option of await options.all()) await expectTouchTarget(option);
+  await expectAccessibleInBothThemes(page);
+  await expectNoHorizontalScroll(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expectNoHorizontalScroll(page);
+  // Where there is room they stand two side by side.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  expect(new Set(await edges()).size).toBe(2);
+  const tops = await options.evaluateAll((all) =>
+    all.slice(0, 2).map((el) => Math.round(el.getBoundingClientRect().top)),
+  );
+  expect(tops[0]).toBe(tops[1]);
+  await expectAccessible(page);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("radio", { name: /Workshop/ }).check();
   await page.getByRole("radio", { name: "In person" }).check();
   await page.getByRole("button", { name: /^Start a / }).click();
