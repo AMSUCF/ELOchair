@@ -1096,11 +1096,40 @@ test("unsaved text in a proposal survives a reload or a lost tab, until it is sa
   // Signing out straight after typing: the form on screen does not write its text back.
   await page.locator(".site-header").getByRole("link", { name: "Your account" }).click();
   await page.getByLabel("Bio in English").fill("Uma reads in the dark.");
+  // The header forgets who was signed in when they sign out, not when the server next
+  // answers it: here its question after the sign-out waits, and then fails.
+  const header = page.locator(".site-header");
+  await expect(
+    header.getByRole("link", { name: "Your account: Uma Unsaved", exact: true }),
+  ).toBeVisible();
+  let fail: () => void = () => {};
+  const failing = new Promise<void>((resolve) => {
+    fail = resolve;
+  });
+  let failed = 0;
+  await page.route("**/api/me/menu", async (route) => {
+    await failing;
+    await route.fulfill({ status: 500, json: { error: "made_up" } });
+    failed += 1;
+  });
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
+  await expect(header.getByText("Uma Unsaved")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Your account" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
   // Give a late write time to happen before checking that none did.
   await page.waitForTimeout(600);
   expect(await unsavedKeys(page)).toEqual([]);
+  // The answer that fails brings nobody back: the header shows neither her nor "Sign in",
+  // which it has not been told. The next page asks again, and is told that nobody is.
+  fail();
+  await expect.poll(() => failed).toBeGreaterThan(0);
+  await page.waitForTimeout(300);
+  await expect(header.getByText("Uma Unsaved")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  await page.unroute("**/api/me/menu");
+  await page.goto("/en/my");
+  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
 });
 
 test("an unsaved bio survives a reload; signing out removes it, and another account never sees it", async ({

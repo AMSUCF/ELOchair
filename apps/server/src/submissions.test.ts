@@ -265,6 +265,18 @@ describe("what the frame of every page is told", () => {
     // more of their own record.
     expect(JSON.stringify(await menu(invitee))).not.toMatch(/Mona|menu-owner/);
     expect(JSON.stringify(await menu(owner))).not.toMatch(/made-up school/);
+
+    // An answer about whoever asks has a name in it, and the same address is asked by
+    // everyone on every page: nothing on the way may keep one answer and hand it to the next
+    // person. The server says so with every answer under /api/me, also to the public (whose
+    // "nobody" must not be handed to someone signed in) and with a refusal.
+    for (const path of ["/api/me/menu", "/api/me", "/api/me/submissions", "/api/me/reviews"]) {
+      for (const cookie of [owner, invitee, undefined]) {
+        const answer = await call(u.public, "GET", path, { cookie });
+        const who = `${path} for ${cookie ? "a person" : "the public"}: ${answer.status}`;
+        expect(answer.headers.get("cache-control"), who).toBe("no-store");
+      }
+    }
     await u.close();
   }, 60_000);
 });

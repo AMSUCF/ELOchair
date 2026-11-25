@@ -236,36 +236,43 @@ function Shell() {
                 {menu?.reviews && <NavLink to={`/${lang}/reviews`}>{t("navMyReviews")}</NavLink>}
               </nav>
             )}
-            <nav aria-label={t("navLanguage")} className="lang-nav">
-              <ul className="lang-switch">
-                {LANGS.map((l) => (
-                  <li key={l}>
-                    {/* The code is what shows; the name follows it for screen readers. */}
-                    <Link
-                      to={pathIn(l, location.pathname, location.search)}
-                      lang={l}
-                      hrefLang={l}
-                      title={LANG_NAMES[l]}
-                      aria-current={l === lang ? "true" : undefined}
-                    >
-                      {l.toUpperCase()}
-                      <span className="visually-hidden"> {LANG_NAMES[l]}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-            {/* Last in the header, at the right: who is signed in, by the name they gave or
-                else their address, which leads to their account; or "Sign in". Its place is
-                kept while the server says which, so that nothing moves when it has. */}
-            <div className="account">
-              {menu?.account && (
-                <NavLink to={`/${lang}/me`}>
-                  <span className="visually-hidden">{t("navAccount")}: </span>
-                  <span className="account-name">{menu.account.name ?? menu.account.email}</span>
-                </NavLink>
-              )}
-              {menu && !menu.account && <NavLink to={`/${lang}/sign-in`}>{t("navSignIn")}</NavLink>}
+            {/* The languages and who is signed in: the right end of the header on a wide
+                screen, its second row on a phone. Everything in the header is in the order
+                in which it is seen, at every width, which is the order the keyboard follows. */}
+            <div className="nav-end">
+              <nav aria-label={t("navLanguage")} className="lang-nav">
+                <ul className="lang-switch">
+                  {LANGS.map((l) => (
+                    <li key={l}>
+                      {/* The code is what shows; the name follows it for screen readers. */}
+                      <Link
+                        to={pathIn(l, location.pathname, location.search)}
+                        lang={l}
+                        hrefLang={l}
+                        title={LANG_NAMES[l]}
+                        aria-current={l === lang ? "true" : undefined}
+                      >
+                        {l.toUpperCase()}
+                        <span className="visually-hidden"> {LANG_NAMES[l]}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+              {/* Last in the header, at the right: who is signed in, by the name they gave
+                  or else their address, which leads to their account; or "Sign in". Its
+                  place is kept while the server says which, so nothing moves when it has. */}
+              <div className="account">
+                {menu?.account && (
+                  <NavLink to={`/${lang}/me`}>
+                    <span className="visually-hidden">{t("navAccount")}: </span>
+                    <span className="account-name">{menu.account.name ?? menu.account.email}</span>
+                  </NavLink>
+                )}
+                {menu && !menu.account && (
+                  <NavLink to={`/${lang}/sign-in`}>{t("navSignIn")}</NavLink>
+                )}
+              </div>
             </div>
           </div>
         </header>

@@ -125,12 +125,13 @@
 
 /*
  * Header: a glass pill holding the wordmark, a person's own pages, the language switch and, at
- * the right, who is signed in.
+ * the right, who is signed in. It is laid out in the order of the markup at every width, with
+ * nothing moved by `order`: the keyboard goes through it as it is seen.
  *
- * On a phone the pill has two rows: the wordmark and the languages, then the person's pages
- * and their name. The line between the two rows (::after) is what breaks the row, and the
- * place of the name is always there, so the pill is as tall before the server has said who is
- * looking as after. On a wide screen it is one row, in the order of the markup.
+ * On a phone the pill has two rows: the wordmark and the person's pages, then the languages
+ * and the name (.nav-end, which takes a row to itself). That second row is always there, with
+ * the place of the name in it, so the pill is as tall before the server has said who is
+ * looking as after. On a wide screen it is one row.
  */
 .site-header {
   padding: max(10px, env(safe-area-inset-top)) var(--pad-right) 0 var(--pad-left);
@@ -142,7 +143,6 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 0 12px;
   padding: 4px 6px 4px 16px;
   border: 1px solid var(--band-line);
@@ -171,32 +171,32 @@
   text-shadow: 0 0 14px rgb(201 229 154 / 0.55);
 }
 
-.lang-nav {
-  order: 1;
-  flex: none;
-}
-
-.nav-pill::after {
-  content: "";
-  order: 2;
-  flex-basis: 100%;
-  height: 1px;
-  margin-top: 4px;
-  background: var(--band-line);
-}
-
+/* Beside the wordmark where the links fit, and on a row of their own where they do not. */
 .site-nav {
-  order: 3;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0 18px;
 }
 
-/* The name takes the room that is left and is cut short with "…" when it needs more; with
-   less than 5rem left beside the links, it goes below them. */
+.nav-end {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--band-line);
+}
+
+.lang-nav {
+  flex: none;
+}
+
+/* The name takes the room that is left, at its right end, and is cut short with "…" when it
+   needs more. */
 .account {
-  order: 4;
-  flex: 1 1 5rem;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: var(--touch);
   display: flex;
@@ -277,26 +277,21 @@
     padding-left: 22px;
   }
 
-  .nav-pill::after {
-    content: none;
-  }
-
   .site-nav {
-    order: 0;
     flex: none;
     margin-left: 12px;
   }
 
-  /* The languages and the name go to the right, whether or not there are links before them. */
-  .lang-nav {
-    order: 0;
-    margin-left: auto;
+  /* The languages and the name go to the right, whether or not there are links before them.
+     Only the name gives way when the row is full: it is cut short, and the links and the
+     languages stay whole. */
+  .nav-end {
+    flex: 0 1 auto;
+    margin: 0 0 0 auto;
+    border-top: 0;
   }
 
-  /* Only the name gives way when the row is full: it is cut short, and the links and the
-     languages stay whole. */
   .account {
-    order: 0;
     flex: 0 1 auto;
     max-width: 18rem;
   }

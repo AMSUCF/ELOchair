@@ -5,7 +5,7 @@ import {
   NotificationChoicesInput,
   ProfileInput,
 } from "@elochair/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, exists, inArray, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { audit } from "../audit";
 import type { AppEnv } from "../context";
@@ -64,6 +64,12 @@ async function mine(c: Context<AppEnv>, statuses: ("invited" | "confirmed")[]) {
 }
 
 export const meRoutes = new Hono<AppEnv>()
+  // Everything here is about whoever asks, by name or by address: nothing between the server
+  // and their browser may keep an answer, to hand it to the next person who asks the same.
+  .use(async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  })
   .get("/", async (c) => {
     const viewer = c.get("viewer");
     const { db } = c.get("deps");
@@ -94,22 +100,31 @@ export const meRoutes = new Hono<AppEnv>()
   // is signed in, for the link to their account, and whether the main menu offers "My
   // submissions" (they are on a proposal, or invited to one: what that page lists) and "My
   // reviews". The public and an agent are told that nobody is signed in, and nothing is read.
+  // It is asked on every page, so a person costs one read: the two fields the frame shows of
+  // them, and whether there is any proposal of theirs.
   .get("/menu", async (c) => {
     const viewer = c.get("viewer");
     if (viewer.kind !== "person") return c.json(projectMenu(viewer, null, { submissions: false }));
     const { db } = c.get("deps");
-    const [own] = await db
-      .select({ submissionId: contributions.submissionId })
+    const theirs = db
+      .select({ one: sql`1` })
       .from(contributions)
       .where(
         and(
-          eq(contributions.personId, viewer.personId),
+          eq(contributions.personId, people.id),
           inArray(contributions.status, ["invited", "confirmed"]),
         ),
-      )
-      .limit(1);
-    const self = await getPerson(db, viewer.personId);
-    return c.json(projectMenu(viewer, self, { submissions: own !== undefined }));
+      );
+    const [own] = await db
+      .select({
+        id: people.id,
+        displayName: people.displayName,
+        email: people.email,
+        submissions: sql<boolean>`${exists(theirs)}`,
+      })
+      .from(people)
+      .where(eq(people.id, viewer.personId));
+    return c.json(projectMenu(viewer, own ?? null, { submissions: own?.submissions === true }));
   })
   .get("/submissions", async (c) => c.json({ items: await mine(c, ["invited", "confirmed"]) }))
   .get("/invitations", async (c) => c.json({ items: await mine(c, ["invited"]) }))

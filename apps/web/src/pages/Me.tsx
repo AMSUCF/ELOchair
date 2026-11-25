@@ -1,10 +1,10 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { api, type EmailChoices, type Issue, type Me, type Profile } from "../api";
 import { describedBy, ErrorSummary, FieldError, fieldId, RestoredNotice } from "../forms";
 import { LANG_NAMES, useT } from "../i18n";
 import { conferenceRoleKey } from "../labels";
-import { sessionChanged } from "../session";
+import { menuChanged, sessionChanged } from "../session";
 import { nobodySignedIn, SignInHere } from "../signIn";
 import { PageHeading } from "../ui";
 import { sortUnsaved, type UnsavedValues } from "../unsaved";
@@ -153,11 +153,6 @@ export function MePage() {
         <p role="alert">{t("emailsLoadFailed")}</p>
       )}
       <ProfileForm initial={me.person} onSaved={setSaved} />
-      <p>
-        <Link className="block-link" to={`/${lang}/my`}>
-          {t("navMySubmissions")}
-        </Link>
-      </p>
       <button type="button" onClick={signOut}>
         {t("meSignOut")}
       </button>
@@ -302,7 +297,7 @@ function ProfileForm({
       setIssues([]);
       setMessage(t("profileSaved"));
       // The frame shows the name: it asks for it again.
-      sessionChanged();
+      menuChanged();
     } else {
       const body = res.body as { issues?: { path: string; message: string }[] } | null;
       setIssues((body?.issues ?? []).map((i) => ({ path: i.path, code: "generic" })));

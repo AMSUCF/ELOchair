@@ -400,8 +400,9 @@ export function projectSelf(viewer: Viewer, person: Person): SelfPerson | null {
  * they have one or are invited to one; their reviews, if they review somewhere). For everyone
  * else, the public and agents alike: that nobody is signed in, and nothing more.
  *
- * Nothing in it is about another person: the name and the address are taken from the person's
- * own record through `projectSelf`, which answers for nobody else's.
+ * Nothing in it is about another person: handed anyone's record but the viewer's own, it says
+ * that nobody is signed in. It is asked on every page, so it takes the three fields it needs
+ * and not the whole record.
  */
 export type Menu = {
   view: "menu";
@@ -413,16 +414,15 @@ export type Menu = {
 
 export function projectMenu(
   viewer: Viewer,
-  person: Person | null,
+  own: Pick<Person, "id" | "displayName" | "email"> | null,
   has: { submissions: boolean },
 ): Menu {
-  const self = person && projectSelf(viewer, person);
-  if (viewer.kind !== "person" || !self) {
+  if (viewer.kind !== "person" || own?.id !== viewer.personId) {
     return { view: "menu", account: null, submissions: false, reviews: false };
   }
   return {
     view: "menu",
-    account: { name: self.displayName, email: self.email },
+    account: { name: own.displayName, email: own.email },
     submissions: has.submissions,
     reviews: viewer.grants.some((g) => g.role === "reviewer"),
   };
