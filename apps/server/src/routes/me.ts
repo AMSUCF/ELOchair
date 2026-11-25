@@ -1,4 +1,4 @@
-import { projectSelf, projectSubmission } from "@elochair/policy";
+import { projectMenu, projectSelf, projectSubmission } from "@elochair/policy";
 import {
   AnswerInvitationInput,
   isCallOpen,
@@ -90,13 +90,26 @@ export const meRoutes = new Hono<AppEnv>()
       })),
     });
   })
-  // What the page's frame asks about whoever is looking, signed in or not: whether the main
-  // menu offers "My reviews". A yes or a no, and nothing else; an agent reviews nowhere.
-  .get("/menu", (c) => {
+  // What the page's frame asks about whoever is looking, signed in or not (projectMenu): who
+  // is signed in, for the link to their account, and whether the main menu offers "My
+  // submissions" (they are on a proposal, or invited to one: what that page lists) and "My
+  // reviews". The public and an agent are told that nobody is signed in, and nothing is read.
+  .get("/menu", async (c) => {
     const viewer = c.get("viewer");
-    return c.json({
-      reviews: viewer.kind === "person" && viewer.grants.some((g) => g.role === "reviewer"),
-    });
+    if (viewer.kind !== "person") return c.json(projectMenu(viewer, null, { submissions: false }));
+    const { db } = c.get("deps");
+    const [own] = await db
+      .select({ submissionId: contributions.submissionId })
+      .from(contributions)
+      .where(
+        and(
+          eq(contributions.personId, viewer.personId),
+          inArray(contributions.status, ["invited", "confirmed"]),
+        ),
+      )
+      .limit(1);
+    const self = await getPerson(db, viewer.personId);
+    return c.json(projectMenu(viewer, self, { submissions: own !== undefined }));
   })
   .get("/submissions", async (c) => c.json({ items: await mine(c, ["invited", "confirmed"]) }))
   .get("/invitations", async (c) => c.json({ items: await mine(c, ["invited"]) }))

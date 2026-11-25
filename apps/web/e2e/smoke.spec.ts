@@ -416,8 +416,8 @@ test("a page that fails to render says so in the interface language, and the res
   await expect(page.getByRole("heading", { level: 1, name: "Algo salió mal" })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveText(/No se pudo mostrar esta página/);
   await expectAccessible(page);
-  await page.getByRole("navigation").getByRole("link", { name: "Tu cuenta" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Tu cuenta" })).toBeVisible();
+  await page.locator(".site-header").getByRole("link", { name: "Entrar" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Entrar" })).toBeVisible();
   // Back to the failing page by a link: its heading takes focus first, then the crash replaces
   // it. Focus must land on the error's heading, not on the page body.
   await page.getByRole("link", { name: "ELOchair", exact: true }).click();

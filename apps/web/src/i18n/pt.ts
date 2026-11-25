@@ -20,6 +20,7 @@ export const pt: Messages = {
   tagline: "Submissões e revisão por pares para o congresso da Electronic Literature Organization.",
   skipToContent: "Saltar para o conteúdo",
   navConferences: "Congressos",
+  navSignIn: "Entrar",
   navAccount: "A sua conta",
   navLanguage: "Idioma",
   loading: "A carregar…",

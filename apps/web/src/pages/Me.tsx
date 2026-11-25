@@ -301,6 +301,8 @@ function ProfileForm({
       setRestored(false);
       setIssues([]);
       setMessage(t("profileSaved"));
+      // The frame shows the name: it asks for it again.
+      sessionChanged();
     } else {
       const body = res.body as { issues?: { path: string; message: string }[] } | null;
       setIssues((body?.issues ?? []).map((i) => ({ path: i.path, code: "generic" })));

@@ -86,6 +86,7 @@ A first visit to the front page (while it is a dressed conference's invitation) 
 ## Layout
 
 - **Shell** (`Shell` in `App.tsx`): the band art, the header, `<main>`, the footer.
+- **The header** is one glass pill: the wordmark, a person's own pages, the languages and, last and at the right, the name of whoever is signed in or "Sign in" (spec 02, §1.12). One row from 46rem up, in the order of the markup; two rows on a phone, where the line between them (`.nav-pill::after`) is what breaks the row.
 - **Ordinary pages** are the sheet: `<main class="sheet">`. Content is centred at `--content` (46rem) by padding, so pages need no wrapper.
 - **Hero pages** (home and a conference's page, listed in `hasHero()` in `App.tsx`) render a `<header class="hero">` on the band and then their own `<Sheet>`. Use `<Sheet wide>` for the 70rem width.
 - **To add a hero page:** add its route to `hasHero()`, and make every return path of the page render inside a `Sheet`, or text will sit in light colours on nothing.

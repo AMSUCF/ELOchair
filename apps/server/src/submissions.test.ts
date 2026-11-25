@@ -183,6 +183,92 @@ describe("creating and editing", () => {
   });
 });
 
+describe("what the frame of every page is told", () => {
+  it("says who is signed in, and that they have proposals once they are on one or invited to one", async () => {
+    // A server of its own: the sign-in emails this needs are rationed on the one above.
+    const u = await makeTestApp();
+    const made = await seedTestCall(u.db, { now: new Date("2027-02-01T12:00:00Z") });
+    const menu = async (cookie?: string) =>
+      (await call(u.public, "GET", "/api/me/menu", { cookie })).json;
+    const NOBODY = { view: "menu", account: null, submissions: false, reviews: false };
+    // Asked by everyone on every page: the public is answered too, with nobody.
+    expect(await menu()).toEqual(NOBODY);
+
+    // Someone new is known by their address until they say what they are called, and has no
+    // proposals for the menu to lead to.
+    const invitee = await signIn(u, "Menu.Invitee@Example.org");
+    expect(await menu(invitee)).toEqual({
+      view: "menu",
+      account: { name: null, email: "menu.invitee@example.org" },
+      submissions: false,
+      reviews: false,
+    });
+    const owner = await signIn(u, "menu-owner@example.org");
+    const named = await call(u.public, "PUT", "/api/me/profile", {
+      cookie: owner,
+      body: {
+        displayName: "Mona Menu",
+        affiliation: "A made-up school",
+        country: null,
+        languages: ["en"],
+        pronouns: null,
+        orcid: null,
+        bios: {},
+      },
+    });
+    expect(named.status).toBe(200);
+    expect(await menu(owner)).toEqual({
+      view: "menu",
+      account: { name: "Mona Menu", email: "menu-owner@example.org" },
+      submissions: false,
+      reviews: false,
+    });
+
+    // Starting a proposal gives its owner one; inviting someone gives them one to answer.
+    const started = await call(u.public, "POST", `/api/conferences/${made.slug}/submissions`, {
+      cookie: owner,
+      body: { typeKey: "talk", language: "en", participationMode: "in_person" },
+    });
+    expect(started.status).toBe(201);
+    const s = started.json as { id: string; version: number };
+    expect((await menu(owner)).submissions).toBe(true);
+    expect((await menu(invitee)).submissions).toBe(false);
+    const invited = await call(u.public, "POST", `/api/submissions/${s.id}/contributors`, {
+      cookie: owner,
+      body: {
+        version: s.version,
+        email: "menu.invitee@example.org",
+        role: "coauthor",
+        lang: "en",
+      },
+    });
+    expect(invited.status).toBe(201);
+    expect((await menu(invitee)).submissions).toBe(true);
+    // It is what "My submissions" lists, no more: declined, it is gone from both.
+    const declined = await call(u.public, "POST", `/api/me/invitations/${s.id}/answer`, {
+      cookie: invitee,
+      body: { answer: "decline" },
+    });
+    expect(declined.status).toBe(200);
+    expect((await menu(invitee)).submissions).toBe(false);
+    const listed = await call(u.public, "GET", "/api/me/submissions", { cookie: invitee });
+    expect(listed.json.items).toEqual([]);
+    // A draft that is deleted leaves its owner with none.
+    const current = await call(u.public, "GET", `/api/submissions/${s.id}`, { cookie: owner });
+    const gone = await call(u.public, "DELETE", `/api/submissions/${s.id}`, {
+      cookie: owner,
+      body: { version: current.json.version },
+    });
+    expect(gone.status).toBe(204);
+    expect((await menu(owner)).submissions).toBe(false);
+    // Nothing of anyone else is in it: only the asker's own name and address, and nothing
+    // more of their own record.
+    expect(JSON.stringify(await menu(invitee))).not.toMatch(/Mona|menu-owner/);
+    expect(JSON.stringify(await menu(owner))).not.toMatch(/made-up school/);
+    await u.close();
+  }, 60_000);
+});
+
 describe("submitting", () => {
   it("needs valid content and the current agreements; sends receipts once", async () => {
     const owner = await person("owner4@example.org", "Rosa Owner", ["es"]);

@@ -536,7 +536,11 @@ describe("who may read and write a review", () => {
       expect(cannot.status, tier).toBe(403);
       // An agent has no reviews of its own, and reads nobody's list.
       expect((await call(app, "GET", "/api/me/reviews", { token })).status, tier).toBe(401);
+      // The frame is told that nobody is signed in: an agent is no person, and has no menu.
       expect((await call(app, "GET", "/api/me/menu", { token })).json, tier).toEqual({
+        view: "menu",
+        account: null,
+        submissions: false,
         reviews: false,
       });
     }
@@ -1076,14 +1080,21 @@ describe("my reviews: a reviewer's own list", () => {
 
   it("the main menu offers it to people who review somewhere, and to nobody else", async () => {
     const menu = async (who: Who) => (await call(t.public, "GET", "/api/me/menu", who)).json;
+    // (The answer also says who is signed in and whether they have proposals, for the rest of
+    // the frame: submissions.test.ts has those.)
     for (const who of ["r1", "r2", "other"] as const) {
-      expect(await menu({ cookie: cookies[who] }), who).toEqual({ reviews: true });
+      expect(await menu({ cookie: cookies[who] }), who).toMatchObject({ reviews: true });
     }
     for (const who of ["stranger", "owner", "chair", "track"] as const) {
-      expect(await menu({ cookie: cookies[who] }), who).toEqual({ reviews: false });
+      expect(await menu({ cookie: cookies[who] }), who).toMatchObject({ reviews: false });
     }
-    // Asked by everyone on every page: it answers the public too, with a no.
-    expect(await menu({})).toEqual({ reviews: false });
+    // Asked by everyone on every page: it answers the public too, with a no and nobody.
+    expect(await menu({})).toEqual({
+      view: "menu",
+      account: null,
+      submissions: false,
+      reviews: false,
+    });
   });
 });
 
@@ -2195,7 +2206,7 @@ describe("a chair who also reviews", () => {
     });
     // Their list holds what is assigned to them, and the main menu offers it.
     expect((await listed()).map((p) => p.submissionId).sort()).toEqual([theirs, givenBack].sort());
-    expect((await call(t.public, "GET", "/api/me/menu", { cookie: both })).json).toEqual({
+    expect((await call(t.public, "GET", "/api/me/menu", { cookie: both })).json).toMatchObject({
       reviews: true,
     });
 

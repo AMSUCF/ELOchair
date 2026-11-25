@@ -404,7 +404,10 @@ test.describe("conference settings", () => {
     await expect(page.getByRole("button", { name: "Review changes" })).toHaveCount(0);
     // Nor do they review anywhere: the main menu, which has asked by now, offers them no list
     // of reviews. (The chair of these tests also reviews, at `chair-reviews`, and is offered it.)
-    expect(await (await page.request.get("/api/me/menu")).json()).toEqual({ reviews: false });
+    expect(await (await page.request.get("/api/me/menu")).json()).toMatchObject({
+      submissions: true,
+      reviews: false,
+    });
     await expect(
       page.locator(".site-header").getByRole("link", { name: "My submissions" }),
     ).toBeVisible();
@@ -636,7 +639,7 @@ test.describe("conference settings", () => {
       asked = dialog.message();
       dialog.dismiss();
     });
-    await chair.getByRole("navigation").getByRole("link", { name: "My submissions" }).click();
+    await chair.locator(".site-header").getByRole("link", { name: "Your account" }).click();
     await expect.poll(() => asked).toContain("unsaved changes");
     await expect(chair).toHaveURL(new RegExp(`/en/c/${CALL}/settings$`));
     await expect(most).toHaveValue("310");
@@ -1850,9 +1853,13 @@ test.describe("conference settings", () => {
       "You declined. No role was given, and the chairs will see your answer.",
     );
     await expect(status).toBeFocused();
-    // Someone who declined is offered no sign-in (the form, where it used to be a link).
+    // Someone who declined is offered no sign-in (the form, where it used to be a link). The
+    // page offers none, that is: "Sign in" in the header is there for whoever is signed out.
     await expect(invitee.getByLabel("Email address")).toHaveCount(0);
-    await expect(invitee.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+    await expect(invitee.getByRole("main").getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+    await expect(
+      invitee.locator(".site-header").getByRole("link", { name: "Sign in" }),
+    ).toBeVisible();
     await expectAccessibleInBothThemes(invitee);
     await invitee.context().close();
 

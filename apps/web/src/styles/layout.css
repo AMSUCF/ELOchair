@@ -123,7 +123,15 @@
   top: 8px;
 }
 
-/* Header: a glass pill holding the wordmark, the navigation and the language switch. */
+/*
+ * Header: a glass pill holding the wordmark, a person's own pages, the language switch and, at
+ * the right, who is signed in.
+ *
+ * On a phone the pill has two rows: the wordmark and the languages, then the person's pages
+ * and their name. The line between the two rows (::after) is what breaks the row, and the
+ * place of the name is always there, so the pill is as tall before the server has said who is
+ * looking as after. On a wide screen it is one row, in the order of the markup.
+ */
 .site-header {
   padding: max(10px, env(safe-area-inset-top)) var(--pad-right) 0 var(--pad-left);
 }
@@ -146,6 +154,7 @@
 
 /* The wordmark: ELO in mist, "chair" in lime with a soft glow, after the ELO27 mark. */
 .brand {
+  flex: none;
   display: inline-flex;
   align-items: center;
   min-height: var(--touch);
@@ -162,17 +171,40 @@
   text-shadow: 0 0 14px rgb(201 229 154 / 0.55);
 }
 
+.lang-nav {
+  order: 1;
+  flex: none;
+}
+
+.nav-pill::after {
+  content: "";
+  order: 2;
+  flex-basis: 100%;
+  height: 1px;
+  margin-top: 4px;
+  background: var(--band-line);
+}
+
 .site-nav {
   order: 3;
-  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 0 18px;
-  border-top: 1px solid var(--band-line);
-  margin-top: 4px;
 }
 
-.site-nav a {
+/* The name takes the room that is left and is cut short with "…" when it needs more; with
+   less than 5rem left beside the links, it goes below them. */
+.account {
+  order: 4;
+  flex: 1 1 5rem;
+  min-width: 0;
+  min-height: var(--touch);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.site-nav a,
+.account a {
   display: inline-flex;
   align-items: center;
   min-height: var(--touch);
@@ -181,8 +213,23 @@
   text-decoration: none;
 }
 
+.account a {
+  justify-content: flex-end;
+  min-width: var(--touch);
+  max-width: 100%;
+  padding-right: 10px;
+}
+
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .site-nav a:hover,
-.site-nav a[aria-current="page"] {
+.site-nav a[aria-current="page"],
+.account a:hover,
+.account a[aria-current="page"] {
   color: var(--band-accent);
 }
 
@@ -230,12 +277,37 @@
     padding-left: 22px;
   }
 
+  .nav-pill::after {
+    content: none;
+  }
+
   .site-nav {
     order: 0;
-    flex: 1;
-    flex-basis: auto;
-    border-top: 0;
-    margin: 0 0 0 12px;
+    flex: none;
+    margin-left: 12px;
+  }
+
+  /* The languages and the name go to the right, whether or not there are links before them. */
+  .lang-nav {
+    order: 0;
+    margin-left: auto;
+  }
+
+  /* Only the name gives way when the row is full: it is cut short, and the links and the
+     languages stay whole. */
+  .account {
+    order: 0;
+    flex: 0 1 auto;
+    max-width: 18rem;
+  }
+}
+
+/* Where there is room to spare, the place of the name is as wide as "Sign in" or a short name
+   from the start, so that the languages stay where they are when the server says who is
+   looking. */
+@media (min-width: 60rem) {
+  .account {
+    min-width: 6rem;
   }
 }
 
@@ -248,7 +320,7 @@ main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .sheet {
@@ -259,7 +331,7 @@ main {
   background: var(--bg);
   color: var(--text);
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  padding-block: 26px 56px;
+  padding-block: 18px 56px;
   padding-inline: max(var(--pad-left), calc((100% - var(--content)) / 2))
     max(var(--pad-right), calc((100% - var(--content)) / 2));
 }
@@ -289,7 +361,7 @@ main {
   }
 
   .sheet {
-    padding-block: 40px 72px;
+    padding-block: 24px 72px;
   }
 }
 

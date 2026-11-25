@@ -386,6 +386,17 @@ One rule: **a page that needs someone signed in has the sign-in form on it, and 
 - **The two invitation pages** (`/invitation`, `/role-invitation`) need nobody signed in, and offer sign-in once the invitation is confirmed or accepted. They have the form on them too, in place of the link to the sign-in page, for a role with the invited address filled in. They give it no address to come back to: such a page is nothing without the token in its link, and a token never goes into `next`. So the emailed link leads to "Your account", as it did. The code signs the person in on the page, which carries on: what was answered stays, and the form gives way to a line that says who is signed in.
 - **Unchanged:** the link signs in only after a tap, and the page says first which account it is for; the limits on requests and on guesses; how long a link and its code work; what is audited. "Already involved?" on the front page still leads to the sign-in page (§1.10).
 
+### 1.12 The top of every page
+
+One rule: **the header says who is signed in, at its right end, and offers only the pages of theirs that have something on them.**
+
+- **Who is signed in.** Last in the header, at the right, is the person's name as they gave it on "Your account", or their email address until they have given one. It is the link to "Your account", and a screen reader hears "Your account: " before it. Saving the profile changes it at once. With nobody signed in, "Sign in" is in its place and leads to the sign-in page.
+- **A person's own pages.** The menu offers "My submissions" once the person is on a proposal or invited to one, which is what that page lists, and no longer when they are on none (their only draft is deleted, the invitation is declined). It offers "My reviews" to people who review somewhere (spec 03, §1.4). Someone with neither has no menu. Both pages keep their addresses, and say what they always said to someone with nothing on them.
+- **One question.** The frame asks `GET /api/me/menu` when it loads, when someone signs in or out, and each time the page changes, so no page has to say that it changed what the menu offers. The answer is `projectMenu()` in `packages/policy`: `{view: "menu", account: {name, email} | null, submissions, reviews}`. It holds the person's own name and address and the two answers, and nothing of anyone else; the public and an agent are told `account: null` and twice no.
+- **Where things are.** On a wide screen the header is one row, in the order of the markup: the wordmark, the person's pages, the languages, the name. On a phone it is two rows: the wordmark and the languages, then the person's pages and, at the right, the name. The place of the name is there before the server has answered, so nothing below moves when it does. A name that does not fit is cut short with "…"; the links and the languages stay whole.
+  - **A known limit.** On a 360px phone in Portuguese, someone who both submits and reviews has four rows: the two links do not fit on one line, and the name goes below them.
+- **The page begins sooner.** The sheet starts 12px below the header, and its content 18px below that on a phone and 24px on a wide screen (26px and 40px before, with 8px more above the heading).
+
 ## 2. Contracts
 
 ### 2.1 One query, one shape

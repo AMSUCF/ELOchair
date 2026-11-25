@@ -114,6 +114,10 @@ async function signInToStart(
   await expect(page.getByText("The link in the email brings you back to this page.")).toBeVisible();
   await expect(page.getByRole("radio")).toHaveCount(0);
   await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
+  // The header has "Sign in" where a name would be, and no pages of one's own to offer.
+  const header = page.locator(".site-header");
+  await expectTouchTarget(header.getByRole("link", { name: "Sign in" }));
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
   const send = page.getByRole("button", { name: "Email me a link" });
   await expectTouchTarget(send);
   await expectTouchTarget(page.getByText("I already have a code"));
@@ -163,6 +167,13 @@ async function signInToStart(
   await expect(page.getByRole("button", { name: `Start: ${format}` })).toBeVisible();
   await expect(page.getByLabel("Email address")).toHaveCount(0);
   expect((await page.request.get("/api/me")).status()).toBe(200);
+  // The header says who is signed in, at its right end: by their address, until they say
+  // what they are called. They have no proposals yet, so it offers no "My submissions".
+  await expectTouchTarget(
+    header.getByRole("link", { name: `Your account: ${email}`, exact: true }),
+  );
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
 }
 
 /** Sign in with the emailed code (the path the installed app uses). */
@@ -186,8 +197,12 @@ async function setName(page: Page, name: string) {
   await page.getByLabel("Your name, as it should appear").fill(name);
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByText("Profile saved.")).toBeVisible();
-  // The details at the top follow the saved profile.
+  // The details at the top follow the saved profile, and so does the name in the header,
+  // which is the link to this page.
   await expect(page.locator(".details")).toContainText(name);
+  await expect(
+    page.locator(".site-header").getByRole("link", { name: `Your account: ${name}`, exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 }
 
 async function start(page: Page, format: string) {
@@ -986,7 +1001,11 @@ test("unsaved text in a proposal survives a reload or a lost tab, until it is sa
   await listenForAnnouncements(page);
   await signIn(page, request, "e2e-unsaved@example.org");
   await setName(page, "Uma Unsaved");
+  // The header offers "My submissions" once there is one, and no longer when it is deleted.
+  const mine = page.locator(".site-header").getByRole("link", { name: "My submissions" });
+  await expect(mine).toHaveCount(0);
   await start(page, "Paper");
+  await expect(mine).toBeVisible();
   const editor = page.url();
   const title = page.getByLabel("Title");
   const abstract = page.getByLabel("Abstract (anonymized)");
@@ -1072,9 +1091,10 @@ test("unsaved text in a proposal survives a reload or a lost tab, until it is sa
   await page.getByRole("button", { name: "Delete draft" }).click();
   await expect(page).toHaveURL(/\/en\/my$/);
   expect(await unsavedKeys(page)).toEqual([]);
+  await expect(mine).toHaveCount(0);
 
   // Signing out straight after typing: the form on screen does not write its text back.
-  await page.getByRole("navigation").getByRole("link", { name: "Your account" }).click();
+  await page.locator(".site-header").getByRole("link", { name: "Your account" }).click();
   await page.getByLabel("Bio in English").fill("Uma reads in the dark.");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
