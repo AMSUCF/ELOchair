@@ -100,15 +100,20 @@ describe("where “Start this proposal” leads", () => {
     );
   });
 
-  it("begins the form with that format when the call takes it here, and otherwise with the first", () => {
+  it("begins the form with that format when the call takes it here, and otherwise with none: the page asks", () => {
     const types = call.submissionTypes;
     expect(startingFormat(types, "show")).toBe("show");
-    expect(startingFormat(types, null)).toBe("talk");
-    expect(startingFormat(types, "")).toBe("talk");
-    expect(startingFormat(types, "opera")).toBe("talk");
+    expect(startingFormat(types, null)).toBeNull();
+    expect(startingFormat(types, "")).toBeNull();
+    expect(startingFormat(types, "opera")).toBeNull();
     // A format that is not submitted here cannot be started here.
-    expect(startingFormat(types, "pitch")).toBe("talk");
-    expect(startingFormat([], "show")).toBe("");
+    expect(startingFormat(types, "pitch")).toBeNull();
+    expect(startingFormat([], "show")).toBeNull();
+    // A call with one format has nothing to ask.
+    const [only] = types;
+    if (!only) throw new Error("the made-up call has no formats");
+    expect(startingFormat([only], null)).toBe("talk");
+    expect(startingFormat([only], "opera")).toBe("talk");
   });
 });
 
