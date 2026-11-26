@@ -1758,6 +1758,26 @@ test.describe("conference settings", () => {
     await invitee.unroute("**/api/auth/request-link");
     await invitee.unroute("**/api/auth/verify-code");
 
+    // That line names a person. When another tab of the browser says that nobody is signed in
+    // any more (said here without a sign-out: nobody was signed in for it), the line goes and
+    // the form is as it first was (spec 02, §1.13). The page did not start again, which would
+    // have lost its link's token and what was answered: it carries on.
+    const elsewhere = await invitee.context().newPage();
+    await elsewhere.goto("/en/");
+    await elsewhere.evaluate(() => {
+      new BroadcastChannel("elochair:session").postMessage({
+        what: "elochair:session",
+        email: null,
+      });
+    });
+    await expect(signedIn).toHaveCount(0);
+    await expect(invitee.getByLabel("Email address")).toHaveValue(email);
+    await expect(invitee.getByText("Check your email.")).toHaveCount(0);
+    await expect(status).toHaveText(
+      `Thank you: ${email} is now a reviewer for ${title}. You can sign in with that address at any time.`,
+    );
+    await elsewhere.close();
+
     // The link was used: opened again, it gives a plain page and nothing else, not even a role.
     // (From another page: the invitee is still on the invitation's, and the same address with
     // another fragment would not load it again.)

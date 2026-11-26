@@ -352,6 +352,32 @@ test("a link for another account warns before switching", async ({ page, request
   )?.[0];
   await page.goto(link as string);
   await expect(page.getByText("You are currently signed in as admin@example.org.")).toBeVisible();
+
+  // Two more tabs of the same browser (spec 02, §1.13). One is on the page of the open call,
+  // which offers its chairs "Manage submissions"; in the other the admin signs out.
+  const call = await page.context().newPage();
+  await call.goto("/en/c/elo2027-open");
+  const manage = call.getByRole("link", { name: "Manage submissions" });
+  await expect(manage.first()).toBeVisible();
+  await call.locator(".hero h1").evaluate((title) => title.setAttribute("data-same", "yes"));
+  const account = await page.context().newPage();
+  await account.goto("/en/me");
+  await account.getByRole("button", { name: "Sign out" }).click();
+  await expect(account).toHaveURL(/\/en\/$/);
+  // The call's page stays as it is, a page for everyone, without what it offered the admin.
+  await expect(manage).toHaveCount(0);
+  await expect(call.locator(".hero h1")).toHaveAttribute("data-same", "yes");
+  // The page of the link no longer says whose account the browser is in: nobody's. It did not
+  // start again, which would have lost the link's token: the tap still signs in.
+  await expect(page.getByText(/You are currently signed in as/)).toHaveCount(0);
+  await expect(
+    page.getByText("This link signs you in as track-chair-1@example.org."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/en\/me$/);
+  await expect(page.locator(".details")).toContainText("track-chair-1@example.org");
+  await account.close();
+  await call.close();
 });
 
 test("retrying after a network error keeps the link working", async ({ page, request }) => {

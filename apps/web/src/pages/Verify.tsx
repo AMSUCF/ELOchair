@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Me } from "../api";
 import { useT } from "../i18n";
-import { sessionChanged } from "../session";
+import { sessionChanged, useSessionElsewhere } from "../session";
 import { nobodySignedIn } from "../signIn";
 import { PageHeading } from "../ui";
 
@@ -78,6 +78,16 @@ export function VerifyPage() {
     check();
   }, [check]);
 
+  // The page says whose account the browser is in, where the link is for another. When
+  // another tab says that this has changed, it asks again, and says nothing of it meanwhile.
+  // (Once the person has tapped, or the link has failed, the page says nothing of it anyway.)
+  const waiting = state.step === "confirm";
+  useSessionElsewhere(
+    useCallback(() => {
+      if (waiting) check();
+    }, [waiting, check]),
+  );
+
   async function signIn(email: string) {
     setState({ step: "signing-in", email });
     // Whose place the link takes is asked now, not when the page opened: someone may have
@@ -89,7 +99,7 @@ export function VerifyPage() {
         (me.ok && me.data?.kind === "person" && me.data.person?.email === email));
     const res = await api("/api/auth/verify", { method: "POST", body: { token } });
     if (res.ok) {
-      sessionChanged();
+      sessionChanged(email);
       navigate((takesNobodysPlace && next) || `/${lang}/me`, { replace: true });
     } else if (res.status === 400) setState({ step: "expired" });
     else setState({ step: "network", email });

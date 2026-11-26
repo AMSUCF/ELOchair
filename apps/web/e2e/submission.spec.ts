@@ -144,6 +144,12 @@ async function signInToStart(
   expect(fragment.get("next")).toBe(here);
   expect(link.endsWith(`&next=${encodeURIComponent(here)}`)).toBe(true);
 
+  // The email's link often opens in a tab of its own. Here another tab of the same browser
+  // is left open meanwhile, on another page that needs someone signed in.
+  const waiting = await page.context().newPage();
+  await waiting.goto("/en/my");
+  await expect(waiting.getByText("Please sign in to see your proposals.")).toBeVisible();
+
   // Opening it signs nobody in: it says who, and waits for the tap. Nothing of the fragment
   // stays in the address bar.
   await page.goto(link);
@@ -167,6 +173,16 @@ async function signInToStart(
   await expect(page.getByRole("button", { name: `Start: ${format}` })).toBeVisible();
   await expect(page.getByLabel("Email address")).toHaveCount(0);
   expect((await page.request.get("/api/me")).status()).toBe(200);
+  // The tab left open, which nobody touched, has started again for them (spec 02, §1.13): its
+  // form is gone, and the page shows what it is for. Its header names them too.
+  await expect(waiting.getByText("You have no proposals yet.")).toBeVisible();
+  await expect(waiting.getByLabel("Email address")).toHaveCount(0);
+  await expect(waiting.getByText("Please sign in to see your proposals.")).toHaveCount(0);
+  await expect(waiting).toHaveURL(/\/en\/my$/);
+  await expect(
+    waiting.locator(".site-header").getByRole("link", { name: `Your account: ${email}` }),
+  ).toBeVisible();
+  await waiting.close();
   // The header says who is signed in, at its right end: by their address, until they say
   // what they are called. They have no proposals yet, so it offers no "My submissions".
   await expectTouchTarget(
@@ -362,6 +378,18 @@ async function listenForAnnouncements(page: Page) {
   });
 }
 
+/**
+ * What a tab tells the others when someone signs in (their address) or out (null), said here
+ * without anyone doing either: by another tab of the same browser, on the line the app uses
+ * (apps/web/src/session.ts). For what a real sign-in would cost: one more of the sign-in links
+ * the server rations.
+ */
+async function sayFromThisTab(tab: Page, email: string | null) {
+  await tab.evaluate((who) => {
+    new BroadcastChannel("elochair:session").postMessage({ what: "elochair:session", email: who });
+  }, email);
+}
+
 const announcements = (page: Page) =>
   page.evaluate(() => (window as unknown as { heard: string[] }).heard.join("\n"));
 
@@ -455,6 +483,27 @@ test("submit a talk from a phone: word count, self-identification, co-author, ag
   const card = page.getByRole("link", { name: "Poems that read their readers" });
   await expectTouchTarget(card);
   await expectAccessible(page);
+
+  // She signs out with the proposal still open in another tab (spec 02, §1.13). That tab,
+  // which nobody touched, goes on showing nothing of it: not its title, and not the people on
+  // it. It has the sign-in form, at the same address.
+  const proposal = (await card.getAttribute("href")) as string;
+  const left = await page.context().newPage();
+  await left.goto(proposal);
+  await expect(left.getByLabel("Title")).toHaveValue("Poems that read their readers");
+  await expect(left.getByRole("main")).toContainText("Bruno Coauthor");
+  await page.goto("/en/me");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/en\/$/);
+  await expect(left.getByRole("heading", { level: 1, name: "Proposal" })).toBeVisible();
+  await expect(left.getByText(/^Sign in to read this proposal\./)).toBeVisible();
+  await expect(left.getByLabel("Email address")).toBeVisible();
+  await expect(left.getByLabel("Title")).toHaveCount(0);
+  await expect(left.locator("body")).not.toContainText("Poems that read");
+  await expect(left.locator("body")).not.toContainText("Coauthor");
+  await expect(left.locator("body")).not.toContainText("Ana Testing Owner");
+  expect(new URL(left.url()).pathname).toBe(proposal);
+  await left.close();
 });
 
 test("a panel of three: one invitee declines and is replaced", async ({
@@ -1184,6 +1233,9 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   await left.goto("/en/me");
   const leftBio = left.getByLabel("Bio in English");
   await expect(leftBio).toHaveValue("Ana writes poems for machines, and for people.");
+  // She typed on in it, and the browser keeps that too.
+  await leftBio.fill("Ana writes poems for machines, for people, and for herself.");
+  await expect.poll(() => wholeStore(left)).toContain("and for herself.");
   const anaSession = await page.context().cookies();
   await page.context().clearCookies();
   await signIn(page, request, bruno);
@@ -1191,6 +1243,15 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   await expect(bio).toHaveValue("");
   await expect(restored).toHaveCount(0);
   expect(await unsavedKeys(page)).toHaveLength(1);
+  // The tab she left open hears that someone else is signed in now (spec 02, §1.13). It starts
+  // again, for him: his account, and nothing of hers, neither her name nor her text.
+  await expect(left.locator(".details")).toContainText(bruno);
+  await expect(leftBio).toHaveValue("");
+  await expect(left.getByText(RESTORED)).toHaveCount(0);
+  await expect(left.locator("body")).not.toContainText("Ana Unsaved");
+  await expect(left.locator("body")).not.toContainText(ana);
+  await expect(left.locator("body")).not.toContainText("poems");
+  await expect(left).toHaveURL(/\/en\/me$/);
 
   // Unsaved text does not wait in the browser for whoever uses it next: signing out removes
   // Bruno's, and only his.
@@ -1201,10 +1262,15 @@ test("an unsaved bio survives a reload; signing out removes it, and another acco
   expect(await unsavedKeys(page)).toHaveLength(1);
   expect(await wholeStore(page)).not.toContain("Bruno builds");
 
-  // Bruno's sign-out was his alone. Ana never signed out, and the tab she left open goes on
-  // keeping what is typed in it.
-  await leftBio.fill("Ana writes poems for machines, for people, and for herself.");
-  await expect.poll(() => wholeStore(left)).toContain("and for herself.");
+  // The tab that was Ana's, and then his, has the sign-in form now, and nothing of his.
+  await expect(left.getByText("Please sign in to see your account.")).toBeVisible();
+  await expect(left.getByLabel("Email address")).toBeVisible();
+  await expect(left.locator("body")).not.toContainText(bruno);
+  // Bruno's sign-out was his alone. Ana never signed out, and what she typed in the tab she
+  // left open is still kept for her, though that tab is no longer hers. (Changed with spec 02,
+  // §1.13: this used to type on in that tab after Bruno's sign-out, to show that it went on
+  // keeping her text. The tab now stops being hers when he signs in, so she types before.)
+  expect(await wholeStore(left)).toContain("and for herself.");
   expect(await unsavedKeys(left)).toHaveLength(1);
   await left.close();
 
@@ -1258,8 +1324,9 @@ test("an unsaved bio never replaces newer saved text unasked, and a sign-out in 
   page,
   request,
 }) => {
+  const dana = "e2e-unsaved-dana@example.org";
   await listenForAnnouncements(page);
-  await signIn(page, request, "e2e-unsaved-dana@example.org");
+  await signIn(page, request, dana);
   await setName(page, "Dana Unsaved");
   const bio = page.getByLabel("Bio in English");
   const pronouns = page.getByLabel("Pronouns (optional)");
@@ -1344,19 +1411,55 @@ test("an unsaved bio never replaces newer saved text unasked, and a sign-out in 
   const header = page.locator(".site-header");
   await expect(header.getByRole("link", hers)).toBeVisible();
   await expect(other.locator(".site-header").getByRole("link", hers)).toBeVisible();
+
+  // She signs in again in the other tab, as herself (made up: sayFromThisTab). This tab is
+  // left as it is, with what she is typing in it: the very same field, not one that was put
+  // back. Only its header asks the server again.
+  await bio.fill("Dana reads aloud, to");
+  await bio.evaluate((field) => field.setAttribute("data-same", "yes"));
+  const asksAgain = page.waitForRequest("**/api/me/menu");
+  await sayFromThisTab(other, dana);
+  await asksAgain;
+  await expect(bio).toHaveAttribute("data-same", "yes");
+  await expect(bio).toHaveValue("Dana reads aloud, to");
+  await expect(header.getByRole("link", hers)).toBeVisible();
+
+  // Then she signs out in the other tab (spec 02, §1.13). Whatever this tab asks the server
+  // from now on is held back, to show that it does not wait for an answer.
+  await bio.fill("Dana reads aloud, to machines.");
+  let answer: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const ABOUT_HER = /\/api\/me(\/|$)/;
+  await page.route(ABOUT_HER, async (route) => {
+    await held;
+    await route.continue();
+  });
   await other.getByRole("button", { name: "Sign out" }).click();
   await expect(other).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(other)).toEqual([]);
-  // This tab, which nobody touched, hears of it: its header no longer has her name, and says
-  // what the server now says, that nobody is signed in.
-  await expect(header.getByText("Dana Unsaved")).toHaveCount(0);
-  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
+  // This tab, which nobody touched, hears of it, and nothing of hers is on it any more: not
+  // her name, her address or what she typed, in the header or in the page.
+  await expect(bio).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("Dana");
+  await expect(page.locator("body")).not.toContainText(dana);
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
   await expect(page).toHaveURL(/\/en\/me$/);
-  // This tab still shows her text. Typing on, waiting past the moment it would be written, and
-  // then leaving the page must put nothing of hers back into the browser.
-  await bio.fill("Dana reads aloud, to machines.");
+  // The server's answer is that nobody is signed in: the page has the sign-in form.
+  answer();
+  await expect(page.getByText("Please sign in to see your account.")).toBeVisible();
+  await expect(page.getByLabel("Email address")).toHaveValue("");
+  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await page.unroute(ABOUT_HER);
+  // What she had typed here and not saved went with the page, and nothing of hers is put back
+  // into the browser: not as the page went, not past the moment it would have been written,
+  // and not when this tab leaves the page. (Changed with spec 02, §1.13: this tab used to go
+  // on showing her text after the sign-out, and the test typed on in it. What it meant stays:
+  // a sign-out in another tab ends the keeping of her text here.)
   await page.waitForTimeout(900);
-  expect(await unsavedKeys(other)).toEqual([]);
+  expect(await unsavedKeys(page)).toEqual([]);
+  expect(await wholeStore(page)).not.toContain("Dana reads");
   await page.goto("/en/");
   await expect(page).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(page)).toEqual([]);

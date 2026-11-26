@@ -11,7 +11,7 @@ import {
 import { useLocation } from "react-router";
 import { type ApiResult, api, type Profile } from "./api";
 import { useT } from "./i18n";
-import { sessionChanged } from "./session";
+import { sessionChanged, useSessionsElsewhere } from "./session";
 import { PageHeading } from "./ui";
 
 /*
@@ -62,16 +62,23 @@ export function useHere(): string {
  * Once the code has signed the person in, a page under SignedInPages starts again, and shows
  * them what they came for. On any other page the form gives way to a line that says who is
  * signed in, and the page carries on.
+ *
+ * That line names a person. When another tab says that someone else is signed in now, or
+ * nobody, the form starts again as it first was, on a page that carries on as it is (an
+ * invitation's keeps its token).
  */
-export function SignInForm({
-  next,
-  email: handed = "",
-  onSignedIn,
-}: {
+export function SignInForm(props: SignInFormProps) {
+  const session = useSessionsElsewhere();
+  return <FormForThisSession key={session} {...props} />;
+}
+
+type SignInFormProps = {
   next?: string;
   email?: string;
   onSignedIn?: () => void;
-}) {
+};
+
+function FormForThisSession({ next, email: handed = "", onSignedIn }: SignInFormProps) {
   const { lang, t } = useT();
   const restart = useContext(PageRestart);
   const [email, setEmail] = useState(handed);
@@ -117,7 +124,7 @@ export function SignInForm({
     });
     if (res.ok) {
       setSignedInAs(res.data.person?.email ?? email.trim());
-      sessionChanged();
+      sessionChanged(res.data.person?.email ?? null);
       restart?.();
       onSignedIn?.();
     } else if (res.status === 429) setCodeState("rate_limited");
