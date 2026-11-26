@@ -254,13 +254,13 @@ test("the header fits a small phone, and everything in it is a touch target", as
   await page.goto("/en/my");
   const header = page.locator(".site-header");
   await expectTouchTarget(header.getByRole("link", { name: "ELOchair", exact: true }));
-  const account = header.getByRole("link", { name: "Your account" });
-  const mine = header.getByRole("link", { name: "My submissions" });
-  await expectTouchTarget(account);
-  await expectTouchTarget(mine);
-  // The page you are on is marked for assistive technology, not only by colour.
-  await expect(mine).toHaveAttribute("aria-current", "page");
-  await expect(account).not.toHaveAttribute("aria-current", "page");
+  // Nobody is signed in: "Sign in" is where a name would be, and there are no pages of one's
+  // own for a menu to lead to.
+  const signIn = header.getByRole("link", { name: "Sign in" });
+  await expectTouchTarget(signIn, 44);
+  await expect(header.getByRole("navigation", { name: "Main menu" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Your account" })).toHaveCount(0);
 
   const languages = page.getByRole("navigation", { name: "Language" });
   for (const [code, name] of [
@@ -278,6 +278,248 @@ test("the header fits a small phone, and everything in it is a touch target", as
   );
   await expectNoHorizontalScroll(page);
   await expectTouchTarget(page.locator(".site-footer").getByRole("link").first());
+
+  // "Sign in" leads to the sign-in page. The page you are on is marked for assistive
+  // technology, not only by colour.
+  await expect(signIn).not.toHaveAttribute("aria-current", "page");
+  await signIn.click();
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+  await expect(signIn).toHaveAttribute("aria-current", "page");
+});
+
+test("the header names whoever is signed in at its right end, offers only their pages that have something on them, and nothing moves when it learns who", async ({
+  page,
+}) => {
+  // What the frame is told about whoever is looking is made up here, so that nobody has to
+  // sign in for it: the server's own answers are in submissions.test.ts, and the tests that
+  // do sign in (submission.spec.ts) see the real header.
+  const NAME = "Maria Aparecida de Vasconcelos e Albuquerque";
+  let told = { view: "menu", account: { name: NAME, email: "made-up@example.org" } } as object;
+  let say: () => void = () => {};
+  const said = new Promise<void>((resolve) => {
+    say = resolve;
+  });
+  await page.route("**/api/me/menu", async (route) => {
+    await said;
+    await route.fulfill({ json: told });
+  });
+  const header = page.locator(".site-header");
+  const pill = header.locator(".nav-pill");
+  const mine = header.getByRole("link", { name: "My submissions" });
+  const reviews = header.getByRole("link", { name: "My reviews" });
+  const account = header.getByRole("link", { name: `Your account: ${NAME}`, exact: true });
+  const languages = page.getByRole("navigation", { name: "Language" });
+  const brand = header.getByRole("link", { name: "ELOchair", exact: true });
+  const edges = async (target: Locator) => {
+    const box = await target.boundingBox();
+    if (!box) throw new Error("not on the page");
+    return { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
+  };
+  /** Where the keyboard stops in the header, in the order in which Tab reaches each place. */
+  const stops = async () => {
+    await brand.focus();
+    const found: { left: number; right: number; top: number; bottom: number; last: boolean }[] = [];
+    for (;;) {
+      const stop = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el?.closest(".site-header")) return null;
+        const box = el.getBoundingClientRect();
+        return {
+          left: box.left,
+          right: box.right,
+          top: box.top,
+          bottom: box.bottom,
+          last: el.matches(".account a"),
+        };
+      });
+      if (!stop) return found;
+      found.push(stop);
+      await page.keyboard.press("Tab");
+    }
+  };
+  /** Each stop is to the right of the one before on the same row, or on a row below it. */
+  const asSeen = (found: Awaited<ReturnType<typeof stops>>) =>
+    found.map((stop, i) => {
+      const before = found[i - 1];
+      if (!before) return "first";
+      const sameRow = stop.top < before.bottom && stop.bottom > before.top;
+      if (sameRow) return stop.left >= before.right - 1 ? "to the right" : "BACK TO THE LEFT";
+      return stop.top >= before.bottom - 1 ? "below" : "BACK UP";
+    });
+
+  // On a phone, someone with one proposal and a long name. Until the server has said who is
+  // looking, the header shows neither a name nor "Sign in", and keeps the place of one.
+  told = { ...told, submissions: true, reviews: false };
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto("/en/my");
+  await expect(page.getByRole("heading", { level: 1, name: "My submissions" })).toBeVisible();
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Your account" })).toHaveCount(0);
+  const before = await edges(page.getByRole("main"));
+  say();
+  await expectTouchTarget(account, 44);
+  await expectTouchTarget(mine);
+  // The page below is where it was: nothing moved when the name and the link arrived.
+  expect((await edges(page.getByRole("main"))).top).toBe(before.top);
+  await expect(mine).toHaveAttribute("aria-current", "page");
+  await expect(account).not.toHaveAttribute("aria-current", "page");
+  await expect(reviews).toHaveCount(0);
+  // The link is beside the wordmark, on the upper row. The languages and the name are on the
+  // lower one, the name at its right end. It is cut short where it does not fit (the whole of
+  // it is still the link's name), and pushes nothing off the screen.
+  expect((await edges(mine)).left).toBeGreaterThan((await edges(brand)).right);
+  expect((await edges(mine)).bottom).toBeLessThanOrEqual((await edges(languages)).top);
+  expect((await edges(account)).left).toBeGreaterThan((await edges(languages)).right);
+  expect((await edges(account)).top).toBeLessThan((await edges(languages)).bottom);
+  expect((await edges(account)).right).toBeLessThanOrEqual((await edges(pill)).right);
+  expect((await edges(account)).right).toBeGreaterThan((await edges(pill)).right - 24);
+  const name = header.locator(".account-name");
+  expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  await expectNoHorizontalScroll(page);
+  await expectAccessible(page);
+
+  // On a wide screen the header is one row, in the order of the markup: the wordmark, the
+  // person's pages, the languages and, last and at the right end, the name.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  expect((await edges(pill)).bottom - (await edges(pill)).top).toBeLessThan(70);
+  expect((await edges(languages)).left).toBeGreaterThan((await edges(mine)).right);
+  expect((await edges(account)).left).toBeGreaterThan((await edges(languages)).right);
+  expect((await edges(account)).right).toBeGreaterThan((await edges(pill)).right - 24);
+  expect(
+    await header.evaluate((el) =>
+      [...el.querySelectorAll("a")].map((a) => a.textContent?.trim().split(" ")[0]),
+    ),
+  ).toEqual(["ELOchair", "My", "EN", "ES", "PT", "Your"]);
+  await expectNoHorizontalScroll(page);
+
+  // The fullest header there is, both links and the long name, in the three languages, from
+  // a small phone to the narrowest screen that has it in one row: nothing is pushed off the
+  // screen, the links stay whole and the name stays inside the header. And the keyboard goes
+  // through it as it is seen, never back up a row or back to the left, whichever way the
+  // links wrap: seven stops, from the wordmark to the name.
+  told = { ...told, submissions: true, reviews: true };
+  for (const lang of ["en", "es", "pt"]) {
+    for (const width of [360, 390, 736, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`/${lang}/`);
+      const own = header.getByRole("navigation").first().getByRole("link");
+      await expect(own).toHaveCount(2);
+      const which = `${lang} at ${width}`;
+      await expectNoHorizontalScroll(page);
+      const last = header.locator(".account a");
+      expect((await edges(last)).right, which).toBeLessThanOrEqual((await edges(pill)).right);
+      for (const link of await own.all()) {
+        expect(await link.evaluate((el) => el.scrollWidth <= el.clientWidth), which).toBe(true);
+        expect((await edges(link)).right, which).toBeLessThanOrEqual((await edges(pill)).right);
+      }
+      if (width >= 736) {
+        expect((await edges(pill)).bottom - (await edges(pill)).top, which).toBeLessThan(70);
+      }
+      const found = await stops();
+      expect(found, which).toHaveLength(7);
+      expect(found.at(-1)?.last, which).toBe(true);
+      expect(
+        asSeen(found).filter((how) => how.startsWith("BACK")),
+        which,
+      ).toEqual([]);
+    }
+  }
+
+  // Someone who has not said what they are called is known by their address.
+  told = { view: "menu", account: { name: null, email: "someone.new@example.org" } };
+  await page.goto("/en/");
+  await expect(
+    header.getByRole("link", { name: "Your account: someone.new@example.org", exact: true }),
+  ).toBeVisible();
+  await expect(header.getByRole("navigation", { name: "Main menu" })).toHaveCount(0);
+});
+
+test("the header shows the answer to its latest question: never one that comes late, and nobody when none comes", async ({
+  page,
+}) => {
+  // Made up, as above: each question the header asks is answered from this list, in turn, and
+  // an answer that has a gate waits for it.
+  const somebody = (name: string) => ({
+    view: "menu",
+    account: { name, email: "made-up@example.org" },
+    submissions: true,
+  });
+  const nobody = { view: "menu", account: null };
+  const gate = () => {
+    let open: () => void = () => {};
+    const closed = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { open, closed, passed: false };
+  };
+  const first = gate();
+  const afterBack = gate();
+  const answers: { json?: object; fails?: true; gate?: ReturnType<typeof gate> }[] = [
+    // The page arrives: answered last of all, with someone signed in.
+    { json: somebody("Whoever Was Here"), gate: first },
+    // Another page, answered at once: nobody is.
+    { json: nobody },
+    { json: somebody("Someone Else") },
+    { fails: true },
+    { json: somebody("Someone Else") },
+    // The page brought back by the back button: answered after a while, with nobody.
+    { json: nobody, gate: afterBack },
+  ];
+  let questions = 0;
+  await page.route("**/api/me/menu", async (route) => {
+    const answer = answers[questions];
+    questions += 1;
+    if (!answer) throw new Error("a question nobody expected");
+    await answer.gate?.closed;
+    if (answer.fails) await route.fulfill({ status: 500, json: { error: "made_up" } });
+    else await route.fulfill({ json: answer.json });
+    if (answer.gate) answer.gate.passed = true;
+  });
+  const header = page.locator(".site-header");
+  const language = (name: string) => header.getByRole("link", { name, exact: true });
+  const else_ = header.getByRole("link", { name: "Your account: Someone Else", exact: true });
+
+  // What happens when someone signs out while an earlier question is on its way: the answer
+  // to the earlier one comes last, and is dropped.
+  await page.goto("/en/");
+  await language("ES Español").click();
+  await expect(header.getByRole("link", { name: "Entrar" })).toBeVisible();
+  first.open();
+  await expect.poll(() => first.passed).toBe(true);
+  // Time for the late answer to be shown, if it were going to be.
+  await page.waitForTimeout(300);
+  await expect(header.getByRole("link", { name: "Entrar" })).toBeVisible();
+  await expect(header.getByText("Whoever Was Here")).toHaveCount(0);
+  await expect(header.getByRole("navigation", { name: "Menú principal" })).toHaveCount(0);
+
+  // An answer that does not come leaves nobody in the header, not whoever was there before:
+  // neither a name, nor their pages, nor "Sign in", which nothing has said.
+  await language("EN English").click();
+  await expect(else_).toBeVisible();
+  await expect(header.getByRole("link", { name: "My submissions" })).toBeVisible();
+  await language("PT Português").click();
+  await expect(header.getByText("Someone Else")).toHaveCount(0);
+  await expect(header.getByRole("navigation", { name: "Menu principal" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Entrar" })).toHaveCount(0);
+
+  // The browser brings a page back as it was left (the back button, from another site): the
+  // header forgets who it showed before it asks, because they may have signed out since.
+  // (The test browser keeps no pages to bring back, so the browser's event is made up too.)
+  await language("EN English").click();
+  await expect(else_).toBeVisible();
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+  );
+  await expect(header.getByText("Someone Else")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  afterBack.open();
+  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
+  // A page shown for the first time, or again without having been kept, changes nothing.
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false })),
+  );
+  await page.waitForTimeout(300);
+  expect(questions).toBe(answers.length);
 });
 
 test("with reduced motion nothing moves; otherwise only decoration does", async ({ page }) => {

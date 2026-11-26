@@ -114,6 +114,10 @@ async function signInToStart(
   await expect(page.getByText("The link in the email brings you back to this page.")).toBeVisible();
   await expect(page.getByRole("radio")).toHaveCount(0);
   await expect(page.locator('main a[href$="/sign-in"]')).toHaveCount(0);
+  // The header has "Sign in" where a name would be, and no pages of one's own to offer.
+  const header = page.locator(".site-header");
+  await expectTouchTarget(header.getByRole("link", { name: "Sign in" }));
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
   const send = page.getByRole("button", { name: "Email me a link" });
   await expectTouchTarget(send);
   await expectTouchTarget(page.getByText("I already have a code"));
@@ -163,6 +167,13 @@ async function signInToStart(
   await expect(page.getByRole("button", { name: `Start: ${format}` })).toBeVisible();
   await expect(page.getByLabel("Email address")).toHaveCount(0);
   expect((await page.request.get("/api/me")).status()).toBe(200);
+  // The header says who is signed in, at its right end: by their address, until they say
+  // what they are called. They have no proposals yet, so it offers no "My submissions".
+  await expectTouchTarget(
+    header.getByRole("link", { name: `Your account: ${email}`, exact: true }),
+  );
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
 }
 
 /** Sign in with the emailed code (the path the installed app uses). */
@@ -186,8 +197,12 @@ async function setName(page: Page, name: string) {
   await page.getByLabel("Your name, as it should appear").fill(name);
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByText("Profile saved.")).toBeVisible();
-  // The details at the top follow the saved profile.
+  // The details at the top follow the saved profile, and so does the name in the header,
+  // which is the link to this page.
   await expect(page.locator(".details")).toContainText(name);
+  await expect(
+    page.locator(".site-header").getByRole("link", { name: `Your account: ${name}`, exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 }
 
 async function start(page: Page, format: string) {
@@ -986,7 +1001,11 @@ test("unsaved text in a proposal survives a reload or a lost tab, until it is sa
   await listenForAnnouncements(page);
   await signIn(page, request, "e2e-unsaved@example.org");
   await setName(page, "Uma Unsaved");
+  // The header offers "My submissions" once there is one, and no longer when it is deleted.
+  const mine = page.locator(".site-header").getByRole("link", { name: "My submissions" });
+  await expect(mine).toHaveCount(0);
   await start(page, "Paper");
+  await expect(mine).toBeVisible();
   const editor = page.url();
   const title = page.getByLabel("Title");
   const abstract = page.getByLabel("Abstract (anonymized)");
@@ -1072,15 +1091,45 @@ test("unsaved text in a proposal survives a reload or a lost tab, until it is sa
   await page.getByRole("button", { name: "Delete draft" }).click();
   await expect(page).toHaveURL(/\/en\/my$/);
   expect(await unsavedKeys(page)).toEqual([]);
+  await expect(mine).toHaveCount(0);
 
   // Signing out straight after typing: the form on screen does not write its text back.
-  await page.getByRole("navigation").getByRole("link", { name: "Your account" }).click();
+  await page.locator(".site-header").getByRole("link", { name: "Your account" }).click();
   await page.getByLabel("Bio in English").fill("Uma reads in the dark.");
+  // The header forgets who was signed in when they sign out, not when the server next
+  // answers it: here its question after the sign-out waits, and then fails.
+  const header = page.locator(".site-header");
+  await expect(
+    header.getByRole("link", { name: "Your account: Uma Unsaved", exact: true }),
+  ).toBeVisible();
+  let fail: () => void = () => {};
+  const failing = new Promise<void>((resolve) => {
+    fail = resolve;
+  });
+  let failed = 0;
+  await page.route("**/api/me/menu", async (route) => {
+    await failing;
+    await route.fulfill({ status: 500, json: { error: "made_up" } });
+    failed += 1;
+  });
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
+  await expect(header.getByText("Uma Unsaved")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Your account" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "My submissions" })).toHaveCount(0);
   // Give a late write time to happen before checking that none did.
   await page.waitForTimeout(600);
   expect(await unsavedKeys(page)).toEqual([]);
+  // The answer that fails brings nobody back: the header shows neither her nor "Sign in",
+  // which it has not been told. The next page asks again, and is told that nobody is.
+  fail();
+  await expect.poll(() => failed).toBeGreaterThan(0);
+  await page.waitForTimeout(300);
+  await expect(header.getByText("Uma Unsaved")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  await page.unroute("**/api/me/menu");
+  await page.goto("/en/my");
+  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
 });
 
 test("an unsaved bio survives a reload; signing out removes it, and another account never sees it", async ({
@@ -1290,9 +1339,19 @@ test("an unsaved bio never replaces newer saved text unasked, and a sign-out in 
   const other = await page.context().newPage();
   await other.goto("/en/me");
   await expect(other.getByLabel("Bio in English")).toHaveValue("Dana reads aloud.");
+  // Both tabs have her name in the header.
+  const hers = { name: "Your account: Dana Unsaved", exact: true };
+  const header = page.locator(".site-header");
+  await expect(header.getByRole("link", hers)).toBeVisible();
+  await expect(other.locator(".site-header").getByRole("link", hers)).toBeVisible();
   await other.getByRole("button", { name: "Sign out" }).click();
   await expect(other).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(other)).toEqual([]);
+  // This tab, which nobody touched, hears of it: its header no longer has her name, and says
+  // what the server now says, that nobody is signed in.
+  await expect(header.getByText("Dana Unsaved")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/me$/);
   // This tab still shows her text. Typing on, waiting past the moment it would be written, and
   // then leaving the page must put nothing of hers back into the browser.
   await bio.fill("Dana reads aloud, to machines.");

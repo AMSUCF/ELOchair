@@ -394,6 +394,41 @@ export function projectSelf(viewer: Viewer, person: Person): SelfPerson | null {
 }
 
 /**
+ * What the frame of every page is told about whoever is looking (`GET /api/me/menu`). For a
+ * person who is signed in: their own name and address, for the link to their account at the
+ * top of the page, and which of their own pages the main menu offers (their proposals, once
+ * they have one or are invited to one; their reviews, if they review somewhere). For everyone
+ * else, the public and agents alike: that nobody is signed in, and nothing more.
+ *
+ * Nothing in it is about another person: handed anyone's record but the viewer's own, it says
+ * that nobody is signed in. It is asked on every page, so it takes the three fields it needs
+ * and not the whole record.
+ */
+export type Menu = {
+  view: "menu";
+  /** The person signed in, as they named themselves (null until they have), and their address. */
+  account: { name: string | null; email: string } | null;
+  submissions: boolean;
+  reviews: boolean;
+};
+
+export function projectMenu(
+  viewer: Viewer,
+  own: Pick<Person, "id" | "displayName" | "email"> | null,
+  has: { submissions: boolean },
+): Menu {
+  if (viewer.kind !== "person" || own?.id !== viewer.personId) {
+    return { view: "menu", account: null, submissions: false, reviews: false };
+  }
+  return {
+    view: "menu",
+    account: { name: own.displayName, email: own.email },
+    submissions: has.submissions,
+    reviews: viewer.grants.some((g) => g.role === "reviewer"),
+  };
+}
+
+/**
  * The submission check for its contributors and chairs (human sessions only): blocking issues,
  * where self-identifying details appear (path and kind, never the detail itself), and the
  * viewer's own presenter-cap count. Nothing about other people's other submissions.

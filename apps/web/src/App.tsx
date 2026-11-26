@@ -29,7 +29,7 @@ import { SignInPage } from "./pages/SignIn";
 import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
-import { useReviews } from "./session";
+import { useMenu } from "./session";
 import { PageRestart } from "./signIn";
 import { FOOTER_SLOT, FocusPending, PageHeading } from "./ui";
 
@@ -186,8 +186,9 @@ function Shell() {
   // slug is only set on /c/:slug routes; dressed is undefined for a plain conference, and on
   // home, which says itself whose identity it wears while it is an invitation (Home.tsx).
   const dressed = slug ? dressedAs(slug) : undefined;
-  // "My reviews" is for people who review somewhere: nobody else is shown the link.
-  const reviews = useReviews();
+  // Who is signed in, and which of their own pages have something on them.
+  const menu = useMenu();
+  const links = Boolean(menu?.submissions || menu?.reviews);
 
   // A route change (not the first load) asks the next page heading to take focus, so screen
   // reader and keyboard users land on the new content. Set during render, before child effects.
@@ -227,31 +228,52 @@ function Shell() {
             <Link to={`/${lang}/`} className="brand">
               <Wordmark />
             </Link>
-            <nav aria-label={t("navMain")} className="site-nav">
-              {/* NavLink marks the current page (aria-current="page"). */}
-              <NavLink to={`/${lang}/my`}>{t("navMySubmissions")}</NavLink>
-              {reviews && <NavLink to={`/${lang}/reviews`}>{t("navMyReviews")}</NavLink>}
-              <NavLink to={`/${lang}/me`}>{t("navAccount")}</NavLink>
-            </nav>
-            <nav aria-label={t("navLanguage")}>
-              <ul className="lang-switch">
-                {LANGS.map((l) => (
-                  <li key={l}>
-                    {/* The code is what shows; the name follows it for screen readers. */}
-                    <Link
-                      to={pathIn(l, location.pathname, location.search)}
-                      lang={l}
-                      hrefLang={l}
-                      title={LANG_NAMES[l]}
-                      aria-current={l === lang ? "true" : undefined}
-                    >
-                      {l.toUpperCase()}
-                      <span className="visually-hidden"> {LANG_NAMES[l]}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
+            {/* A person's own pages, once there is something on them (session.ts). */}
+            {links && (
+              <nav aria-label={t("navMain")} className="site-nav">
+                {/* NavLink marks the current page (aria-current="page"). */}
+                {menu?.submissions && <NavLink to={`/${lang}/my`}>{t("navMySubmissions")}</NavLink>}
+                {menu?.reviews && <NavLink to={`/${lang}/reviews`}>{t("navMyReviews")}</NavLink>}
+              </nav>
+            )}
+            {/* The languages and who is signed in: the right end of the header on a wide
+                screen, its second row on a phone. Everything in the header is in the order
+                in which it is seen, at every width, which is the order the keyboard follows. */}
+            <div className="nav-end">
+              <nav aria-label={t("navLanguage")} className="lang-nav">
+                <ul className="lang-switch">
+                  {LANGS.map((l) => (
+                    <li key={l}>
+                      {/* The code is what shows; the name follows it for screen readers. */}
+                      <Link
+                        to={pathIn(l, location.pathname, location.search)}
+                        lang={l}
+                        hrefLang={l}
+                        title={LANG_NAMES[l]}
+                        aria-current={l === lang ? "true" : undefined}
+                      >
+                        {l.toUpperCase()}
+                        <span className="visually-hidden"> {LANG_NAMES[l]}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+              {/* Last in the header, at the right: who is signed in, by the name they gave
+                  or else their address, which leads to their account; or "Sign in". Its
+                  place is kept while the server says which, so nothing moves when it has. */}
+              <div className="account">
+                {menu?.account && (
+                  <NavLink to={`/${lang}/me`}>
+                    <span className="visually-hidden">{t("navAccount")}: </span>
+                    <span className="account-name">{menu.account.name ?? menu.account.email}</span>
+                  </NavLink>
+                )}
+                {menu && !menu.account && (
+                  <NavLink to={`/${lang}/sign-in`}>{t("navSignIn")}</NavLink>
+                )}
+              </div>
+            </div>
           </div>
         </header>
         {/* Hero pages render their hero and their own sheet; every other page is the sheet. */}

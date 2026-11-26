@@ -19,6 +19,7 @@ export const en = {
   tagline: "Submissions and peer review for the Electronic Literature Organization conference.",
   skipToContent: "Skip to content",
   navConferences: "Conferences",
+  navSignIn: "Sign in",
   navAccount: "Your account",
   navLanguage: "Language",
   loading: "Loading…",

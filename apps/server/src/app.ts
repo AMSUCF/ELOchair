@@ -153,6 +153,15 @@ export function createApp(deps: Deps, exposure: Exposure) {
 
   app.get("/healthz", (c) => c.json({ ok: true, exposure }));
 
+  // What the server says about whoever asks (/api/me) is never to be kept by anything on the
+  // way: the frame of every page asks GET /api/me/menu, at the same address for everyone, and
+  // the answer has a name in it. Said here, before anything below can refuse, so that every
+  // refusal says it too.
+  app.use("/api/me/*", async (c, next) => {
+    await next();
+    c.res.headers.set("Cache-Control", "no-store");
+  });
+
   // Request bodies: 64 KB, except whole conference configurations (256 KB).
   const small = bodyLimit({
     maxSize: 64 * 1024,

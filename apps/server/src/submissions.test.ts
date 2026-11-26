@@ -183,6 +183,145 @@ describe("creating and editing", () => {
   });
 });
 
+describe("what the frame of every page is told", () => {
+  it("says who is signed in, and that they have proposals once they are on one or invited to one", async () => {
+    // A server of its own: the sign-in emails this needs are rationed on the one above.
+    const u = await makeTestApp();
+    const made = await seedTestCall(u.db, { now: new Date("2027-02-01T12:00:00Z") });
+    const menu = async (cookie?: string) =>
+      (await call(u.public, "GET", "/api/me/menu", { cookie })).json;
+    const NOBODY = { view: "menu", account: null, submissions: false, reviews: false };
+    // Asked by everyone on every page: the public is answered too, with nobody.
+    expect(await menu()).toEqual(NOBODY);
+
+    // Someone new is known by their address until they say what they are called, and has no
+    // proposals for the menu to lead to.
+    const invitee = await signIn(u, "Menu.Invitee@Example.org");
+    expect(await menu(invitee)).toEqual({
+      view: "menu",
+      account: { name: null, email: "menu.invitee@example.org" },
+      submissions: false,
+      reviews: false,
+    });
+    const owner = await signIn(u, "menu-owner@example.org");
+    const named = await call(u.public, "PUT", "/api/me/profile", {
+      cookie: owner,
+      body: {
+        displayName: "Mona Menu",
+        affiliation: "A made-up school",
+        country: null,
+        languages: ["en"],
+        pronouns: null,
+        orcid: null,
+        bios: {},
+      },
+    });
+    expect(named.status).toBe(200);
+    expect(await menu(owner)).toEqual({
+      view: "menu",
+      account: { name: "Mona Menu", email: "menu-owner@example.org" },
+      submissions: false,
+      reviews: false,
+    });
+
+    // Starting a proposal gives its owner one; inviting someone gives them one to answer.
+    const started = await call(u.public, "POST", `/api/conferences/${made.slug}/submissions`, {
+      cookie: owner,
+      body: { typeKey: "talk", language: "en", participationMode: "in_person" },
+    });
+    expect(started.status).toBe(201);
+    const s = started.json as { id: string; version: number };
+    expect((await menu(owner)).submissions).toBe(true);
+    expect((await menu(invitee)).submissions).toBe(false);
+    const invited = await call(u.public, "POST", `/api/submissions/${s.id}/contributors`, {
+      cookie: owner,
+      body: {
+        version: s.version,
+        email: "menu.invitee@example.org",
+        role: "coauthor",
+        lang: "en",
+      },
+    });
+    expect(invited.status).toBe(201);
+    expect((await menu(invitee)).submissions).toBe(true);
+    // It is what "My submissions" lists, no more: declined, it is gone from both.
+    const declined = await call(u.public, "POST", `/api/me/invitations/${s.id}/answer`, {
+      cookie: invitee,
+      body: { answer: "decline" },
+    });
+    expect(declined.status).toBe(200);
+    expect((await menu(invitee)).submissions).toBe(false);
+    const listed = await call(u.public, "GET", "/api/me/submissions", { cookie: invitee });
+    expect(listed.json.items).toEqual([]);
+    // A draft that is deleted leaves its owner with none.
+    const current = await call(u.public, "GET", `/api/submissions/${s.id}`, { cookie: owner });
+    const gone = await call(u.public, "DELETE", `/api/submissions/${s.id}`, {
+      cookie: owner,
+      body: { version: current.json.version },
+    });
+    expect(gone.status).toBe(204);
+    expect((await menu(owner)).submissions).toBe(false);
+    // Nothing of anyone else is in it: only the asker's own name and address, and nothing
+    // more of their own record.
+    expect(JSON.stringify(await menu(invitee))).not.toMatch(/Mona|menu-owner/);
+    expect(JSON.stringify(await menu(owner))).not.toMatch(/made-up school/);
+
+    // An answer about whoever asks has a name in it, and the same address is asked by
+    // everyone on every page: nothing on the way may keep one answer and hand it to the next
+    // person. The server says so with every answer under /api/me, also to the public (whose
+    // "nobody" must not be handed to someone signed in).
+    for (const path of ["/api/me/menu", "/api/me", "/api/me/submissions", "/api/me/reviews"]) {
+      for (const cookie of [owner, invitee, undefined]) {
+        const answer = await call(u.public, "GET", path, { cookie });
+        const who = `${path} for ${cookie ? "a person" : "the public"}: ${answer.status}`;
+        expect(answer.headers.get("cache-control"), who).toBe("no-store");
+      }
+    }
+    // And with every refusal, whatever refuses and however early: a token nobody issued, a
+    // write from another origin, one that is not JSON, one that is too large, one that is not
+    // valid, and an address under /api/me where nothing is.
+    const profile = { displayName: "Mona Menu", languages: ["en"], bios: {} };
+    const refusals = [
+      [401, await call(u.public, "GET", "/api/me/menu", { token: "nobody-issued-this" })],
+      [401, await call(u.public, "GET", "/api/me/submissions", {})],
+      [
+        403,
+        await call(u.public, "PUT", "/api/me/profile", {
+          cookie: owner,
+          body: profile,
+          origin: "https://elsewhere.example",
+        }),
+      ],
+      [
+        415,
+        await call(u.public, "PUT", "/api/me/profile", {
+          cookie: owner,
+          body: JSON.stringify(profile),
+          contentType: "text/plain",
+        }),
+      ],
+      [
+        413,
+        await call(u.public, "PUT", "/api/me/profile", {
+          cookie: owner,
+          body: { ...profile, affiliation: "x".repeat(70_000) },
+        }),
+      ],
+      [400, await call(u.public, "PUT", "/api/me/profile", { cookie: owner, body: {} })],
+      [404, await call(u.public, "GET", "/api/me/nothing-here", { cookie: owner })],
+    ] as const;
+    for (const [status, answer] of refusals) {
+      expect(answer.status, JSON.stringify(answer.json)).toBe(status);
+      expect(answer.headers.get("cache-control"), `a refusal with ${status}`).toBe("no-store");
+    }
+    // The rule is for what is said about whoever asks: a conference's public page is not it.
+    const open = await call(u.public, "GET", `/api/conferences/${made.slug}`, {});
+    expect(open.status).toBe(200);
+    expect(open.headers.get("cache-control")).toBeNull();
+    await u.close();
+  }, 60_000);
+});
+
 describe("submitting", () => {
   it("needs valid content and the current agreements; sends receipts once", async () => {
     const owner = await person("owner4@example.org", "Rosa Owner", ["es"]);
