@@ -29,7 +29,7 @@ import { SignInPage } from "./pages/SignIn";
 import { StartPage } from "./pages/Start";
 import { SubmissionPage } from "./pages/Submission";
 import { VerifyPage } from "./pages/Verify";
-import { useMenu } from "./session";
+import { useMenu, useSessionElsewhere } from "./session";
 import { PageRestart } from "./signIn";
 import { FOOTER_SLOT, FocusPending, PageHeading } from "./ui";
 
@@ -81,16 +81,29 @@ function Layout() {
  * the focus as after a navigation. One mechanism for all of them, so that no page has to
  * remember which of its questions depend on who is asking.
  *
- * The two pages of an invitation are not among them. They need nobody signed in, they hold
- * their link's token in memory only, and they carry on when someone signs in on them.
+ * The page starts again in the same way when another tab says that someone else is signed in
+ * now than this tab shows, or nobody (spec 02, §1.13). What it showed is gone at once: it asks
+ * the server who is signed in now, and shows them what is theirs, or the sign-in form. What
+ * was typed in it and not saved goes with it, as on a reload; where the browser keeps unsaved
+ * text (useUnsaved.ts), that still belongs to whoever typed it, unless they signed out.
+ *
+ * The two pages of an invitation are not among them, nor is the page of a sign-in link. They
+ * need nobody signed in, they hold their link's token in memory only, and they carry on when
+ * someone signs in or out: each takes away by itself what it says of who is signed in.
  */
 function SignedInPages() {
+  const { t } = useT();
+  const appName = t("appName");
   const [starts, setStarts] = useState(0);
   const focusPending = useContext(FocusPending);
   const restart = useCallback(() => {
+    // The browser tab's title is the old page's too, and may be a proposal's own. It goes
+    // now, with the page: the new page names itself once it has its heading (PageHeading).
+    document.title = appName;
     if (focusPending) focusPending.current = true;
     setStarts((n) => n + 1);
-  }, [focusPending]);
+  }, [focusPending, appName]);
+  useSessionElsewhere(restart);
   return (
     <PageRestart.Provider value={restart}>
       <Outlet key={starts} />

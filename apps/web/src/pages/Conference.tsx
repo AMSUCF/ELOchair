@@ -20,6 +20,7 @@ import { useT } from "../i18n";
 import { invites } from "../invitation";
 import { AlreadyInvolved, InvitationHero, WaysToContribute } from "../invitationParts";
 import { deadlineKey, modalityKey } from "../labels";
+import { useSessionsElsewhere } from "../session";
 import {
   Eyebrow,
   FooterLink,
@@ -278,9 +279,13 @@ function Deadlines({ config: c, number }: { config: ConferenceConfig; number: st
   );
 }
 
-/** Whether the person signed in manages this conference's submissions (its chairs do). */
+/**
+ * Whether the person signed in manages this conference's submissions (its chairs do). Asked
+ * again when another tab says that someone else is signed in now, or nobody; the answer about
+ * whoever was is not used meanwhile.
+ */
 function useChairs(slug: string): boolean {
-  const me = useApi<Me>("/api/me");
+  const me = useApi<Me>("/api/me", useSessionsElsewhere());
   return Boolean(
     me?.ok &&
       me.data.kind === "person" &&

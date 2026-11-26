@@ -117,7 +117,7 @@ export function MePage() {
     if (out.ok) {
       // Unsaved text must not wait in this browser for whoever uses it next.
       if (person) forgetUnsaved(person.id);
-      sessionChanged();
+      sessionChanged(null);
       navigate(`/${lang}/`);
     } else setSignOutFailed(true);
   }

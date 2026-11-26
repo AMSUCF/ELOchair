@@ -403,6 +403,26 @@ One rule: **the header says who is signed in, at its right end, and offers only 
   - **How many rows on a phone.** Two for someone with no link or one. With both links it depends on the language, the width and the device's own fonts, which the app's pages use: where the two do not fit beside the wordmark they take a row of their own, and where they do not fit on one line either, two. In English at 360px that is two rows or three, by the fonts; in Portuguese three at 390px and four at 360px. (Before this section the same people had three rows at 360px in either language.)
 - **The page begins sooner.** The sheet starts 12px below the header, and its content 18px below that on a phone and 24px on a wide screen (26px and 40px before, with 8px more above the heading).
 
+### 1.13 After a sign-in or a sign-out, in every tab
+
+One rule: **after someone signs out, or signs in, in any tab of the browser, no other tab goes on showing what the session before was shown.**
+
+- **Said to every tab.** Whatever signs someone in or out says so to the other tabs the browser has open on the site, with the address of whoever is signed in now, or nobody (`sessionChanged` in `apps/web/src/session.ts`, on the `BroadcastChannel` of §1.12).
+  - **Tabs of the two versions understand each other.** A tab still running the version of §1.12 alone says one bare word for a sign-in or a sign-out, and acts on nothing else. So a tab of this version says who is signed in now and then that same word, down the same line. The older tab hears the word and forgets its header, as it always did. The newer one reads a word that comes without a name before it as being about somebody else.
+- **A tab that hears that someone else is signed in now than it shows, or nobody,** takes away at once what it shows of whoever was. It does not wait for the server.
+  - **The pages that show a person what is theirs** (those of §1.11, under `SignedInPages`) start again, as they do after a sign-in with the code. The page is empty until the server has said who is signed in now; then it shows them what is theirs, or the sign-in form, at the same address. The name of the browser tab, which may be a proposal's own title, goes with the page: it is "ELOchair" until the page has a heading again.
+  - **The header** forgets them (§1.12).
+  - **A conference's page and the front page** stay as they are, and stop offering "Manage submissions" until the server has said that whoever is signed in now chairs the conference.
+  - **The page of a sign-in link** asks again whose account the browser is in, and says nothing of it meanwhile. It does so each time, also while an earlier asking is on its way, whose answer is then dropped. It does not start again: its token is in memory only.
+  - **The two invitation pages** carry on, with their token and what was answered. The line "You are signed in as …" goes, and the sign-in form is as it first was.
+  - **The sign-in page** shows nothing of anyone, and its form starts again like any other.
+- **A tab that hears that the person it shows has signed in again** (a second link for the same account) is left as it is, with whatever they are typing in it. Only its header asks the server again. A tab that does not know who it shows starts again.
+- **What was typed and not saved** in a tab that starts again goes with the page, as on a reload.
+  - After a sign-out it is gone: signing out removes what the browser kept for that person (`apps/web/src/unsaved.ts`), and the tab that starts again writes nothing of theirs back.
+  - When someone else signs in without a sign-out before, what the browser kept for the person before is still theirs (a proposal, a review, a profile, a conference's settings), and is put back when they are signed in again. Nobody else is shown it.
+  - Where the browser keeps nothing of a form, what was typed in it is lost.
+- **Known limits.** A browser without `BroadcastChannel` tells its other tabs nothing: they learn of it on their next page. A session that ends without a sign-out in this browser (it runs out, or the person signs out on another device) is not said to any tab. And a page that the browser brings back by the back button is as it was left, under a header that has forgotten (§1.12).
+
 ## 2. Contracts
 
 ### 2.1 One query, one shape
