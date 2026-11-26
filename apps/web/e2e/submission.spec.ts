@@ -1339,9 +1339,19 @@ test("an unsaved bio never replaces newer saved text unasked, and a sign-out in 
   const other = await page.context().newPage();
   await other.goto("/en/me");
   await expect(other.getByLabel("Bio in English")).toHaveValue("Dana reads aloud.");
+  // Both tabs have her name in the header.
+  const hers = { name: "Your account: Dana Unsaved", exact: true };
+  const header = page.locator(".site-header");
+  await expect(header.getByRole("link", hers)).toBeVisible();
+  await expect(other.locator(".site-header").getByRole("link", hers)).toBeVisible();
   await other.getByRole("button", { name: "Sign out" }).click();
   await expect(other).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(other)).toEqual([]);
+  // This tab, which nobody touched, hears of it: its header no longer has her name, and says
+  // what the server now says, that nobody is signed in.
+  await expect(header.getByText("Dana Unsaved")).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/me$/);
   // This tab still shows her text. Typing on, waiting past the moment it would be written, and
   // then leaving the page must put nothing of hers back into the browser.
   await bio.fill("Dana reads aloud, to machines.");

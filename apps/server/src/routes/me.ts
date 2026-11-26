@@ -63,13 +63,8 @@ async function mine(c: Context<AppEnv>, statuses: ("invited" | "confirmed")[]) {
   return items;
 }
 
+// (Every answer under /api/me says `Cache-Control: no-store`: app.ts, where the routes are hung.)
 export const meRoutes = new Hono<AppEnv>()
-  // Everything here is about whoever asks, by name or by address: nothing between the server
-  // and their browser may keep an answer, to hand it to the next person who asks the same.
-  .use(async (c, next) => {
-    c.header("Cache-Control", "no-store");
-    await next();
-  })
   .get("/", async (c) => {
     const viewer = c.get("viewer");
     const { db } = c.get("deps");
