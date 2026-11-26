@@ -360,6 +360,28 @@ test("a link for another account warns before switching", async ({ page, request
   const manage = call.getByRole("link", { name: "Manage submissions" });
   await expect(manage.first()).toBeVisible();
   await call.locator(".hero h1").evaluate((title) => title.setAttribute("data-same", "yes"));
+  // The link is opened once more, and this time the answer about whose account the browser
+  // is in is slow: it says the admin, and is still on its way when the admin signs out.
+  await page.goto("/en/sign-in");
+  let deliver: () => void = () => {};
+  const slow = new Promise<void>((resolve) => {
+    deliver = resolve;
+  });
+  let asked = 0;
+  let answered = 0;
+  await page.route(/\/api\/me$/, async (route) => {
+    asked += 1;
+    if (asked > 1) {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    answered += 1;
+    await slow;
+    await route.fulfill({ response });
+  });
+  await page.goto(link as string);
+  await expect.poll(() => answered).toBe(1);
   const account = await page.context().newPage();
   await account.goto("/en/me");
   await account.getByRole("button", { name: "Sign out" }).click();
@@ -367,12 +389,23 @@ test("a link for another account warns before switching", async ({ page, request
   // The call's page stays as it is, a page for everyone, without what it offered the admin.
   await expect(manage).toHaveCount(0);
   await expect(call.locator(".hero h1")).toHaveAttribute("data-same", "yes");
-  // The page of the link no longer says whose account the browser is in: nobody's. It did not
-  // start again, which would have lost the link's token: the tap still signs in.
+  // The page of the link asks again, though its first asking is not answered yet, and is told
+  // that the browser is in nobody's account. It did not start again, which would have lost
+  // the link's token.
+  await expect(
+    page.getByText("This link signs you in as track-chair-1@example.org."),
+  ).toBeVisible();
+  await expect(page.getByText(/You are currently signed in as/)).toHaveCount(0);
+  expect(asked).toBe(2);
+  // The slow answer arrives, about the account before: it is dropped, and the page does not
+  // come to say that the admin is signed in. The tap still signs in.
+  deliver();
+  await page.waitForTimeout(400);
   await expect(page.getByText(/You are currently signed in as/)).toHaveCount(0);
   await expect(
     page.getByText("This link signs you in as track-chair-1@example.org."),
   ).toBeVisible();
+  await page.unroute(/\/api\/me$/);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/en\/me$/);
   await expect(page.locator(".details")).toContainText("track-chair-1@example.org");

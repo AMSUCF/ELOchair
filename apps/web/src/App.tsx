@@ -92,12 +92,17 @@ function Layout() {
  * someone signs in or out: each takes away by itself what it says of who is signed in.
  */
 function SignedInPages() {
+  const { t } = useT();
+  const appName = t("appName");
   const [starts, setStarts] = useState(0);
   const focusPending = useContext(FocusPending);
   const restart = useCallback(() => {
+    // The browser tab's title is the old page's too, and may be a proposal's own. It goes
+    // now, with the page: the new page names itself once it has its heading (PageHeading).
+    document.title = appName;
     if (focusPending) focusPending.current = true;
     setStarts((n) => n + 1);
-  }, [focusPending]);
+  }, [focusPending, appName]);
   useSessionElsewhere(restart);
   return (
     <PageRestart.Provider value={restart}>

@@ -386,7 +386,10 @@ async function listenForAnnouncements(page: Page) {
  */
 async function sayFromThisTab(tab: Page, email: string | null) {
   await tab.evaluate((who) => {
-    new BroadcastChannel("elochair:session").postMessage({ what: "elochair:session", email: who });
+    // Who is signed in now, and then the word: in that order, down the one line.
+    const line = new BroadcastChannel("elochair:session");
+    line.postMessage({ now: who });
+    line.postMessage("elochair:session");
   }, email);
 }
 
@@ -492,10 +495,30 @@ test("submit a talk from a phone: word count, self-identification, co-author, ag
   await left.goto(proposal);
   await expect(left.getByLabel("Title")).toHaveValue("Poems that read their readers");
   await expect(left.getByRole("main")).toContainText("Bruno Coauthor");
+  // The browser tab is named after the proposal.
+  await expect(left).toHaveTitle("Poems that read their readers – ELOchair");
+  // Whatever that tab asks the server from now on is held back, to show what it does before
+  // any answer.
+  let answer: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await left.route(/\/api\//, async (route) => {
+    await held;
+    await route.continue();
+  });
   await page.goto("/en/me");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/en\/$/);
+  // The proposal's title is gone from the page and from the name of the browser tab, which
+  // is the app's alone until the page has a heading again.
+  await expect(left).toHaveTitle("ELOchair");
+  await expect(left.getByLabel("Title")).toHaveCount(0);
+  await expect(left.locator("body")).not.toContainText("Poems that read");
+  await expect(left.getByLabel("Email address")).toHaveCount(0);
+  answer();
   await expect(left.getByRole("heading", { level: 1, name: "Proposal" })).toBeVisible();
+  await expect(left).toHaveTitle("Proposal – ELOchair");
   await expect(left.getByText(/^Sign in to read this proposal\./)).toBeVisible();
   await expect(left.getByLabel("Email address")).toBeVisible();
   await expect(left.getByLabel("Title")).toHaveCount(0);
@@ -1424,6 +1447,26 @@ test("an unsaved bio never replaces newer saved text unasked, and a sign-out in 
   await expect(bio).toHaveValue("Dana reads aloud, to");
   await expect(header.getByRole("link", hers)).toBeVisible();
 
+  // A third tab is on the version of the app before this one, which knew two bare words on
+  // that line and nothing else. Here it is a bare page of the site with that version's
+  // listener on it, word for word, writing down what it would have done.
+  const older = await page.context().newPage();
+  await older.goto("/healthz");
+  await older.evaluate(() => {
+    const did: string[] = [];
+    (window as unknown as { did: string[] }).did = did;
+    const SESSION = "elochair:session";
+    const MENU = "elochair:menu";
+    const forget = () => did.push("forgets who its header showed, and asks");
+    const ask = () => did.push("asks");
+    const fromAnotherTab = (event: MessageEvent) => {
+      if (event.data === SESSION) forget();
+      else if (event.data === MENU) ask();
+    };
+    new BroadcastChannel(SESSION).addEventListener("message", fromAnotherTab);
+  });
+  const olderDid = () => older.evaluate(() => (window as unknown as { did: string[] }).did);
+
   // Then she signs out in the other tab (spec 02, §1.13). Whatever this tab asks the server
   // from now on is held back, to show that it does not wait for an answer.
   await bio.fill("Dana reads aloud, to machines.");
@@ -1439,6 +1482,9 @@ test("an unsaved bio never replaces newer saved text unasked, and a sign-out in 
   await other.getByRole("button", { name: "Sign out" }).click();
   await expect(other).toHaveURL(/\/en\/$/);
   expect(await unsavedKeys(other)).toEqual([]);
+  // The tab of the version before heard it in the word it knows, once: its header forgets.
+  await expect.poll(olderDid).toEqual(["forgets who its header showed, and asks"]);
+  await older.close();
   // This tab, which nobody touched, hears of it, and nothing of hers is on it any more: not
   // her name, her address or what she typed, in the header or in the page.
   await expect(bio).toHaveCount(0);

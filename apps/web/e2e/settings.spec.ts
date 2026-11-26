@@ -1758,17 +1758,16 @@ test.describe("conference settings", () => {
     await invitee.unroute("**/api/auth/request-link");
     await invitee.unroute("**/api/auth/verify-code");
 
-    // That line names a person. When another tab of the browser says that nobody is signed in
-    // any more (said here without a sign-out: nobody was signed in for it), the line goes and
-    // the form is as it first was (spec 02, §1.13). The page did not start again, which would
-    // have lost its link's token and what was answered: it carries on.
+    // That line names a person. When another tab of the browser says that someone signed in
+    // or out, the line goes and the form is as it first was (spec 02, §1.13). The page did not
+    // start again, which would have lost its link's token and what was answered: it carries
+    // on. Said here without a sign-out (nobody was signed in for it), and in the one bare word
+    // that a tab on the version of the app before this one says: it names nobody, and is
+    // taken to be about somebody else.
     const elsewhere = await invitee.context().newPage();
     await elsewhere.goto("/en/");
     await elsewhere.evaluate(() => {
-      new BroadcastChannel("elochair:session").postMessage({
-        what: "elochair:session",
-        email: null,
-      });
+      new BroadcastChannel("elochair:session").postMessage("elochair:session");
     });
     await expect(signedIn).toHaveCount(0);
     await expect(invitee.getByLabel("Email address")).toHaveValue(email);

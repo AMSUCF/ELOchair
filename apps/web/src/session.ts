@@ -52,8 +52,19 @@ let shown: string | null = null;
  * The line to the other tabs: what is posted on it reaches every other tab of this browser
  * that is on the site, and never the tab that posted it. Opened when first needed; null in a
  * browser that has none (the other tabs then learn of it on their next page).
+ *
+ * What is said on it is two bare words, which a tab still running the version before this one
+ * says and understands too (it knows nothing else, and forgets its header at the first):
+ * - MENU: the person signed in changed what the frame shows of them;
+ * - SESSION: someone signed in or out.
+ * A tab that can say who is signed in now says that first, `{ now: address or null }`, and
+ * then the word. Both go down the one line, so they arrive in that order; a tab of the
+ * version before does not read the first and acts on the second. A word that comes without it
+ * (from such a tab) names nobody, and is taken to be about somebody else.
  */
 let line: BroadcastChannel | null | undefined;
+/** Who the next SESSION word leaves signed in, where the tab that says it said so first. */
+let saidToBe: unknown;
 function otherTabs(): BroadcastChannel | null {
   if (line === undefined) {
     line = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION);
@@ -68,14 +79,16 @@ function otherTabs(): BroadcastChannel | null {
  * signed in (somebody else, nobody, or nothing that can be read) ends what this tab shows.
  */
 function heard(said: unknown) {
-  // (A tab still running an earlier version says the bare word, and names nobody.)
-  const { what, email } =
-    typeof said === "object" && said !== null
-      ? (said as { what?: unknown; email?: unknown })
-      : { what: said, email: null };
-  const samePerson = typeof email === "string" && email !== "" && email === shown;
-  if (what === MENU || (what === SESSION && samePerson)) window.dispatchEvent(new Event(MENU));
-  else if (what === SESSION) window.dispatchEvent(new Event(ELSEWHERE));
+  if (said === MENU) window.dispatchEvent(new Event(MENU));
+  else if (said === SESSION) {
+    // What was said before this word is about this word only, and is used once.
+    const now = saidToBe;
+    saidToBe = undefined;
+    const samePerson = typeof now === "string" && now !== "" && now === shown;
+    window.dispatchEvent(new Event(samePerson ? MENU : ELSEWHERE));
+  } else if (typeof said === "object" && said !== null && "now" in said) {
+    saidToBe = (said as { now: unknown }).now;
+  }
 }
 
 /**
@@ -84,13 +97,15 @@ function heard(said: unknown) {
  */
 export function sessionChanged(email: string | null) {
   window.dispatchEvent(new Event(SESSION));
-  otherTabs()?.postMessage({ what: SESSION, email });
+  const tabs = otherTabs();
+  tabs?.postMessage({ now: email });
+  tabs?.postMessage(SESSION);
 }
 
 /** The person signed in changed what the frame shows of them: every tab's frame asks again. */
 export function menuChanged() {
   window.dispatchEvent(new Event(MENU));
-  otherTabs()?.postMessage({ what: MENU });
+  otherTabs()?.postMessage(MENU);
 }
 
 /**

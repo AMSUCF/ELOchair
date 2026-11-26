@@ -1,5 +1,5 @@
 import { afterSignIn } from "@elochair/schema/pure";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Me } from "../api";
 import { useT } from "../i18n";
@@ -50,8 +50,16 @@ export function VerifyPage() {
   const navigate = useNavigate();
   const [{ token, next }] = useState(takeLink);
   const [state, setState] = useState<State>({ step: "checking" });
+  // Each asking of whose account the browser is in, counted: only the answers to the latest
+  // are used. `asks` says whether the page is still asking or showing the answer; once the
+  // person has tapped, or the link has failed, it says nothing of the account any more.
+  const asking = useRef(0);
+  const asks = useRef(true);
 
   const check = useCallback(async () => {
+    asking.current += 1;
+    const mine = asking.current;
+    asks.current = Boolean(token);
     if (!token) {
       setState({ step: "missing" });
       return;
@@ -61,7 +69,11 @@ export function VerifyPage() {
       api<{ email: string }>("/api/auth/link-info", { method: "POST", body: { token } }),
       api<Me>("/api/me"),
     ]);
+    // Asked again since (another tab said that the account changed), or tapped: these
+    // answers are about the account before, and are dropped.
+    if (mine !== asking.current) return;
     if (!info.ok) {
+      asks.current = false;
       setState(info.status === 400 ? { step: "expired" } : { step: "network", email: null });
       return;
     }
@@ -78,17 +90,18 @@ export function VerifyPage() {
     check();
   }, [check]);
 
-  // The page says whose account the browser is in, where the link is for another. When
-  // another tab says that this has changed, it asks again, and says nothing of it meanwhile.
-  // (Once the person has tapped, or the link has failed, the page says nothing of it anyway.)
-  const waiting = state.step === "confirm";
+  // The page says whose account the browser is in, where the link is for another. Each time
+  // another tab says that this has changed, it asks again, and says nothing of it meanwhile:
+  // also while an earlier asking is still on its way, whose answers are then dropped.
   useSessionElsewhere(
     useCallback(() => {
-      if (waiting) check();
-    }, [waiting, check]),
+      if (asks.current) check();
+    }, [check]),
   );
 
   async function signIn(email: string) {
+    asking.current += 1;
+    asks.current = false;
     setState({ step: "signing-in", email });
     // Whose place the link takes is asked now, not when the page opened: someone may have
     // signed in on this browser since. Only a link that names a page needs the answer.
